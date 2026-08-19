@@ -1,0 +1,293 @@
+// BAN-TRU-TLM - Schema Prisma cho Quản lý Suất ăn Bán trú
+// PostgreSQL Database (Supabase)
+//
+// *** QUAN TRỌNG: Mã Học Sinh (Student.id) là khóa chính duy nhất do nhà trường cấp.
+// *** Đây là sợi dây liên kết TẤT CẢ các bảng nghiệp vụ:
+// ***   Student.id → MealCancellations, MonthlyBills, SettlementRecords, DailyMealSummaries
+// *** Bảng User chỉ phục vụ mục đích xác thực đăng nhập (Authentication).
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL") // Supabase: Direct connection cho Prisma Migrate
+}
+
+// ==================== BẢNG CÀI ĐẶT HỆ THỐNG ====================
+
+model SystemSetting {
+  key         String @id
+  value       String
+  description String @default("")
+
+  @@map("system_settings")
+}
+
+// ==================== NGƯỜI DÙNG & PHÂN QUYỀN ====================
+
+enum UserRole {
+  ADMIN
+  TEACHER
+  STUDENT
+  BOARDING_MANAGER
+  BOARDING_STAFF
+}
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String   @map("password_hash")
+  fullName     String   @map("full_name")
+  role         UserRole @default(STUDENT)
+  permissions  String[] @default([]) // For fine-grained access control
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Quan hệ
+  student              Student?
+  teacherClass         Class?           @relation("ClassTeacher")
+  approvedCancellations MealCancellation[] @relation("Approver")
+  settlementRecords    SettlementRecord[] @relation("SettlementCreator")
+
+  @@map("users")
+}
+
+// ==================== LỚP HỌC ====================
+
+model Class {
+  id          String @id // VD: "1A", "2B", "3C"
+  name        String
+  teacherId   String? @unique @map("teacher_id")
+
+  // Quan hệ
+  teacher          User?                @relation("ClassTeacher", fields: [teacherId], references: [id])
+  students         Student[]
+  weeklySchedules  ClassWeeklySchedule[]
+  dailySummaries   DailyMealSummary[]
+
+  @@map("classes")
+}
+
+// ==================== HỌC SINH ====================
+
+enum BoardingStatus {
+  ACTIVE
+  CANCELLED
+  SUSPENDED
+}
+
+enum MealType {
+  MAN
+  CHAY
+  CHAO
+}
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+model Student {
+  id                   String         @id @default(cuid()) // ID hệ thống
+  studentCode          String         @unique @map("student_code") // Mã HS / CCCD
+  userId               String         @unique @map("user_id")
+  classId              String         @map("class_id")
+  gender               Gender         @default(MALE)
+  mealType             MealType       @default(MAN) @map("meal_type")
+  boardingStatus       BoardingStatus @default(ACTIVE) @map("boarding_status")
+  boardingRegisteredAt DateTime?      @map("boarding_registered_at")
+  boardingCancelledAt  DateTime?      @map("boarding_cancelled_at")
+  birthDate            DateTime?      @map("birth_date") @db.Date
+  parentPhone          String?        @map("parent_phone")
+
+  // Quan hệ
+  user              User               @relation(fields: [userId], references: [id])
+  class             Class              @relation(fields: [classId], references: [id])
+  mealOverrides     MealOverride[]
+  mealCancellations MealCancellation[]
+  monthlyBills      MonthlyBill[]
+  settlementRecords SettlementRecord[]
+
+  @@index([classId])
+  @@index([boardingStatus])
+  @@map("students")
+}
+
+// ==================== THỜI KHÓA BIỂU THEO TUẦN ====================
+
+enum ScheduleType {
+  NONE
+  TIET_4
+  TIET_5
+}
+
+model ClassWeeklySchedule {
+  id        String @id @default(cuid())
+  classId   String @map("class_id")
+  year      Int
+  weekNumber Int   @map("week_number") // 1..52
+  startDate DateTime @map("start_date") @db.Date
+
+  // Lịch ăn bán trú từng ngày
+  monday    ScheduleType @default(NONE)
+  tuesday   ScheduleType @default(NONE)
+  wednesday ScheduleType @default(NONE)
+  thursday  ScheduleType @default(NONE)
+  friday    ScheduleType @default(NONE)
+  saturday  ScheduleType @default(NONE)
+
+  note      String? // Ghi chú
+
+  // Quan hệ
+  class Class @relation(fields: [classId], references: [id])
+
+  @@unique([classId, year, weekNumber])
+  @@index([classId, year, weekNumber])
+  @@map("class_weekly_schedules")
+}
+
+// ==================== CẮT SUẤT ĂN ====================
+
+enum CancellationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model MealOverride {
+  id         String   @id @default(cuid())
+  studentId  String   @map("student_id")
+  date       DateTime @map("date") @db.Date
+  mealType   MealType @map("meal_type")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  student    Student  @relation(fields: [studentId], references: [id])
+
+  @@unique([studentId, date])
+  @@index([date])
+  @@map("meal_overrides")
+}
+
+model MealCancellation {
+  id         String              @id @default(cuid())
+  studentId  String              @map("student_id")
+  cancelDate DateTime            @map("cancel_date") @db.Date
+  reason     String
+  status     CancellationStatus  @default(PENDING)
+  createdAt  DateTime            @default(now()) @map("created_at")
+  approvedBy String?             @map("approved_by")
+  approvedAt DateTime?           @map("approved_at")
+
+  // Quan hệ
+  student  Student @relation(fields: [studentId], references: [id])
+  approver User?   @relation("Approver", fields: [approvedBy], references: [id])
+
+  @@unique([studentId, cancelDate])
+  @@index([cancelDate, status])
+  @@index([studentId, cancelDate])
+  @@map("meal_cancellations")
+}
+
+// ==================== TỔNG HỢP SUẤT ĂN HÀNG NGÀY ====================
+
+model DailyMealSummary {
+  id                     String   @id @default(cuid())
+  summaryDate            DateTime @map("summary_date") @db.Date
+  classId                String   @map("class_id")
+  totalScheduleRegistered Int     @default(0) @map("total_schedule_registered")
+  totalCanceled          Int      @default(0) @map("total_canceled")
+  finalMan               Int      @default(0) @map("final_man")
+  finalChay              Int      @default(0) @map("final_chay")
+  finalChao              Int      @default(0) @map("final_chao")
+  isLocked               Boolean  @default(false) @map("is_locked")
+  lockedAt               DateTime? @map("locked_at")
+
+  // Quan hệ
+  class Class @relation(fields: [classId], references: [id])
+
+  @@unique([summaryDate, classId])
+  @@index([summaryDate])
+  @@map("daily_meal_summaries")
+}
+
+// ==================== HÓA ĐƠN HÀNG THÁNG ====================
+
+enum PaymentStatus {
+  UNPAID
+  PAID
+  PARTIAL
+  SETTLED
+}
+
+model MonthlyBill {
+  id                String        @id @default(cuid())
+  studentId         String        @map("student_id")
+  month             Int
+  year              Int
+  scheduleMealDays  Int           @default(0) @map("schedule_meal_days")
+  canceledDays      Int           @default(0) @map("canceled_days")
+  netPayableDays    Int           @default(0) @map("net_payable_days")
+  unitPrice         Decimal       @default(0) @map("unit_price") @db.Decimal(10, 0)
+  totalAmount       Decimal       @default(0) @map("total_amount") @db.Decimal(10, 0)
+  previousDeduction Decimal       @default(0) @map("previous_deduction") @db.Decimal(10, 0)
+  finalAmount       Decimal       @default(0) @map("final_amount") @db.Decimal(10, 0)
+  paymentStatus     PaymentStatus @default(UNPAID) @map("payment_status")
+  qrCodeUrl         String?       @map("qr_code_url")
+
+  // Quan hệ
+  student      Student              @relation(fields: [studentId], references: [id])
+  transactions PaymentTransaction[]
+
+  @@unique([studentId, month, year])
+  @@index([studentId, year, month])
+  @@index([paymentStatus])
+  @@map("monthly_bills")
+}
+
+// ==================== GIAO DỊCH THANH TOÁN ====================
+
+model PaymentTransaction {
+  id          String   @id @default(cuid())
+  billId      String   @map("bill_id")
+  sepayTransId String? @map("sepay_trans_id")
+  amount      Decimal  @db.Decimal(10, 0)
+  content     String
+  transDate   DateTime @default(now()) @map("trans_date")
+
+  // Quan hệ
+  bill MonthlyBill @relation(fields: [billId], references: [id])
+
+  @@index([billId])
+  @@index([sepayTransId])
+  @@map("payment_transactions")
+}
+
+// ==================== QUYẾT TOÁN KHI HỦY BÁN TRÚ ====================
+
+enum SettlementType {
+  REFUND
+  ADDITIONAL_PAYMENT
+  BALANCED
+}
+
+model SettlementRecord {
+  id               String         @id @default(cuid())
+  studentId        String         @map("student_id")
+  settlementDate   DateTime       @default(now()) @map("settlement_date")
+  totalPaid        Decimal        @default(0) @map("total_paid") @db.Decimal(10, 0)
+  actualUsedAmount Decimal        @default(0) @map("actual_used_amount") @db.Decimal(10, 0)
+  refundOrDebt     Decimal        @default(0) @map("refund_or_debt") @db.Decimal(10, 0)
+  settlementType   SettlementType @map("settlement_type")
+  note             String?
+  createdBy        String         @map("created_by")
+
+  // Quan hệ
+  student Student @relation(fields: [studentId], references: [id])
+  creator User    @relation("SettlementCreator", fields: [createdBy], references: [id])
+
+  @@index([studentId])
+  @@map("settlement_records")
+}
