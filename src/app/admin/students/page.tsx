@@ -54,6 +54,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { StudentPortal } from '@/components/student-portal';
+import { useRealtime } from '@/hooks/use-realtime';
 
 interface StudentItem {
   id: string;
@@ -174,6 +175,13 @@ export default function AdminStudentsPage() {
   useEffect(() => {
     fetchStudents(selectedClass, selectedStatus);
   }, [selectedClass, selectedStatus, fetchStudents]);
+
+  // Realtime: tự cập nhật khi có thay đổi trên bảng students
+  useRealtime({
+    table: 'students',
+    event: '*',
+    onChanged: () => fetchStudents(selectedClass, selectedStatus),
+  });
 
   // Extract distinct class list from students for filter dropdown
   const classOptions = useMemo(() => {

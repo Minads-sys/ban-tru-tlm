@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
+import { useRealtime } from "@/hooks/use-realtime";
 import {
   Calendar,
   MessageSquare,
@@ -174,6 +175,19 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
       setLoadingOverrides(false);
     }
   }, [studentId, status, fetchStudentInfo, fetchCancellations, fetchOverrides]);
+
+  // Realtime: tự cập nhật khi trạng thái cắt suất hoặc đổi món thay đổi
+  useRealtime({
+    table: 'meal_cancellations',
+    event: '*',
+    onChanged: () => { if (studentId) fetchCancellations(studentId); },
+  });
+
+  useRealtime({
+    table: 'meal_overrides',
+    event: '*',
+    onChanged: () => { if (studentId) fetchOverrides(studentId); },
+  });
 
   const handleCancelSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

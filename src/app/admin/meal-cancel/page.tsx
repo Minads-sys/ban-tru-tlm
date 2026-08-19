@@ -22,6 +22,7 @@ import {
   AlertCircle,
   Inbox,
 } from 'lucide-react';
+import { RealtimeRefresher } from '@/components/realtime-refresher';
 
 export const dynamic = 'force-dynamic';
 
@@ -64,6 +65,8 @@ export default async function AdminMealCancelPage() {
 
   return (
     <div className="min-h-screen bg-slate-50/50 p-4 sm:p-6 lg:p-8">
+      {/* Realtime: tự cập nhật khi có đơn cắt suất mới */}
+      <RealtimeRefresher table="meal_cancellations" />
       <div className="mx-auto max-w-7xl space-y-6">
         {/* Page Header */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
