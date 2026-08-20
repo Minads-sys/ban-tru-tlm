@@ -42,3 +42,38 @@
 2026-08-19T20:20:03.966Z - Normalized input name: "nguyenhoangnam"
 2026-08-19T20:20:03.967Z - Fallback name match: true, matched username: nguyenhoangnam
 2026-08-19T20:20:04.075Z - isPasswordValid: true
+2026-08-20T05:29:09.830Z - Login attempt for: admin
+2026-08-20T05:29:09.831Z - Parsed - username: "admin", passLen: 8, vCode: "undefined"
+2026-08-20T05:29:10.118Z - findUnique by username: true
+2026-08-20T05:29:10.245Z - isPasswordValid: false
+2026-08-20T05:29:27.892Z - Login attempt for: admin
+2026-08-20T05:29:27.892Z - Parsed - username: "admin", passLen: 8, vCode: "undefined"
+2026-08-20T05:29:28.191Z - findUnique by username: true
+2026-08-20T05:29:28.289Z - isPasswordValid: false
+2026-08-20T05:29:50.883Z - Login attempt for: admin
+2026-08-20T05:29:50.883Z - Parsed - username: "admin", passLen: 11, vCode: "undefined"
+2026-08-20T05:29:51.186Z - findUnique by username: true
+2026-08-20T05:29:51.283Z - isPasswordValid: true
+2026-08-20T05:39:32.382Z - Login attempt for: admin
+2026-08-20T05:39:32.383Z - Parsed - username: "admin", passLen: 11, vCode: "undefined"
+2026-08-20T05:39:32.648Z - findUnique by username: true
+2026-08-20T05:39:32.745Z - isPasswordValid: true
+2026-08-20T06:27:01.462Z - Login attempt for: admin
+2026-08-20T06:27:01.463Z - Parsed - username: "admin", passLen: 11, vCode: "undefined"
+2026-08-20T06:27:01.753Z - findUnique by username: true
+2026-08-20T06:27:01.882Z - isPasswordValid: true
+2026-08-20T06:34:20.200Z - Login attempt for: trương tam phong
+2026-08-20T06:34:20.200Z - Parsed - username: "trương tam phong", passLen: 8, vCode: "008752"
+2026-08-20T06:34:20.476Z - findUnique by username: false
+2026-08-20T06:34:20.821Z - Fallback query found 1 users with vCode 008752
+2026-08-20T06:34:20.822Z - Normalized input name: "truongtamphong"
+2026-08-20T06:34:20.822Z - Fallback name match: true, matched username: 083071008752
+2026-08-20T06:34:20.929Z - isPasswordValid: true
+2026-08-20T06:56:34.071Z - Login attempt for: admin
+2026-08-20T06:56:34.072Z - Parsed - username: "admin", passLen: 11, vCode: "undefined"
+2026-08-20T06:56:34.733Z - findUnique by username: true
+2026-08-20T06:56:34.837Z - isPasswordValid: true
+2026-08-20T07:20:37.813Z - Login attempt for: admin
+2026-08-20T07:20:37.813Z - Parsed - username: "admin", passLen: 11, vCode: "undefined"
+2026-08-20T07:20:38.143Z - findUnique by username: true
+2026-08-20T07:20:38.265Z - isPasswordValid: true

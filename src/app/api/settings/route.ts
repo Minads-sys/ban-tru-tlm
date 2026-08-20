@@ -9,6 +9,7 @@ export async function GET() {
       MEAL_UNIT_PRICE: '35000',
       CUTOFF_TIME: '07:30',
       SCHOOL_YEAR: '2025-2026',
+      DEFAULT_VISIBLE_DAYS: '["monday", "tuesday", "wednesday", "thursday", "friday"]',
     };
 
     settings.forEach((s) => {

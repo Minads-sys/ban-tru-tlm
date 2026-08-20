@@ -93,6 +93,7 @@ enum Gender {
 model Student {
   id                   String         @id @default(cuid()) // ID hệ thống
   studentCode          String         @unique @map("student_code") // Mã HS / CCCD
+  boardingCode         String?        @unique @map("boarding_code") // Mã Bán Trú (ví dụ: BT00001)
   userId               String         @unique @map("user_id")
   classId              String         @map("class_id")
   gender               Gender         @default(MALE)

@@ -214,6 +214,18 @@ export default function DailyMealsPage() {
   const isFullyLocked = data?.isFullyLocked || false;
   const formattedDateString = formatDisplayDate(selectedDate);
 
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 30;
+
+  // Reset page when date changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedDate]);
+
+  const totalPages = Math.ceil(classSummaries.length / ITEMS_PER_PAGE);
+  const paginatedClassSummaries = classSummaries.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
   return (
     <div className="space-y-6">
       {/* ========================================================
@@ -648,9 +660,9 @@ export default function DailyMealsPage() {
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table className="print-table">
-                <TableHeader className="bg-slate-50/90 text-xs">
+            <>
+              <Table className="print-table" wrapperClassName="max-h-[65vh]">
+                <TableHeader className="sticky top-0 z-10 bg-slate-50 text-xs shadow-sm shadow-slate-200">
                   <TableRow>
                     <TableHead className="w-12 text-center font-bold text-slate-700">STT</TableHead>
                     <TableHead className="font-bold text-slate-700">Lớp</TableHead>
@@ -679,13 +691,13 @@ export default function DailyMealsPage() {
                 </TableHeader>
 
                 <TableBody>
-                  {classSummaries.map((item, index) => (
+                  {paginatedClassSummaries.map((item, index) => (
                     <TableRow
                       key={item.classId}
                       className="hover:bg-slate-50/70 transition-colors text-sm"
                     >
                       <TableCell className="text-center font-medium text-slate-500">
-                        {index + 1}
+                        {(currentPage - 1) * ITEMS_PER_PAGE + index + 1}
                       </TableCell>
                       <TableCell className="font-semibold text-slate-900 text-left">
                         <div className="flex items-center gap-2">
@@ -761,7 +773,60 @@ export default function DailyMealsPage() {
                   </TableRow>
                 </TableFooter>
               </Table>
-            </div>
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3 sm:px-6 mt-2 no-print">
+                <div className="flex flex-1 justify-between sm:hidden">
+                  <Button
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    variant="outline"
+                  >
+                    Trước
+                  </Button>
+                  <Button
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    variant="outline"
+                  >
+                    Sau
+                  </Button>
+                </div>
+                <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm text-slate-700">
+                      Hiển thị <span className="font-medium">{(currentPage - 1) * ITEMS_PER_PAGE + 1}</span> đến <span className="font-medium">{Math.min(currentPage * ITEMS_PER_PAGE, classSummaries.length)}</span> trong số <span className="font-medium">{classSummaries.length}</span> kết quả
+                    </p>
+                  </div>
+                  <div>
+                    <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+                      <Button
+                        variant="outline"
+                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                        className="rounded-l-md px-2 py-2 cursor-pointer"
+                      >
+                        <span className="sr-only">Trang trước</span>
+                        <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fillRule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clipRule="evenodd" /></svg>
+                      </Button>
+                      <span className="relative inline-flex items-center px-4 py-2 text-sm font-semibold text-slate-700 ring-1 ring-inset ring-slate-300 focus:outline-offset-0">
+                        Trang {currentPage} / {totalPages}
+                      </span>
+                      <Button
+                        variant="outline"
+                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                        disabled={currentPage === totalPages}
+                        className="rounded-r-md px-2 py-2 cursor-pointer"
+                      >
+                        <span className="sr-only">Trang sau</span>
+                        <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" /></svg>
+                      </Button>
+                    </nav>
+                  </div>
+                </div>
+              </div>
+            )}
+            </>
           )}
         </CardContent>
       </Card>

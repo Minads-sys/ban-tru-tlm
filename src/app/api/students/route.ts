@@ -35,9 +35,140 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { action, studentId } = body;
 
-    if (!studentId || !action) {
+    if (!action) {
+      return NextResponse.json({ error: "Thiếu action" }, { status: 400 });
+    }
+
+    if (action === "create") {
+      const { studentCode, boardingCode, fullName, classId, mealType, parentPhone, gender, birthDate, generateBill } = body;
+      
+      if (!studentCode || !fullName || !classId) {
+        return NextResponse.json({ error: "Thiếu các thông tin bắt buộc" }, { status: 400 });
+      }
+
+      // Check existing studentCode
+      const existing = await prisma.student.findUnique({
+        where: { studentCode },
+      });
+      if (existing) {
+        return NextResponse.json({ error: "Số CCCD đã tồn tại trên hệ thống" }, { status: 400 });
+      }
+
+      // Auto generate boardingCode if empty
+      let finalBoardingCode = boardingCode?.trim();
+      if (!finalBoardingCode) {
+        const lastStudent = await prisma.student.findFirst({
+          where: { boardingCode: { not: null } },
+          orderBy: { boardingCode: 'desc' }
+        });
+        
+        let nextNumber = 1;
+        if (lastStudent && lastStudent.boardingCode && lastStudent.boardingCode.startsWith('BT')) {
+          const lastNum = parseInt(lastStudent.boardingCode.replace('BT', ''), 10);
+          if (!isNaN(lastNum)) {
+            nextNumber = lastNum + 1;
+          }
+        }
+        finalBoardingCode = `BT${String(nextNumber).padStart(5, '0')}`;
+      } else {
+        const existingBoarding = await prisma.student.findFirst({ where: { boardingCode: finalBoardingCode } });
+        if (existingBoarding) {
+          return NextResponse.json({ error: "Mã Bán Trú đã tồn tại" }, { status: 400 });
+        }
+      }
+
+      // Parse birthDate
+      let parsedBirthDate = null;
+      if (birthDate) {
+        parsedBirthDate = new Date(birthDate);
+      }
+
+      // Generate password (ddmmyyyy) from birthDate or default "123456"
+      const bcrypt = require("bcryptjs");
+      let password = "123456";
+      if (parsedBirthDate) {
+        const dd = String(parsedBirthDate.getDate()).padStart(2, '0');
+        const mm = String(parsedBirthDate.getMonth() + 1).padStart(2, '0');
+        const yyyy = parsedBirthDate.getFullYear();
+        password = `${dd}${mm}${yyyy}`;
+      }
+      const passwordHash = await bcrypt.hash(password, 10);
+
+      // Create User
+      const user = await prisma.user.create({
+        data: {
+          username: studentCode.toLowerCase(),
+          passwordHash,
+          fullName: fullName.trim(),
+          role: "STUDENT",
+        }
+      });
+
+      // Create Student
+      const newStudent = await prisma.student.create({
+        data: {
+          studentCode: studentCode.trim(),
+          boardingCode: finalBoardingCode,
+          userId: user.id,
+          classId: classId,
+          gender: gender === "NU" ? "FEMALE" : "MALE",
+          mealType: mealType || "MAN",
+          boardingStatus: "ACTIVE",
+          boardingRegisteredAt: new Date(),
+          parentPhone: parentPhone || null,
+          birthDate: parsedBirthDate
+        }
+      });
+
+      // Generate Bill if requested
+      if (generateBill) {
+        const now = new Date();
+        const month = now.getMonth() + 1;
+        const year = now.getFullYear();
+
+        // Calculate remaining working days in month
+        let workdays = 0;
+        const endOfMonth = new Date(year, month, 0); // Last day of month
+        const tempDate = new Date(now);
+        while (tempDate <= endOfMonth) {
+          const day = tempDate.getDay();
+          if (day !== 0 && day !== 6) workdays++;
+          tempDate.setDate(tempDate.getDate() + 1);
+        }
+
+        const priceSetting = await prisma.systemSetting.findUnique({ where: { key: "MEAL_UNIT_PRICE" } });
+        const unitPrice = parseInt(priceSetting?.value || "30000");
+        
+        const finalAmount = workdays * unitPrice;
+
+        if (finalAmount > 0) {
+          const { generateMealPaymentQR } = require("@/lib/vietqr");
+          const qrCodeUrl = generateMealPaymentQR(finalBoardingCode, month, year, finalAmount);
+
+          await prisma.monthlyBill.create({
+            data: {
+              studentId: newStudent.id,
+              month,
+              year,
+              scheduleMealDays: workdays,
+              canceledDays: 0,
+              netPayableDays: workdays,
+              unitPrice,
+              previousDeduction: 0,
+              finalAmount,
+              paymentStatus: "UNPAID",
+              qrCodeUrl
+            }
+          });
+        }
+      }
+
+      return NextResponse.json({ message: "Đăng ký học sinh thành công" });
+    }
+
+    if (!studentId) {
       return NextResponse.json(
-        { error: "Thiếu studentId hoặc action" },
+        { error: "Thiếu studentId" },
         { status: 400 }
       );
     }
@@ -199,7 +330,7 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { studentId, newStudentId, fullName, classId, mealType, parentPhone } = body;
+    const { studentId, studentCode, boardingCode, fullName, classId, mealType, parentPhone } = body;
 
     if (!studentId) {
       return NextResponse.json({ error: "Thiếu studentId" }, { status: 400 });
@@ -214,25 +345,36 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "Không tìm thấy học sinh" }, { status: 404 });
     }
 
-    const trimmedNewId = newStudentId?.trim().toUpperCase();
+    const trimmedNewCode = studentCode?.trim();
+    const trimmedBoardingCode = boardingCode?.trim();
     
-    // Kiểm tra trùng mã học sinh mới
-    if (trimmedNewId && trimmedNewId !== studentId) {
+    // Kiểm tra trùng CCCD mới
+    if (trimmedNewCode && trimmedNewCode !== student.studentCode) {
       const existing = await prisma.student.findUnique({
-        where: { id: trimmedNewId },
+        where: { studentCode: trimmedNewCode },
       });
       if (existing) {
-        return NextResponse.json({ error: "Mã học sinh mới đã tồn tại trên hệ thống" }, { status: 400 });
+        return NextResponse.json({ error: "Số CCCD đã tồn tại trên hệ thống" }, { status: 400 });
       }
     }
 
-    // Cập nhật User (fullName, và username nếu username cũ trùng với studentId cũ)
+    // Kiểm tra trùng Mã Bán Trú mới
+    if (trimmedBoardingCode && trimmedBoardingCode !== student.boardingCode) {
+      const existingBoarding = await prisma.student.findFirst({
+        where: { boardingCode: trimmedBoardingCode },
+      });
+      if (existingBoarding) {
+        return NextResponse.json({ error: "Mã Bán Trú đã tồn tại trên hệ thống" }, { status: 400 });
+      }
+    }
+
+    // Cập nhật User (fullName, và username nếu username cũ trùng với studentCode cũ)
     const userUpdateData: any = {};
     if (fullName && fullName.trim() !== "") {
       userUpdateData.fullName = fullName;
     }
-    if (trimmedNewId && trimmedNewId !== studentId && student.user.username === studentId.toLowerCase()) {
-      userUpdateData.username = trimmedNewId.toLowerCase();
+    if (trimmedNewCode && trimmedNewCode !== student.studentCode && student.user.username === student.studentCode.toLowerCase()) {
+      userUpdateData.username = trimmedNewCode.toLowerCase();
     }
 
     if (Object.keys(userUpdateData).length > 0) {
@@ -242,11 +384,12 @@ export async function PUT(request: NextRequest) {
       });
     }
 
-    // Cập nhật Student (Prisma sẽ tự động cascade khóa chính)
+    // Cập nhật Student
     await prisma.student.update({
       where: { id: studentId },
       data: {
-        id: trimmedNewId && trimmedNewId !== studentId ? trimmedNewId : undefined,
+        studentCode: trimmedNewCode || student.studentCode,
+        boardingCode: trimmedBoardingCode || student.boardingCode,
         classId: classId || student.classId,
         mealType: mealType || student.mealType,
         parentPhone: parentPhone !== undefined ? parentPhone : student.parentPhone,

@@ -137,11 +137,26 @@ export async function POST(request: NextRequest) {
               role: UserRole.STUDENT,
             },
           });
+          // Lấy boardingCode mới nhất để sinh mã tiếp theo
+          const lastStudent = await prisma.student.findFirst({
+            where: { boardingCode: { not: null } },
+            orderBy: { boardingCode: 'desc' }
+          });
+          
+          let nextNumber = 1;
+          if (lastStudent && lastStudent.boardingCode && lastStudent.boardingCode.startsWith('BT')) {
+            const lastNum = parseInt(lastStudent.boardingCode.replace('BT', ''), 10);
+            if (!isNaN(lastNum)) {
+              nextNumber = lastNum + 1;
+            }
+          }
+          const boardingCode = `BT${String(nextNumber).padStart(5, '0')}`;
 
           // Create Student
           await prisma.student.create({
             data: {
               studentCode: row.maHocSinh,
+              boardingCode: boardingCode,
               userId: user.id,
               classId: row.maLop,
               gender: row.gioiTinh === "NU" ? "FEMALE" : "MALE",

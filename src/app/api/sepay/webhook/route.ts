@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const studentId = match[1].toUpperCase();
+    const code = match[1].toUpperCase();
     const month = parseInt(match[2], 10);
 
     if (isNaN(month) || month < 1 || month > 12) {
@@ -125,10 +125,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Tìm hóa đơn hàng tháng của học sinh
+    // Tìm hóa đơn hàng tháng của học sinh thông qua boardingCode
     let bill = await prisma.monthlyBill.findFirst({
       where: {
-        studentId,
+        student: {
+          boardingCode: code
+        },
         month,
         year: txYear,
       },
@@ -141,7 +143,9 @@ export async function POST(request: NextRequest) {
     if (!bill) {
       bill = await prisma.monthlyBill.findFirst({
         where: {
-          studentId,
+          student: {
+            boardingCode: code
+          },
           month,
         },
         orderBy: { year: 'desc' },
@@ -152,11 +156,11 @@ export async function POST(request: NextRequest) {
     }
 
     if (!bill) {
-      console.warn(`[SePay Webhook] Monthly bill not found for student ${studentId}, month ${month}`);
+      console.warn(`[SePay Webhook] Monthly bill not found for student ${code}, month ${month}`);
       return NextResponse.json(
         {
           success: true,
-          message: `Monthly bill not found for student ${studentId}, month ${month}`,
+          message: `Monthly bill not found for student ${code}, month ${month}`,
         },
         { status: 200 }
       );
@@ -172,7 +176,7 @@ export async function POST(request: NextRequest) {
         billId: bill.id,
         sepayTransId,
         amount: transferAmount,
-        content: payload.content || payload.description || `Thanh toán BSTLM ${studentId} T${month}`,
+        content: payload.content || payload.description || `Thanh toán BSTLM ${code} T${month}`,
         transDate: finalTransDate,
       },
     });
@@ -198,7 +202,7 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(
-      `[SePay Webhook] Successfully processed payment for student ${studentId}, month ${month}: ` +
+      `[SePay Webhook] Successfully processed payment for student ${code}, month ${month}: ` +
         `Amount=${transferAmount}, TotalPaid=${totalPaid}/${finalAmount}, Status=${updatedStatus}`
     );
 
@@ -207,7 +211,7 @@ export async function POST(request: NextRequest) {
         success: true,
         transactionId: newTransaction.id,
         billId: bill.id,
-        studentId,
+        studentId: code,
         month,
         amount: transferAmount,
         totalPaid,

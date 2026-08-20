@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Swal from "sweetalert2";
 
 import { numberToVietnameseWords } from "@/lib/utils";
@@ -33,6 +33,7 @@ import {
   Loader2,
   Calculator,
   CreditCard,
+  Layers,
 } from "lucide-react";
 
 interface BillData {
@@ -51,11 +52,20 @@ interface BillData {
   qrCodeUrl: string | null;
   student: {
     id: string;
+    studentCode: string;
+    boardingCode: string;
     mealType: string;
     user: { fullName: string };
     class: { id: string; name: string };
     mealCancellations?: { cancelDate: string }[];
   };
+}
+
+interface BillStats {
+  totalBills: number;
+  totalAmount: string;
+  paidCount: number;
+  unpaidCount: number;
 }
 
 export default function BillingPage() {
@@ -64,10 +74,10 @@ export default function BillingPage() {
   const [classFilter, setClassFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [bills, setBills] = useState<BillData[]>([]);
+  const [stats, setStats] = useState<BillStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [classes, setClasses] = useState<{ id: string; name: string }[]>([]);
-  const [currentPage, setCurrentPage] = useState(1);
   const [printBillId, setPrintBillId] = useState<string | null>(null);
   const [editingBill, setEditingBill] = useState<BillData | null>(null);
   const [editForm, setEditForm] = useState({
@@ -79,6 +89,19 @@ export default function BillingPage() {
   });
   const [savingEdit, setSavingEdit] = useState(false);
   const [settings, setSettings] = useState<Record<string, string>>({});
+
+  // Phân trang server-side
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalRecords, setTotalRecords] = useState(0);
+  const ITEMS_PER_PAGE = 30;
+
+  // Progress bar cho tạo hàng loạt
+  const [batchProgress, setBatchProgress] = useState<{
+    current: number;
+    total: number;
+    currentClass: string;
+  } | null>(null);
 
   const fetchSettings = async () => {
     try {
@@ -92,43 +115,65 @@ export default function BillingPage() {
 
   // Fetch danh sách lớp
   const fetchClasses = async () => {
-    const res = await fetch("/api/students?status=ACTIVE");
-    const data = await res.json();
-    const uniqueClasses = new Map<string, string>();
-    data.forEach((s: { classId: string; class: { name: string } }) => {
-      uniqueClasses.set(s.classId, s.class.name);
-    });
-    setClasses(
-      Array.from(uniqueClasses.entries()).map(([id, name]) => ({ id, name }))
-    );
+    try {
+      const res = await fetch("/api/classes");
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setClasses(data.map((c: { id: string; name: string }) => ({ id: c.id, name: c.name })));
+      }
+    } catch {
+      // Fallback: lấy từ students
+      try {
+        const res = await fetch("/api/students?status=ACTIVE");
+        const data = await res.json();
+        const uniqueClasses = new Map<string, string>();
+        data.forEach((s: { classId: string; class: { name: string } }) => {
+          uniqueClasses.set(s.classId, s.class.name);
+        });
+        setClasses(
+          Array.from(uniqueClasses.entries()).map(([id, name]) => ({ id, name }))
+        );
+      } catch {
+        // ignore
+      }
+    }
   };
 
-  // Fetch hóa đơn
-  const fetchBills = async () => {
+  // Fetch hóa đơn với phân trang server-side
+  const fetchBills = useCallback(async (page: number = 1) => {
     setLoading(true);
     try {
       if (classes.length === 0) await fetchClasses();
       if (Object.keys(settings).length === 0) await fetchSettings();
-      
-      let url = `/api/billing?month=${month}&year=${year}`;
+
+      let url = `/api/billing?month=${month}&year=${year}&page=${page}&limit=${ITEMS_PER_PAGE}`;
       if (classFilter !== "all") url += `&classId=${classFilter}`;
       if (statusFilter !== "all") url += `&paymentStatus=${statusFilter}`;
       const res = await fetch(url);
-      const data = await res.json();
-      setBills(data);
-      setCurrentPage(1);
+      const result = await res.json();
+
+      if (result.data) {
+        setBills(result.data);
+        setTotalPages(result.totalPages || 1);
+        setTotalRecords(result.total || 0);
+        setStats(result.stats || null);
+        setCurrentPage(page);
+      } else {
+        // Fallback cho format cũ
+        setBills(Array.isArray(result) ? result : []);
+      }
     } catch {
       Swal.fire("Lỗi", "Lỗi khi tải danh sách hóa đơn", "error");
     } finally {
       setLoading(false);
     }
-  };
+  }, [month, year, classFilter, statusFilter, classes.length, settings]);
 
-  // Tạo hóa đơn hàng loạt
-  const generateBills = async () => {
+  // Tạo hóa đơn cho 1 lớp
+  const generateBillsForClass = async (targetClassId: string, className: string) => {
     const result = await Swal.fire({
       title: "Xác nhận",
-      text: `Bạn có muốn tạo hóa đơn tháng ${month}/${year} cho tất cả học sinh đang ăn bán trú?`,
+      html: `Tạo hóa đơn tháng <b>${month}/${year}</b> cho lớp <b>${className}</b>?`,
       icon: "question",
       showCancelButton: true,
       confirmButtonColor: "#3085d6",
@@ -143,14 +188,14 @@ export default function BillingPage() {
       const res = await fetch("/api/billing", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ month, year }),
+        body: JSON.stringify({ month, year, classId: targetClassId }),
       });
       const data = await res.json();
       if (res.ok) {
         Swal.fire("Thành công", data.message, "success");
-        fetchBills();
+        fetchBills(1);
       } else {
-        Swal.fire("Lỗi", data.error, "error");
+        Swal.fire("Lỗi", data.error || "Lỗi khi tạo hóa đơn", "error");
       }
     } catch {
       Swal.fire("Lỗi", "Lỗi khi tạo hóa đơn", "error");
@@ -159,7 +204,78 @@ export default function BillingPage() {
     }
   };
 
-  // In phiếu hàng loạt
+  // Tạo hóa đơn TẤT CẢ - chạy tuần tự từng lớp với progress
+  const generateBillsAll = async () => {
+    // Đảm bảo đã load classes
+    if (classes.length === 0) await fetchClasses();
+
+    if (classes.length === 0) {
+      Swal.fire("Lỗi", "Không tìm thấy danh sách lớp", "error");
+      return;
+    }
+
+    const result = await Swal.fire({
+      title: "Xác nhận tạo hóa đơn tất cả",
+      html: `Tạo hóa đơn tháng <b>${month}/${year}</b> cho <b>${classes.length} lớp</b>.<br/><br/>Hệ thống sẽ xử lý <b>tuần tự từng lớp</b> để tránh quá tải.`,
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonColor: "#3085d6",
+      cancelButtonColor: "#d33",
+      confirmButtonText: "Bắt đầu tạo",
+      cancelButtonText: "Hủy"
+    });
+    if (!result.isConfirmed) return;
+
+    setGenerating(true);
+    setBatchProgress({ current: 0, total: classes.length, currentClass: "" });
+
+    let successCount = 0;
+    let totalStudents = 0;
+    const errors: string[] = [];
+
+    for (let i = 0; i < classes.length; i++) {
+      const cls = classes[i];
+      setBatchProgress({ current: i + 1, total: classes.length, currentClass: cls.name });
+
+      try {
+        const res = await fetch("/api/billing", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ month, year, classId: cls.id }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          successCount++;
+          totalStudents += data.count || 0;
+        } else {
+          errors.push(`${cls.name}: ${data.error}`);
+        }
+      } catch {
+        errors.push(`${cls.name}: Lỗi kết nối`);
+      }
+    }
+
+    setBatchProgress(null);
+    setGenerating(false);
+
+    if (errors.length > 0) {
+      Swal.fire({
+        title: "Hoàn tất (có lỗi)",
+        html: `Đã tạo <b>${totalStudents}</b> hóa đơn cho <b>${successCount}/${classes.length}</b> lớp.<br/><br/><b>Lỗi:</b><br/>${errors.join("<br/>")}`,
+        icon: "warning",
+      });
+    } else {
+      Swal.fire(
+        "Thành công",
+        `Đã tạo/cập nhật ${totalStudents} hóa đơn cho tất cả ${successCount} lớp tháng ${month}/${year}`,
+        "success"
+      );
+    }
+
+    fetchBills(1);
+  };
+
+  // In phiếu - chỉ in trang hiện tại
   const printBills = () => {
     setPrintBillId("ALL");
     setTimeout(() => window.print(), 800);
@@ -197,7 +313,7 @@ export default function BillingPage() {
       if (res.ok) {
         Swal.fire("Thành công", "Đã cập nhật hóa đơn", "success");
         setEditingBill(null);
-        fetchBills();
+        fetchBills(currentPage);
       } else {
         Swal.fire("Lỗi", data.error, "error");
       }
@@ -226,14 +342,11 @@ export default function BillingPage() {
     }
   };
 
-  // Tổng hợp
-  const totalFinal = bills.reduce((sum, b) => sum + parseInt(b.finalAmount), 0);
-  const totalPaid = bills.filter((b) => b.paymentStatus === "PAID").length;
-  const totalUnpaid = bills.filter((b) => b.paymentStatus === "UNPAID").length;
-
-  const ITEMS_PER_PAGE = 25;
-  const totalPages = Math.ceil(bills.length / ITEMS_PER_PAGE);
-  const paginatedBills = bills.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+  // Load classes on mount
+  useEffect(() => {
+    fetchClasses();
+    fetchSettings();
+  }, []);
 
   return (
     <div>
@@ -295,7 +408,7 @@ export default function BillingPage() {
               </Select>
             </div>
             <div className="flex gap-2">
-              <Button onClick={fetchBills} disabled={loading}>
+              <Button onClick={() => fetchBills(1)} disabled={loading}>
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Tải dữ liệu"}
               </Button>
             </div>
@@ -304,46 +417,123 @@ export default function BillingPage() {
       </Card>
 
       {/* Nút hành động */}
-      <div className="flex gap-3 mb-4 no-print">
-        <Button onClick={generateBills} disabled={generating} variant="default">
+      <div className="flex flex-wrap gap-3 mb-4 no-print">
+        {/* Tạo theo lớp */}
+        {classFilter !== "all" ? (
+          <Button
+            onClick={() => {
+              const cls = classes.find(c => c.id === classFilter);
+              if (cls) generateBillsForClass(cls.id, cls.name);
+            }}
+            disabled={generating}
+            variant="default"
+          >
+            {generating ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            ) : (
+              <Calculator className="h-4 w-4 mr-2" />
+            )}
+            Tạo hóa đơn lớp {classes.find(c => c.id === classFilter)?.name} — T{month}/{year}
+          </Button>
+        ) : (
+          <div className="flex gap-2">
+            <Select
+              onValueChange={(val) => {
+                const cls = classes.find(c => c.id === val);
+                if (cls) generateBillsForClass(cls.id, cls.name);
+              }}
+              disabled={generating}
+            >
+              <SelectTrigger className="w-[250px]">
+                <div className="flex items-center gap-2">
+                  <Calculator className="h-4 w-4" />
+                  <span>Tạo hóa đơn theo lớp...</span>
+                </div>
+              </SelectTrigger>
+              <SelectContent>
+                {classes.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {/* Tạo tất cả */}
+        <Button
+          onClick={generateBillsAll}
+          disabled={generating}
+          variant="outline"
+          className="border-blue-300 text-blue-700 hover:bg-blue-50"
+        >
           {generating ? (
             <Loader2 className="h-4 w-4 animate-spin mr-2" />
           ) : (
-            <Calculator className="h-4 w-4 mr-2" />
+            <Layers className="h-4 w-4 mr-2" />
           )}
-          Tạo hóa đơn tháng {month}/{year}
+          Tạo tất cả ({classes.length} lớp)
         </Button>
+
         <Button onClick={printBills} variant="outline" disabled={bills.length === 0}>
           <Printer className="h-4 w-4 mr-2" />
-          In phiếu hàng loạt
+          In phiếu trang hiện tại
         </Button>
       </div>
 
+      {/* Progress bar */}
+      {batchProgress && (
+        <Card className="mb-4 no-print border-blue-200 bg-blue-50">
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-blue-800">
+                Đang tạo hóa đơn: Lớp {batchProgress.currentClass}
+              </span>
+              <span className="text-sm font-semibold text-blue-700">
+                {batchProgress.current}/{batchProgress.total} lớp
+              </span>
+            </div>
+            <div className="w-full bg-blue-200 rounded-full h-3">
+              <div
+                className="bg-blue-600 h-3 rounded-full transition-all duration-300"
+                style={{
+                  width: `${Math.round((batchProgress.current / batchProgress.total) * 100)}%`,
+                }}
+              />
+            </div>
+            <p className="text-xs text-blue-600 mt-1">
+              {Math.round((batchProgress.current / batchProgress.total) * 100)}% hoàn thành
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Tổng hợp */}
-      {bills.length > 0 && (
+      {stats && stats.totalBills > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 no-print">
           <Card>
             <CardContent className="pt-4 text-center">
               <p className="text-sm text-gray-500">Tổng hóa đơn</p>
-              <p className="text-2xl font-bold">{bills.length}</p>
+              <p className="text-2xl font-bold">{stats.totalBills}</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-4 text-center">
               <p className="text-sm text-gray-500">Đã thanh toán</p>
-              <p className="text-2xl font-bold text-green-600">{totalPaid}</p>
+              <p className="text-2xl font-bold text-green-600">{stats.paidCount}</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-4 text-center">
               <p className="text-sm text-gray-500">Chưa thanh toán</p>
-              <p className="text-2xl font-bold text-red-600">{totalUnpaid}</p>
+              <p className="text-2xl font-bold text-red-600">{stats.unpaidCount}</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-4 text-center">
               <p className="text-sm text-gray-500">Tổng tiền</p>
-              <p className="text-xl font-bold text-blue-600">{formatVND(totalFinal)}</p>
+              <p className="text-xl font-bold text-blue-600">{formatVND(stats.totalAmount)}</p>
             </CardContent>
           </Card>
         </div>
@@ -355,14 +545,16 @@ export default function BillingPage() {
           <CardTitle className="flex items-center gap-2">
             <CreditCard className="h-5 w-5" />
             Danh sách hóa đơn tháng {month}/{year}
+            {totalRecords > 0 && (
+              <Badge variant="secondary" className="ml-2 text-xs">{totalRecords} hóa đơn</Badge>
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
+          <Table wrapperClassName="max-h-[65vh]">
+            <TableHeader className="sticky top-0 z-10 bg-white shadow-sm shadow-slate-200">
               <TableRow>
                 <TableHead>STT</TableHead>
-                <TableHead>Mã HS</TableHead>
                 <TableHead>Họ tên</TableHead>
                 <TableHead>Lớp</TableHead>
                 <TableHead className="text-center">Ngày ăn</TableHead>
@@ -374,10 +566,9 @@ export default function BillingPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {paginatedBills.map((bill, idx) => (
+              {bills.map((bill, idx) => (
                 <TableRow key={bill.id}>
                   <TableCell>{(currentPage - 1) * ITEMS_PER_PAGE + idx + 1}</TableCell>
-                  <TableCell className="font-mono">{bill.studentId}</TableCell>
                   <TableCell>{bill.student.user.fullName}</TableCell>
                   <TableCell>{bill.student.class.name}</TableCell>
                   <TableCell className="text-center">{bill.netPayableDays}</TableCell>
@@ -389,15 +580,15 @@ export default function BillingPage() {
                   <TableCell>{statusBadge(bill.paymentStatus)}</TableCell>
                   <TableCell className="text-center">
                     <div className="flex items-center justify-center gap-2">
-                      <Button 
-                        variant="outline" 
+                      <Button
+                        variant="outline"
                         size="sm"
                         onClick={() => printSingleBill(bill.id)}
                       >
                         In phiếu
                       </Button>
-                      <Button 
-                        variant="outline" 
+                      <Button
+                        variant="outline"
                         size="sm"
                         onClick={() => openEditModal(bill)}
                       >
@@ -409,7 +600,7 @@ export default function BillingPage() {
               ))}
               {bills.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center text-gray-400 py-8">
+                  <TableCell colSpan={9} className="text-center text-gray-400 py-8">
                     <FileDown className="h-8 w-8 mx-auto mb-2 opacity-50" />
                     Chưa có dữ liệu. Bấm &quot;Tải dữ liệu&quot; để xem hóa đơn.
                   </TableCell>
@@ -417,25 +608,30 @@ export default function BillingPage() {
               )}
             </TableBody>
           </Table>
+
+          {/* Phân trang server-side */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-end gap-4 mt-4">
+            <div className="flex items-center justify-between mt-4">
               <span className="text-sm text-gray-600">
-                Trang {currentPage} / {totalPages}
+                Hiển thị {(currentPage - 1) * ITEMS_PER_PAGE + 1}–{Math.min(currentPage * ITEMS_PER_PAGE, totalRecords)} / {totalRecords} hóa đơn
               </span>
-              <div className="flex gap-2">
+              <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
+                  onClick={() => fetchBills(currentPage - 1)}
+                  disabled={currentPage === 1 || loading}
                 >
                   Trước
                 </Button>
+                <span className="text-sm font-medium px-2">
+                  {currentPage} / {totalPages}
+                </span>
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
+                  onClick={() => fetchBills(currentPage + 1)}
+                  disabled={currentPage === totalPages || loading}
                 >
                   Sau
                 </Button>
@@ -445,7 +641,7 @@ export default function BillingPage() {
         </CardContent>
       </Card>
 
-      {/* =============== PHIẾU IN HÀNG LOẠT HOẶC CÁ NHÂN (Chỉ hiện khi in) =============== */}
+      {/* =============== PHIẾU IN (Chỉ render bills trang hiện tại) =============== */}
       <div className="absolute -z-50 opacity-0 print:static print:z-auto print:opacity-100 print:w-full print:m-0 print:p-0 print-bw" style={{ fontFamily: "'Times New Roman', Times, serif" }}>
         <style dangerouslySetInnerHTML={{ __html: `
           @media print {
@@ -463,93 +659,97 @@ export default function BillingPage() {
         {bills.filter((b) => printBillId === "ALL" || b.id === printBillId).map((bill, idx, arr) => (
           <div
             key={bill.id}
-            className={`p-4 w-full max-w-[148mm] mx-auto ${idx < arr.length - 1 ? "print-break" : ""}`}
+            className={`w-full max-w-[148mm] mx-auto p-4 print:p-0 flex flex-col ${idx < arr.length - 1 ? "print-break" : ""}`}
           >
-            <div className="flex justify-between items-start mb-3">
+            <div className="flex justify-between items-start mb-2">
               <div className="pr-2">
-                <h1 className="text-lg font-bold uppercase leading-tight">{settings.SCHOOL_NAME || "TRƯỜNG TIỂU HỌC BAN TRÚ"}</h1>
-                {settings.SCHOOL_ADDRESS && <p className="text-xs mt-1">{settings.SCHOOL_ADDRESS}</p>}
+                <h1 className="text-[15px] font-bold uppercase leading-tight">{settings.SCHOOL_NAME || "TRƯỜNG TIỂU HỌC BAN TRÚ"}</h1>
+                {settings.SCHOOL_ADDRESS && <p className="text-[11px] mt-1">{settings.SCHOOL_ADDRESS}</p>}
               </div>
               <div className="flex flex-col items-end shrink-0">
-                <Barcode 
-                  value={`PT${bill.month}${bill.year}${bill.studentId.split('-').pop()}`} 
-                  height={40} 
-                  width={1.5} 
-                  fontSize={13} 
-                  margin={0} 
-                  displayValue={true} 
+                <Barcode
+                  value={`PT${bill.month}${bill.year}${bill.student.boardingCode || bill.student.studentCode}`}
+                  height={35}
+                  width={1.3}
+                  fontSize={11}
+                  margin={0}
+                  displayValue={true}
                 />
               </div>
             </div>
 
-            <div className="text-center mb-3 border-b-2 border-black pb-2">
-              <h2 className="text-base font-bold mt-1 mb-1">PHIẾU THANH TOÁN SUẤT ĂN BÁN TRÚ</h2>
-              <p className="text-sm italic">Tháng {bill.month} / {bill.year}</p>
+            <div className="border-t-[1.5px] border-black my-2"></div>
+
+            <div className="text-center mb-2">
+              <h2 className="text-[16px] font-bold mb-1">PHIẾU THANH TOÁN SUẤT ĂN BÁN TRÚ</h2>
+              <p className="text-[12px] italic">Tháng {bill.month} / {bill.year}</p>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 mb-3 text-sm border-b border-black pb-3">
+            <div className="border-t-[1.5px] border-black my-2"></div>
+
+            <div className="grid grid-cols-2 gap-x-2 gap-y-2 text-[12px] mb-2 leading-relaxed">
               <div className="space-y-2">
-                <p><span className="font-semibold inline-block w-24">Mã HS:</span> {bill.studentId}</p>
-                <p><span className="font-semibold inline-block w-24">Họ tên:</span> {bill.student.user.fullName}</p>
-                <p><span className="font-semibold inline-block w-24">Lớp:</span> {bill.student.class.name}</p>
-                <p><span className="font-semibold inline-block w-24">Loại suất:</span> {bill.student.mealType === "MAN" ? "Mặn" : bill.student.mealType === "CHAY" ? "Chay" : "Cháo"}</p>
+                <p className="flex"><span className="font-bold w-20 shrink-0">Mã Bán Trú:</span> <span>{bill.student.boardingCode || "Chưa cấp"}</span></p>
+                <p className="flex"><span className="font-bold w-20 shrink-0">Họ tên:</span> <span>{bill.student.user.fullName}</span></p>
+                <p className="flex"><span className="font-bold w-20 shrink-0">Lớp:</span> <span>{bill.student.class.name}</span></p>
+                <p className="flex"><span className="font-bold w-20 shrink-0">Loại suất:</span> <span>{bill.student.mealType === "MAN" ? "Mặn" : bill.student.mealType === "CHAY" ? "Chay" : "Cháo"}</span></p>
               </div>
               <div className="space-y-2">
-                <p><span className="font-semibold inline-block w-44">Số ngày ăn dự kiến:</span> {bill.scheduleMealDays} ngày</p>
-                <p><span className="font-semibold inline-block w-44">Số ngày cắt suất:</span> {bill.canceledDays} ngày</p>
-                <div>
-                  <span className="font-semibold inline-block w-44">Trừ tiền tháng trước:</span> 
-                  {formatVND(bill.previousDeduction)}
-                  <p className="text-sm text-gray-500 italic mt-1">
-                    (Hủy suất ăn của tháng {bill.month === 1 ? 12 : bill.month - 1}/{bill.month === 1 ? bill.year - 1 : bill.year})
-                  </p>
+                <p className="flex"><span className="font-bold w-36 shrink-0">Số ngày ăn dự kiến:</span> <span>{bill.scheduleMealDays} ngày</span></p>
+                <p className="flex"><span className="font-bold w-36 shrink-0">Số ngày cắt suất:</span> <span>{bill.canceledDays} ngày</span></p>
+                <div className="flex">
+                  <span className="font-bold w-36 shrink-0">Trừ tiền tháng trước:</span>
+                  <div className="flex flex-col">
+                    <span>{formatVND(bill.previousDeduction)}</span>
+                    <span className="text-[11px] italic text-gray-700">(Hủy suất ăn của tháng {bill.month === 1 ? 12 : bill.month - 1}/{bill.month === 1 ? bill.year - 1 : bill.year})</span>
+                  </div>
                 </div>
-                <p><span className="font-semibold inline-block w-32">Đơn giá:</span> {formatVND(bill.unitPrice)}/suất</p>
+                <p className="flex"><span className="font-bold w-36 shrink-0">Đơn giá:</span> <span>{formatVND(bill.unitPrice)}/suất</span></p>
               </div>
             </div>
 
-            {bill.student.mealCancellations && bill.student.mealCancellations.length > 0 && (
-              <div className="mb-3 text-xs bg-gray-50 p-2 rounded print:bg-transparent print:border print:border-black print:rounded-lg">
-                <p className="font-semibold mb-1">Chi tiết các ngày đã duyệt cắt suất:</p>
+            <div className="border-t-[1.5px] border-black my-2"></div>
+
+            {bill.student.mealCancellations && bill.student.mealCancellations.length > 0 ? (
+              <div className="mb-2 text-[11px] border border-black p-2 rounded-sm print:rounded-none">
+                <p className="font-bold mb-1">Chi tiết các ngày đã duyệt cắt suất:</p>
                 <div className="flex flex-wrap gap-1">
                   {bill.student.mealCancellations.map((c, i) => (
-                    <span key={i} className="px-2 py-1 bg-white border border-gray-200 rounded text-gray-700">
+                    <span key={i} className="px-1.5 py-0.5 border border-black rounded-sm print:rounded-none">
                       {new Date(c.cancelDate).toLocaleDateString('vi-VN')}
                     </span>
                   ))}
                 </div>
               </div>
-            )}
+            ) : <div className="mb-2"></div>}
 
-            <div className="border-2 border-black py-2 my-3 text-center bg-gray-100 print:bg-transparent print:rounded-none rounded-lg">
-              <p className="text-lg font-bold mb-0.5">
+            <div className="border-[1.5px] border-black py-2 my-2 text-center">
+              <p className="text-[16px] font-bold mb-0.5">
                 SỐ TIỀN CẦN NỘP: {formatVND(bill.finalAmount)}
               </p>
-              <p className="text-sm italic">
+              <p className="text-[12px] italic">
                 (Bằng chữ: {numberToVietnameseWords(Number(bill.finalAmount))})
               </p>
             </div>
 
-            <div className="mt-4 border-2 border-dashed border-gray-400 print:border-black p-3 rounded-lg flex items-center">
+            <div className="mt-4 pt-3 border-2 border-dashed border-black p-3 flex items-center shrink-0 rounded-sm print:rounded-none">
               {bill.qrCodeUrl && (
-                <div className="shrink-0 mr-4 border border-gray-200 print:border-black p-1 bg-white">
+                <div className="shrink-0 mr-4 border border-black p-1">
                   <img
                     src={bill.qrCodeUrl}
-                    alt={`QR thanh toán ${bill.studentId}`}
-                    className="w-40 h-40 object-contain"
+                    alt={`QR thanh toán ${bill.student.boardingCode || bill.student.studentCode}`}
+                    className="w-[100px] h-[100px] object-contain"
                     loading="eager"
                   />
                 </div>
               )}
-              <div>
-                <p className="text-base font-bold mb-2">QUÉT MÃ QR ĐỂ THANH TOÁN TỰ ĐỘNG</p>
-                <p className="text-sm mb-1">
-                  Hoặc chuyển khoản thủ công với nội dung (Bắt buộc):
-                </p>
-                <span className="font-bold text-lg inline-block mt-1 px-3 py-1 border-2 border-black bg-gray-100 print:bg-transparent">
-                  BSTLM {bill.studentId} T{bill.month}
+              <div className="flex-1">
+                <p className="text-[14px] font-bold mb-1 uppercase">Quét mã QR để thanh toán tự động</p>
+                <p className="text-[11px] mb-2">Hoặc chuyển khoản thủ công với nội dung (Bắt buộc):</p>
+                <span className="font-bold text-[15px] inline-block px-3 py-1.5 border-[1.5px] border-black">
+                  BSTLM {bill.student.boardingCode || bill.student.studentCode} T{bill.month}
                 </span>
-                <p className="text-xs mt-3 italic text-gray-700 print:text-black">
+                <p className="text-[10px] mt-2 italic text-gray-800">
                   * Vui lòng nhập ĐÚNG nội dung chuyển khoản để hệ thống tự động gạch nợ.
                 </p>
               </div>
@@ -568,33 +768,33 @@ export default function BillingPage() {
             <div className="grid gap-4 py-4">
               <div>
                 <Label>Số ngày ăn dự kiến</Label>
-                <Input 
-                  type="number" 
-                  value={editForm.scheduleMealDays} 
+                <Input
+                  type="number"
+                  value={editForm.scheduleMealDays}
                   onChange={(e) => setEditForm({...editForm, scheduleMealDays: parseInt(e.target.value) || 0})}
                 />
               </div>
               <div>
                 <Label>Số ngày cắt suất</Label>
-                <Input 
-                  type="number" 
-                  value={editForm.canceledDays} 
+                <Input
+                  type="number"
+                  value={editForm.canceledDays}
                   onChange={(e) => setEditForm({...editForm, canceledDays: parseInt(e.target.value) || 0})}
                 />
               </div>
               <div>
                 <Label>Đơn giá</Label>
-                <Input 
-                  type="number" 
-                  value={editForm.unitPrice} 
+                <Input
+                  type="number"
+                  value={editForm.unitPrice}
                   onChange={(e) => setEditForm({...editForm, unitPrice: parseInt(e.target.value) || 0})}
                 />
               </div>
               <div>
                 <Label>Trừ tiền tháng trước</Label>
-                <Input 
-                  type="number" 
-                  value={editForm.previousDeduction} 
+                <Input
+                  type="number"
+                  value={editForm.previousDeduction}
                   onChange={(e) => setEditForm({...editForm, previousDeduction: parseInt(e.target.value) || 0})}
                 />
               </div>

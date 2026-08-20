@@ -4,7 +4,16 @@ import ExcelJS from "exceljs";
 
 export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url);
+    const classId = searchParams.get("classId");
+    const status = searchParams.get("status") as any;
+    
+    const where: any = {};
+    if (classId && classId !== "ALL") where.classId = classId;
+    if (status && status !== "ALL") where.boardingStatus = status;
+
     const students = await prisma.student.findMany({
+      where,
       include: {
         user: true,
         class: true,
@@ -22,6 +31,7 @@ export async function GET(request: NextRequest) {
     const headers = [
       "STT",
       "MaHocSinh (*)",
+      "Mã Bán Trú",
       "HoTen (*)",
       "Giới Tính (*)\n(NAM/NU)",
       "NgaySinh (DD/MM/YYYY)",
@@ -40,23 +50,25 @@ export async function GET(request: NextRequest) {
     headerRow.height = 30;
 
     sheet.getColumn(1).width = 5;
-    sheet.getColumn(2).width = 20;
+    sheet.getColumn(2).width = 15;
     sheet.getColumn(2).numFmt = '@';
-    sheet.getColumn(3).width = 25;
-    sheet.getColumn(4).width = 15;
-    sheet.getColumn(5).width = 20;
-    sheet.getColumn(5).numFmt = '@';
-    sheet.getColumn(6).width = 22;
+    sheet.getColumn(3).width = 15;
+    sheet.getColumn(3).numFmt = '@';
+    sheet.getColumn(4).width = 25;
+    sheet.getColumn(5).width = 15;
+    sheet.getColumn(6).width = 20;
     sheet.getColumn(6).numFmt = '@';
     sheet.getColumn(7).width = 22;
     sheet.getColumn(7).numFmt = '@';
-    sheet.getColumn(8).width = 12;
+    sheet.getColumn(8).width = 22;
     sheet.getColumn(8).numFmt = '@';
-    sheet.getColumn(9).width = 20;
-    sheet.getColumn(10).width = 18;
-    sheet.getColumn(11).width = 20;
+    sheet.getColumn(9).width = 12;
+    sheet.getColumn(9).numFmt = '@';
+    sheet.getColumn(10).width = 20;
+    sheet.getColumn(11).width = 18;
     sheet.getColumn(12).width = 20;
-    sheet.getColumn(12).numFmt = '@';
+    sheet.getColumn(13).width = 20;
+    sheet.getColumn(13).numFmt = '@';
 
     // Fill data
     let stt = 1;
@@ -73,11 +85,12 @@ export async function GET(request: NextRequest) {
       sheet.addRow([
         stt++,
         s.studentCode,
+        s.boardingCode || "",
         s.user.fullName,
         s.gender === "FEMALE" ? "NU" : "NAM",
         ngaySinhStr,
         s.user.username,
-        ngaySinhStr ? ngaySinhStr.replace(/\//g, "") : "", // Default password is DOB without slashes
+        ngaySinhStr ? ngaySinhStr.replace(/\//g, "") : "",
         s.classId,
         s.class?.name || "",
         s.mealType,

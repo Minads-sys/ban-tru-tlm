@@ -30,6 +30,7 @@ interface SettingsFormState {
   BANK_NAME: string;
   BANK_ACCOUNT_NO: string;
   BANK_ACCOUNT_NAME: string;
+  DEFAULT_VISIBLE_DAYS: string;
 }
 
 export default function AdminSettingsPage() {
@@ -42,6 +43,7 @@ export default function AdminSettingsPage() {
     BANK_NAME: 'MBBank',
     BANK_ACCOUNT_NO: '',
     BANK_ACCOUNT_NAME: '',
+    DEFAULT_VISIBLE_DAYS: '["monday", "tuesday", "wednesday", "thursday", "friday"]',
   });
 
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -69,6 +71,7 @@ export default function AdminSettingsPage() {
           BANK_NAME: data.BANK_NAME ?? prev.BANK_NAME,
           BANK_ACCOUNT_NO: data.BANK_ACCOUNT_NO ?? prev.BANK_ACCOUNT_NO,
           BANK_ACCOUNT_NAME: data.BANK_ACCOUNT_NAME ?? prev.BANK_ACCOUNT_NAME,
+          DEFAULT_VISIBLE_DAYS: data.DEFAULT_VISIBLE_DAYS ?? prev.DEFAULT_VISIBLE_DAYS,
         }));
       } catch (err) {
         console.error(err);
@@ -362,6 +365,61 @@ export default function AdminSettingsPage() {
                   />
                   <p className="text-xs font-semibold text-emerald-700">
                     Hiển thị: {formatCurrency(formData.MEAL_UNIT_PRICE)} / suất
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* CARD 4: Hiển thị Thời khóa biểu */}
+            <Card className="shadow-sm">
+              <CardHeader className="border-b bg-card">
+                <CardTitle className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+                  <Calendar className="h-5 w-5 text-indigo-600" />
+                  Quy tắc hiển thị Thời khóa biểu
+                </CardTitle>
+                <CardDescription>
+                  Chọn các ngày học mặc định trong tuần để hiển thị khi tạo Thời khóa biểu mới
+                </CardDescription>
+              </CardHeader>
+
+              <CardContent className="p-6">
+                <div className="space-y-3">
+                  <Label className="text-sm font-medium">Các ngày hiển thị mặc định:</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { id: "monday", label: "Thứ 2" },
+                      { id: "tuesday", label: "Thứ 3" },
+                      { id: "wednesday", label: "Thứ 4" },
+                      { id: "thursday", label: "Thứ 5" },
+                      { id: "friday", label: "Thứ 6" },
+                      { id: "saturday", label: "Thứ 7" }
+                    ].map((day) => {
+                      let activeDays: string[] = [];
+                      try {
+                        activeDays = JSON.parse(formData.DEFAULT_VISIBLE_DAYS || '[]');
+                      } catch {}
+                      const isActive = activeDays.includes(day.id);
+                      
+                      return (
+                        <Button
+                          key={day.id}
+                          type="button"
+                          variant={isActive ? "default" : "outline"}
+                          className={isActive ? "bg-indigo-600 hover:bg-indigo-700" : ""}
+                          onClick={() => {
+                            let newDays = [...activeDays];
+                            if (isActive) newDays = newDays.filter(d => d !== day.id);
+                            else newDays.push(day.id);
+                            handleChange('DEFAULT_VISIBLE_DAYS', JSON.stringify(newDays));
+                          }}
+                        >
+                          {day.label}
+                        </Button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Khi tạo Thời khóa biểu cho một tuần mới, hệ thống sẽ chỉ mở sẵn các cột của các ngày được chọn ở trên. Đối với các tuần có ngoại lệ (như học bù Thứ 7), bạn có thể mở thêm cột trực tiếp trên màn hình Thời khóa biểu.
                   </p>
                 </div>
               </CardContent>

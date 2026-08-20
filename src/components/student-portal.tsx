@@ -450,21 +450,21 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
         </CardContent>
       </Card>
 
-      {!readOnly && (
-        <Tabs defaultValue="cancel" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 mb-6 p-1 bg-slate-100">
-            <TabsTrigger value="cancel" className="data-[state=active]:bg-white data-[state=active]:text-blue-700 data-[state=active]:shadow-sm">
-              <Calendar className="h-4 w-4 mr-2" />
-              Cắt suất ăn
-            </TabsTrigger>
-            <TabsTrigger value="override" className="data-[state=active]:bg-white data-[state=active]:text-blue-700 data-[state=active]:shadow-sm">
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Thay đổi món ăn
-            </TabsTrigger>
-          </TabsList>
+      <Tabs defaultValue="cancel" className="w-full">
+        <TabsList className="grid w-full grid-cols-2 mb-6 p-1 bg-slate-100">
+          <TabsTrigger value="cancel" className="data-[state=active]:bg-white data-[state=active]:text-blue-700 data-[state=active]:shadow-sm">
+            <Calendar className="h-4 w-4 mr-2" />
+            {readOnly ? 'Lịch sử Cắt suất' : 'Cắt suất ăn'}
+          </TabsTrigger>
+          <TabsTrigger value="override" className="data-[state=active]:bg-white data-[state=active]:text-blue-700 data-[state=active]:shadow-sm">
+            <RefreshCw className="h-4 w-4 mr-2" />
+            {readOnly ? 'Lịch sử Đổi món' : 'Thay đổi món ăn'}
+          </TabsTrigger>
+        </TabsList>
 
-          <TabsContent value="cancel">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <TabsContent value="cancel">
+          <div className={`grid grid-cols-1 gap-6 ${!readOnly ? "md:grid-cols-2" : ""}`}>
+            {!readOnly && (
               <Card className="border-slate-200 shadow-xs h-fit">
                 <CardHeader className="pb-3 border-b border-slate-100">
                   <CardTitle className="text-base sm:text-lg font-semibold text-slate-800">
@@ -531,6 +531,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                   </form>
                 </CardContent>
               </Card>
+            )}
 
               <Card className="border-slate-200 shadow-xs h-fit">
                 <CardHeader className="pb-3 border-b border-slate-100 flex flex-row items-center justify-between">
@@ -570,18 +571,19 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
           </TabsContent>
 
           <TabsContent value="override">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <Card className="border-slate-200 shadow-xs h-fit">
-                <CardHeader className="pb-3 border-b border-slate-100">
-                  <CardTitle className="text-base sm:text-lg font-semibold text-slate-800">
-                    Đăng ký Đổi món
-                  </CardTitle>
-                  <CardDescription>
-                    Thay đổi suất ăn trong ngày so với suất đăng ký mặc định.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="pt-6">
-                  <form onSubmit={handleOverrideSubmit} className="space-y-4">
+            <div className={`grid grid-cols-1 gap-6 ${!readOnly ? "md:grid-cols-2" : ""}`}>
+              {!readOnly && (
+                <Card className="border-slate-200 shadow-xs h-fit">
+                  <CardHeader className="pb-3 border-b border-slate-100">
+                    <CardTitle className="text-base sm:text-lg font-semibold text-slate-800">
+                      Đăng ký Đổi món
+                    </CardTitle>
+                    <CardDescription>
+                      Thay đổi suất ăn trong ngày so với suất đăng ký mặc định.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="pt-6">
+                    <form onSubmit={handleOverrideSubmit} className="space-y-4">
                     {overrideSuccess && (
                       <div className="flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
                         <CheckCircle className="h-5 w-5 shrink-0 text-emerald-600 mt-0.5" />
@@ -659,6 +661,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                   </form>
                 </CardContent>
               </Card>
+              )}
 
               <Card className="border-slate-200 shadow-xs h-fit">
                 <CardHeader className="pb-3 border-b border-slate-100 flex flex-row items-center justify-between">
@@ -679,7 +682,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                           <TableRow>
                             <TableHead>Ngày</TableHead>
                             <TableHead>Món ăn mới</TableHead>
-                            <TableHead className="text-right">Hành động</TableHead>
+                            {!readOnly && <TableHead className="text-right">Hành động</TableHead>}
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -699,15 +702,17 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                                   {getMealTypeName(item.mealType)}
                                 </Badge>
                               </TableCell>
-                              <TableCell className="text-right">
-                                {canCancel ? (
-                                  <Button variant="ghost" size="sm" className="h-8 text-rose-600 hover:text-rose-700 hover:bg-rose-50" onClick={() => handleCancelOverride(item.id)}>
-                                    Hủy đổi
-                                  </Button>
-                                ) : (
-                                  <span className="text-xs text-slate-400">Đã khóa</span>
-                                )}
-                              </TableCell>
+                              {!readOnly && (
+                                <TableCell className="text-right">
+                                  {canCancel ? (
+                                    <Button variant="ghost" size="sm" className="h-8 text-rose-600 hover:text-rose-700 hover:bg-rose-50" onClick={() => handleCancelOverride(item.id)}>
+                                      Hủy đổi
+                                    </Button>
+                                  ) : (
+                                    <span className="text-xs text-slate-400">Đã khóa</span>
+                                  )}
+                                </TableCell>
+                              )}
                             </TableRow>
                           )})}
                         </TableBody>
@@ -719,7 +724,6 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
             </div>
           </TabsContent>
         </Tabs>
-      )}
     </div>
   );
 }

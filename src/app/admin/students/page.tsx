@@ -25,6 +25,7 @@ import {
   Sparkles,
   Edit,
   Trash2,
+  Download,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import {
@@ -59,6 +60,7 @@ import { useRealtime } from '@/hooks/use-realtime';
 interface StudentItem {
   id: string;
   studentCode: string;
+  boardingCode?: string | null;
   userId: string;
   classId: string;
   birthDate: string | null;
@@ -120,13 +122,29 @@ export default function AdminStudentsPage() {
 
   const [editingStudent, setEditingStudent] = useState<StudentItem | null>(null);
   const [editFormData, setEditFormData] = useState({
-    newStudentId: '',
+    studentCode: '',
+    boardingCode: '',
     fullName: '',
     classId: '',
     mealType: 'MAN',
     parentPhone: '',
   });
   const [isSubmittingEdit, setIsSubmittingEdit] = useState<boolean>(false);
+
+  // Create student states
+  const [creatingStudent, setCreatingStudent] = useState<boolean>(false);
+  const [createFormData, setCreateFormData] = useState({
+    studentCode: '',
+    boardingCode: '',
+    fullName: '',
+    classId: '',
+    mealType: 'MAN',
+    parentPhone: '',
+    gender: 'NAM',
+    birthDate: '',
+    generateBill: true,
+  });
+  const [isSubmittingCreate, setIsSubmittingCreate] = useState<boolean>(false);
 
   // Delete dialog states
   const [deletingStudent, setDeletingStudent] = useState<StudentItem | null>(null);
@@ -193,18 +211,35 @@ export default function AdminStudentsPage() {
     return Array.from(classSet).sort();
   }, [students]);
 
-  // Filter students by search term (Mã HS or Tên HS)
+  // Filter students by search term (Mã HS, Mã Bán Trú, Tên HS)
   const filteredStudents = useMemo(() => {
     if (!searchQuery.trim()) return students;
     const q = searchQuery.toLowerCase().trim();
     return students.filter(
       (s) =>
         s.studentCode.toLowerCase().includes(q) ||
+        (s.boardingCode && s.boardingCode.toLowerCase().includes(q)) ||
         s.user.fullName.toLowerCase().includes(q) ||
         s.user.username.toLowerCase().includes(q) ||
         (s.parentPhone && s.parentPhone.includes(q))
     );
   }, [students, searchQuery]);
+
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 30;
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedClass, selectedStatus]);
+
+  const paginatedStudents = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredStudents.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [filteredStudents, currentPage]);
+
+  const totalPages = Math.ceil(filteredStudents.length / ITEMS_PER_PAGE);
 
   // Statistics counters
   const stats = useMemo(() => {
@@ -313,7 +348,8 @@ export default function AdminStudentsPage() {
   const handleEditClick = (student: StudentItem) => {
     setEditingStudent(student);
     setEditFormData({
-      newStudentId: student.id,
+      studentCode: student.studentCode || '',
+      boardingCode: student.boardingCode || '',
       fullName: student.user.fullName || '',
       classId: student.classId,
       mealType: student.mealType || 'MAN',
@@ -337,16 +373,65 @@ export default function AdminStudentsPage() {
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Lỗi khi cập nhật học sinh');
+      if (!res.ok) {
+        throw new Error(data.error || 'Lỗi khi cập nhật học sinh');
+      }
 
-      setStatusMessage({ type: 'success', text: data.message || 'Cập nhật thành công' });
       setEditingStudent(null);
+      setStatusMessage({ type: 'success', text: data.message || 'Cập nhật thành công' });
       await fetchStudents(selectedClass, selectedStatus);
     } catch (err) {
-      console.error('Edit student error:', err);
-      setStatusMessage({ type: 'error', text: err instanceof Error ? err.message : 'Có lỗi xảy ra' });
+      console.error('Update student error:', err);
+      setStatusMessage({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Có lỗi xảy ra',
+      });
     } finally {
       setIsSubmittingEdit(false);
+    }
+  };
+
+  const handleConfirmCreate = async () => {
+    setIsSubmittingCreate(true);
+    setStatusMessage(null);
+
+    try {
+      const res = await fetch('/api/students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create',
+          ...createFormData,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Lỗi khi đăng ký học sinh mới');
+      }
+
+      setCreatingStudent(false);
+      setCreateFormData({
+        studentCode: '',
+        boardingCode: '',
+        fullName: '',
+        classId: '',
+        mealType: 'MAN',
+        parentPhone: '',
+        gender: 'NAM',
+        birthDate: '',
+        generateBill: true,
+      });
+      setStatusMessage({ type: 'success', text: data.message || 'Đăng ký học sinh mới thành công' });
+      await fetchStudents(selectedClass, selectedStatus);
+    } catch (err) {
+      console.error('Create student error:', err);
+      setStatusMessage({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Có lỗi xảy ra khi tạo',
+      });
+    } finally {
+      setIsSubmittingCreate(false);
     }
   };
 
@@ -453,16 +538,38 @@ export default function AdminStudentsPage() {
           </div>
         </div>
 
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => fetchStudents(selectedClass, selectedStatus)}
-          disabled={isLoading}
-          className="gap-2 border-slate-300 hover:bg-slate-100 shadow-xs cursor-pointer"
-        >
-          <RefreshCw className={`h-4 w-4 text-slate-600 ${isLoading ? 'animate-spin' : ''}`} />
-          <span>Làm mới danh sách</span>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => fetchStudents(selectedClass, selectedStatus)}
+            disabled={isLoading}
+            className="gap-2 border-red-600 text-red-600 hover:bg-red-50 shadow-xs cursor-pointer bg-white"
+          >
+            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">Làm mới danh sách</span>
+          </Button>
+          <Button
+            variant="default"
+            size="sm"
+            onClick={() => window.location.href = `/api/excel/export/students?classId=${selectedClass}&status=${selectedStatus}`}
+            className="gap-2 bg-blue-600 hover:bg-blue-700 text-white shadow-xs cursor-pointer"
+          >
+            <Download className="h-4 w-4" />
+            <span className="hidden sm:inline">Xuất Excel</span>
+            <span className="sm:hidden">Excel</span>
+          </Button>
+          <Button
+            variant="default"
+            size="sm"
+            onClick={() => setCreatingStudent(true)}
+            className="gap-2 bg-red-600 hover:bg-red-700 text-white shadow-xs cursor-pointer"
+          >
+            <UserPlus className="h-4 w-4" />
+            <span className="hidden sm:inline">Đăng ký mới</span>
+            <span className="sm:hidden">Mới</span>
+          </Button>
+        </div>
       </div>
 
       {/* ========================================================
@@ -686,13 +793,14 @@ export default function AdminStudentsPage() {
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader className="bg-slate-50/90 text-xs">
+            <>
+              <Table wrapperClassName="max-h-[65vh]">
+                <TableHeader className="sticky top-0 z-10 bg-slate-50 text-xs shadow-sm shadow-slate-200">
                   <TableRow>
                     <TableHead className="w-12 text-center font-semibold text-slate-700">
                       STT
                     </TableHead>
+                    <TableHead className="w-28 font-semibold text-slate-700">Mã Bán Trú</TableHead>
                     <TableHead className="w-28 font-semibold text-slate-700">Số CCCD</TableHead>
                     <TableHead className="font-semibold text-slate-700">Họ và tên</TableHead>
                     <TableHead className="w-20 font-semibold text-slate-700">Giới tính</TableHead>
@@ -707,17 +815,28 @@ export default function AdminStudentsPage() {
                 </TableHeader>
 
                 <TableBody>
-                  {filteredStudents.map((student, index) => (
+                  {paginatedStudents.map((student, index) => (
                     <TableRow
                       key={student.id}
                       className="hover:bg-slate-50/70 transition-colors text-sm"
                     >
                       {/* STT */}
                       <TableCell className="text-center font-medium text-slate-500">
-                        {index + 1}
+                        {(currentPage - 1) * ITEMS_PER_PAGE + index + 1}
                       </TableCell>
 
-                      {/* Mã HS */}
+                      {/* Mã Bán Trú */}
+                      <TableCell>
+                        {student.boardingCode ? (
+                          <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                            {student.boardingCode}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400 italic">Chưa cấp</span>
+                        )}
+                      </TableCell>
+
+                      {/* Số CCCD */}
                       <TableCell>
                         <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-800 border">
                           {student.studentCode}
@@ -842,7 +961,60 @@ export default function AdminStudentsPage() {
                   ))}
                 </TableBody>
               </Table>
-            </div>
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3 sm:px-6 mt-2">
+                <div className="flex flex-1 justify-between sm:hidden">
+                  <Button
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    variant="outline"
+                  >
+                    Trước
+                  </Button>
+                  <Button
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    variant="outline"
+                  >
+                    Sau
+                  </Button>
+                </div>
+                <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm text-slate-700">
+                      Hiển thị <span className="font-medium">{(currentPage - 1) * ITEMS_PER_PAGE + 1}</span> đến <span className="font-medium">{Math.min(currentPage * ITEMS_PER_PAGE, filteredStudents.length)}</span> trong số <span className="font-medium">{filteredStudents.length}</span> kết quả
+                    </p>
+                  </div>
+                  <div>
+                    <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+                      <Button
+                        variant="outline"
+                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                        className="rounded-l-md px-2 py-2 cursor-pointer"
+                      >
+                        <span className="sr-only">Trang trước</span>
+                        <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fillRule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clipRule="evenodd" /></svg>
+                      </Button>
+                      <span className="relative inline-flex items-center px-4 py-2 text-sm font-semibold text-slate-700 ring-1 ring-inset ring-slate-300 focus:outline-offset-0">
+                        Trang {currentPage} / {totalPages}
+                      </span>
+                      <Button
+                        variant="outline"
+                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                        disabled={currentPage === totalPages}
+                        className="rounded-r-md px-2 py-2 cursor-pointer"
+                      >
+                        <span className="sr-only">Trang sau</span>
+                        <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" /></svg>
+                      </Button>
+                    </nav>
+                  </div>
+                </div>
+              </div>
+            )}
+            </>
           )}
         </CardContent>
       </Card>
@@ -1176,6 +1348,171 @@ export default function AdminStudentsPage() {
       </Dialog>
 
       {/* ========================================================
+          DIALOG: CREATE STUDENT
+         ======================================================== */}
+      <Dialog
+        open={creatingStudent}
+        onOpenChange={(open) => {
+          if (!open) setCreatingStudent(false);
+        }}
+      >
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100 text-red-600">
+                <UserPlus className="h-5 w-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-lg font-bold text-slate-900">Đăng ký mới</DialogTitle>
+                <DialogDescription className="text-xs text-slate-500">Đăng ký học sinh vào hệ thống bán trú</DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-700">Họ và Tên (*)</label>
+              <Input
+                value={createFormData.fullName}
+                onChange={(e) => setCreateFormData({ ...createFormData, fullName: e.target.value })}
+                placeholder="Họ và Tên học sinh"
+                className="h-10 text-sm"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-700">Số CCCD (*)</label>
+                <Input
+                  value={createFormData.studentCode}
+                  onChange={(e) => setCreateFormData({ ...createFormData, studentCode: e.target.value })}
+                  placeholder="Số CCCD"
+                  className="h-10 text-sm font-mono"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-700">Mã Bán Trú</label>
+                <Input
+                  value={createFormData.boardingCode}
+                  onChange={(e) => setCreateFormData({ ...createFormData, boardingCode: e.target.value })}
+                  placeholder="Tự động nếu trống"
+                  className="h-10 text-sm font-mono uppercase"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-700">Lớp học (*)</label>
+                <Select
+                  value={createFormData.classId}
+                  onValueChange={(val) => setCreateFormData({ ...createFormData, classId: val })}
+                >
+                  <SelectTrigger className="h-10 text-sm">
+                    <SelectValue placeholder="Chọn lớp" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {classOptions.map((cls) => (
+                      <SelectItem key={cls} value={cls}>Lớp {cls}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-700">Loại suất ăn (*)</label>
+                <Select
+                  value={createFormData.mealType}
+                  onValueChange={(val) => setCreateFormData({ ...createFormData, mealType: val })}
+                >
+                  <SelectTrigger className="h-10 text-sm">
+                    <SelectValue placeholder="Chọn loại suất" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="MAN">Suất Mặn</SelectItem>
+                    <SelectItem value="CHAY">Suất Chay</SelectItem>
+                    <SelectItem value="CHAO">Suất Cháo</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-700">Ngày sinh</label>
+                <Input
+                  type="date"
+                  value={createFormData.birthDate}
+                  onChange={(e) => setCreateFormData({ ...createFormData, birthDate: e.target.value })}
+                  className="h-10 text-sm"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-700">Giới tính</label>
+                <Select
+                  value={createFormData.gender}
+                  onValueChange={(val) => setCreateFormData({ ...createFormData, gender: val })}
+                >
+                  <SelectTrigger className="h-10 text-sm">
+                    <SelectValue placeholder="Chọn giới tính" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="NAM">Nam</SelectItem>
+                    <SelectItem value="NU">Nữ</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-700">SĐT Phụ huynh</label>
+              <Input
+                value={createFormData.parentPhone}
+                onChange={(e) => setCreateFormData({ ...createFormData, parentPhone: e.target.value })}
+                placeholder="Số điện thoại"
+                className="h-10 text-sm"
+              />
+            </div>
+
+            <div className="flex items-start space-x-2 pt-2 pb-1">
+              <input
+                type="checkbox"
+                id="generateBill"
+                checked={createFormData.generateBill}
+                onChange={(e) => setCreateFormData({ ...createFormData, generateBill: e.target.checked })}
+                className="mt-1 h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-600"
+              />
+              <div className="grid gap-1.5 leading-none">
+                <label
+                  htmlFor="generateBill"
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-slate-800"
+                >
+                  Tạo hóa đơn thanh toán cho tháng này
+                </label>
+                <p className="text-[11.5px] text-slate-500">
+                  Hệ thống sẽ tính số ngày còn lại trong tháng từ hôm nay để lập hóa đơn. Nếu chưa cần thanh toán ngay, cứ chọn tạo hóa đơn để lưu hệ thống.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0 mt-2">
+            <Button type="button" variant="outline" onClick={() => setCreatingStudent(false)} disabled={isSubmittingCreate}>
+              Hủy bỏ
+            </Button>
+            <Button
+              type="button"
+              onClick={handleConfirmCreate}
+              disabled={isSubmittingCreate || !createFormData.fullName || !createFormData.studentCode || !createFormData.classId}
+              className="bg-red-600 hover:bg-red-700 text-white font-bold gap-2"
+            >
+              {isSubmittingCreate ? <RefreshCw className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
+              <span>Đăng ký</span>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ========================================================
           DIALOG: EDIT STUDENT
          ======================================================== */}
       <Dialog
@@ -1199,14 +1536,25 @@ export default function AdminStudentsPage() {
 
           {editingStudent && (
             <div className="space-y-4 py-2">
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700">Số CCCD</label>
-                <Input
-                  value={editFormData.newStudentId}
-                  onChange={(e) => setEditFormData({ ...editFormData, newStudentId: e.target.value })}
-                  placeholder="Số Căn cước công dân"
-                  className="h-10 text-sm font-mono uppercase"
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700">Mã Bán Trú</label>
+                  <Input
+                    value={editFormData.boardingCode}
+                    onChange={(e) => setEditFormData({ ...editFormData, boardingCode: e.target.value })}
+                    placeholder="VD: BT00001"
+                    className="h-10 text-sm font-mono uppercase"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700">Số CCCD</label>
+                  <Input
+                    value={editFormData.studentCode}
+                    onChange={(e) => setEditFormData({ ...editFormData, studentCode: e.target.value })}
+                    placeholder="Số Căn cước công dân"
+                    className="h-10 text-sm font-mono"
+                  />
+                </div>
               </div>
 
               <div className="space-y-1.5">

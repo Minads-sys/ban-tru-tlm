@@ -118,3 +118,37 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+// DELETE: Xóa toàn bộ TKB của một tuần
+export async function DELETE(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const year = parseInt(searchParams.get("year") || "");
+  const weekNumber = parseInt(searchParams.get("weekNumber") || "");
+
+  if (!year || !weekNumber) {
+    return NextResponse.json(
+      { error: "Thiếu tham số year hoặc weekNumber" },
+      { status: 400 }
+    );
+  }
+
+  try {
+    const result = await prisma.classWeeklySchedule.deleteMany({
+      where: {
+        year,
+        weekNumber,
+      },
+    });
+
+    return NextResponse.json({
+      message: `Đã xóa thành công ${result.count} bản ghi TKB của tuần ${weekNumber}/${year}`,
+      count: result.count,
+    });
+  } catch (error) {
+    console.error("Delete schedule error:", error);
+    return NextResponse.json(
+      { error: "Lỗi khi xóa TKB", details: String(error) },
+      { status: 500 }
+    );
+  }
+}

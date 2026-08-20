@@ -65,6 +65,13 @@ export default function UsersPage() {
     isActive: true,
   });
 
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 30;
+
+  const totalPages = Math.ceil(users.length / ITEMS_PER_PAGE);
+  const paginatedUsers = users.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
   useEffect(() => {
     fetchUsers();
   }, []);
@@ -184,10 +191,11 @@ export default function UsersPage() {
               <Loader2 className="h-8 w-8 animate-spin mx-auto text-slate-400" />
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
+            <>
+              <Table wrapperClassName="max-h-[65vh]">
+                <TableHeader className="sticky top-0 z-10 bg-white shadow-sm shadow-slate-200">
                   <TableRow>
+                    <TableHead className="w-[80px] text-center">STT</TableHead>
                     <TableHead>Họ & Tên</TableHead>
                     <TableHead>Tên đăng nhập</TableHead>
                     <TableHead>Chức vụ</TableHead>
@@ -197,8 +205,11 @@ export default function UsersPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {users.map((u) => (
+                  {paginatedUsers.map((u, idx) => (
                     <TableRow key={u.id}>
+                      <TableCell className="text-center text-slate-500">
+                        {(currentPage - 1) * ITEMS_PER_PAGE + idx + 1}
+                      </TableCell>
                       <TableCell className="font-medium">{u.fullName}</TableCell>
                       <TableCell>{u.username}</TableCell>
                       <TableCell>
@@ -240,14 +251,67 @@ export default function UsersPage() {
                   ))}
                   {users.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8 text-slate-500">
+                      <TableCell colSpan={7} className="text-center py-8 text-slate-500">
                         Chưa có dữ liệu nhân sự
                       </TableCell>
                     </TableRow>
                   )}
                 </TableBody>
               </Table>
-            </div>
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3 sm:px-6 mt-2">
+                <div className="flex flex-1 justify-between sm:hidden">
+                  <Button
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    variant="outline"
+                  >
+                    Trước
+                  </Button>
+                  <Button
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    variant="outline"
+                  >
+                    Sau
+                  </Button>
+                </div>
+                <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm text-slate-700">
+                      Hiển thị <span className="font-medium">{(currentPage - 1) * ITEMS_PER_PAGE + 1}</span> đến <span className="font-medium">{Math.min(currentPage * ITEMS_PER_PAGE, users.length)}</span> trong số <span className="font-medium">{users.length}</span> kết quả
+                    </p>
+                  </div>
+                  <div>
+                    <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+                      <Button
+                        variant="outline"
+                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                        className="rounded-l-md px-2 py-2 cursor-pointer"
+                      >
+                        <span className="sr-only">Trang trước</span>
+                        <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fillRule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clipRule="evenodd" /></svg>
+                      </Button>
+                      <span className="relative inline-flex items-center px-4 py-2 text-sm font-semibold text-slate-700 ring-1 ring-inset ring-slate-300 focus:outline-offset-0">
+                        Trang {currentPage} / {totalPages}
+                      </span>
+                      <Button
+                        variant="outline"
+                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                        disabled={currentPage === totalPages}
+                        className="rounded-r-md px-2 py-2 cursor-pointer"
+                      >
+                        <span className="sr-only">Trang sau</span>
+                        <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" /></svg>
+                      </Button>
+                    </nav>
+                  </div>
+                </div>
+              </div>
+            )}
+            </>
           )}
         </CardContent>
       </Card>
