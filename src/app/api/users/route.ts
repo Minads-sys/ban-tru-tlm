@@ -49,7 +49,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Thiếu thông tin bắt buộc" }, { status: 400 });
     }
 
-    const existingUser = await prisma.user.findUnique({ where: { username } });
+    // Chuẩn hóa username về lowercase để khớp với logic đăng nhập
+    const normalizedUsername = username.trim().toLowerCase();
+
+    const existingUser = await prisma.user.findUnique({ where: { username: normalizedUsername } });
     if (existingUser) {
       return NextResponse.json({ error: "Tên đăng nhập đã tồn tại" }, { status: 400 });
     }
@@ -58,7 +61,7 @@ export async function POST(req: Request) {
 
     const newUser = await prisma.user.create({
       data: {
-        username,
+        username: normalizedUsername,
         passwordHash,
         fullName,
         role,

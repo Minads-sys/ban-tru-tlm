@@ -12,12 +12,13 @@ export default auth((req) => {
     return NextResponse.next();
   }
 
-  // Protect /admin/* routes (require ADMIN role)
+  // Protect /admin/* routes (require staff roles)
   if (pathname.startsWith('/admin')) {
     if (!isLoggedIn) {
       return NextResponse.redirect(new URL('/login', nextUrl));
     }
-    if (userRole !== 'ADMIN') {
+    const allowedRoles = ['ADMIN', 'BOARDING_MANAGER', 'BOARDING_STAFF', 'TEACHER'];
+    if (!allowedRoles.includes(userRole as string)) {
       return NextResponse.redirect(new URL('/login', nextUrl));
     }
     return NextResponse.next();
