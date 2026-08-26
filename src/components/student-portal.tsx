@@ -86,6 +86,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
 
   const [studentInfo, setStudentInfo] = useState<StudentData | null>(null);
   const [loadingStudent, setLoadingStudent] = useState<boolean>(true);
+  const [isExpanded, setIsExpanded] = useState<boolean>(false);
 
   const [cancellations, setCancellations] = useState<MealCancellation[]>([]);
   const [loadingCancellations, setLoadingCancellations] = useState<boolean>(true);
@@ -96,6 +97,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
   // States for Cancel Form
   const [cancelDate, setCancelDate] = useState<string>("");
   const [reason, setReason] = useState<string>("");
+  const [ignoreCutoff, setIgnoreCutoff] = useState<boolean>(false);
   const [submittingCancel, setSubmittingCancel] = useState<boolean>(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [cancelSuccess, setCancelSuccess] = useState<string | null>(null);
@@ -116,7 +118,26 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
     return `${yyyy}-${mm}-${dd}`;
   };
 
+  const getEndOfWeekDateString = () => {
+    const today = new Date();
+    const day = today.getDay();
+    let diff = day === 0 ? 0 : 7 - day;
+    
+    // Mở tuần kế tiếp vào Thứ Bảy và Chủ Nhật
+    if (day === 6 || day === 0) {
+      diff += 7;
+    }
+    
+    const endOfWeek = new Date(today);
+    endOfWeek.setDate(today.getDate() + diff);
+    const yyyy = endOfWeek.getFullYear();
+    const mm = String(endOfWeek.getMonth() + 1).padStart(2, "0");
+    const dd = String(endOfWeek.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
   const minDate = getTomorrowDateString();
+  const maxDate = getEndOfWeekDateString();
 
   const fetchStudentInfo = useCallback(async (id: string) => {
     try {
@@ -205,6 +226,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
           studentId,
           cancelDate,
           reason,
+          ignoreCutoff,
         }),
       });
 
@@ -325,138 +347,150 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Cổng thông tin bán trú</h1>
+      <div className="sticky top-16 z-30 bg-white/95 backdrop-blur-md py-3 -mt-3 mb-2 -mx-4 px-4 sm:mx-0 sm:px-4 sm:py-4 sm:-mt-4 sm:mb-4 sm:rounded-lg border-b sm:border border-slate-200 shadow-sm">
+        <h1 className="text-2xl font-bold text-slate-900 tracking-tight">TRANG THÔNG TIN SUẤT ĂN BÁN TRÚ</h1>
         <p className="text-sm text-slate-500 mt-1">
-          Góc nhìn phụ huynh/học sinh của <span className="font-semibold text-blue-600">{studentInfo?.user?.fullName || session?.user?.name}</span>
+          <span className="font-semibold text-blue-600">{studentInfo?.user?.fullName || session?.user?.name}</span> {studentInfo?.class?.name ? `- Lớp: ${studentInfo.class.name}` : studentInfo?.classId ? `- Lớp: ${studentInfo.classId}` : ''}
         </p>
       </div>
 
       <Card className="border-slate-200 shadow-xs bg-white">
-        <CardHeader className="pb-3 border-b border-slate-100">
-          <CardTitle className="text-base sm:text-lg font-semibold flex items-center gap-2 text-slate-800">
-            <User className="h-5 w-5 text-blue-600" />
-            Thông tin học sinh
-          </CardTitle>
-          <CardDescription className="text-xs sm:text-sm text-slate-500">
-            Hồ sơ học sinh đăng ký dịch vụ bán trú
-          </CardDescription>
+        <CardHeader className="pb-3 border-b border-slate-100 flex flex-row items-center justify-between cursor-pointer" onClick={() => setIsExpanded(!isExpanded)}>
+          <div>
+            <CardTitle className="text-base sm:text-lg font-semibold flex items-center gap-2 text-slate-800">
+              <User className="h-5 w-5 text-blue-600" />
+              Thông tin học sinh
+            </CardTitle>
+            <CardDescription className="text-xs sm:text-sm text-slate-500">
+              Hồ sơ học sinh đăng ký dịch vụ bán trú
+            </CardDescription>
+          </div>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="border-blue-200 text-blue-700 hover:bg-blue-50 bg-blue-50/50 shrink-0 shadow-sm"
+            onClick={(e) => { e.stopPropagation(); setIsExpanded(!isExpanded); }}
+          >
+            {isExpanded ? "Thu gọn" : "Xem chi tiết"}
+          </Button>
         </CardHeader>
-        <CardContent className="pt-4">
-          {loadingStudent ? (
-            <div className="flex items-center justify-center py-6 text-slate-500 gap-2 text-sm">
-              <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
-              <span>Đang tải thông tin...</span>
-            </div>
-          ) : !studentInfo ? (
-            <div className="text-sm text-slate-500 py-2">Không tìm thấy thông tin chi tiết.</div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 border border-slate-100">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600">
-                  <User className="h-4 w-4" />
-                </div>
-                <div className="min-w-0">
-                  <span className="text-xs text-slate-500 block">Họ và tên</span>
-                  <span className="font-semibold text-slate-900 truncate block">
-                    {studentInfo.user?.fullName || session?.user?.name || "Chưa cập nhật"}
-                  </span>
-                </div>
+        {isExpanded && (
+          <CardContent className="pt-4">
+            {loadingStudent ? (
+              <div className="flex items-center justify-center py-6 text-slate-500 gap-2 text-sm">
+                <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
+                <span>Đang tải thông tin...</span>
               </div>
-
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 border border-slate-100">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-indigo-600">
-                  <User className="h-4 w-4" />
-                </div>
-                <div className="min-w-0">
-                  <span className="text-xs text-slate-500 block">Số CCCD</span>
-                  <span className="font-semibold text-slate-900 truncate block">{studentInfo.studentCode}</span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 border border-slate-100">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-pink-100 text-pink-600">
-                  <Calendar className="h-4 w-4" />
-                </div>
-                <div className="min-w-0">
-                  <span className="text-xs text-slate-500 block">Ngày sinh</span>
-                  <span className="font-semibold text-slate-900 truncate block">
-                    {studentInfo.birthDate ? new Date(studentInfo.birthDate).toLocaleDateString("vi-VN", { timeZone: "UTC" }) : "Chưa cập nhật"}
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 border border-slate-100">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-cyan-100 text-cyan-600">
-                  <User className="h-4 w-4" />
-                </div>
-                <div className="min-w-0">
-                  <span className="text-xs text-slate-500 block">Giới tính</span>
-                  <span className="font-semibold text-slate-900 truncate block">
-                    {studentInfo.gender === "FEMALE" ? "Nữ" : studentInfo.gender === "MALE" ? "Nam" : "Chưa cập nhật"}
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 border border-slate-100">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-purple-100 text-purple-600">
-                  <School className="h-4 w-4" />
-                </div>
-                <div className="min-w-0">
-                  <span className="text-xs text-slate-500 block">Lớp học</span>
-                  <span className="font-semibold text-slate-900 truncate block">
-                    {studentInfo.class?.name || studentInfo.classId}
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 border border-slate-100">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
-                  <Utensils className="h-4 w-4" />
-                </div>
-                <div className="min-w-0">
-                  <span className="text-xs text-slate-500 block">Chế độ suất ăn mặc định</span>
-                  <span className="font-semibold text-slate-900 truncate block">
-                    {getMealTypeName(studentInfo.mealType)}
-                  </span>
-                </div>
-              </div>
-
-              {studentInfo.parentPhone && (
+            ) : !studentInfo ? (
+              <div className="text-sm text-slate-500 py-2">Không tìm thấy thông tin chi tiết.</div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                 <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 border border-slate-100">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-600">
-                    <Phone className="h-4 w-4" />
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600">
+                    <User className="h-4 w-4" />
                   </div>
                   <div className="min-w-0">
-                    <span className="text-xs text-slate-500 block">SĐT Phụ huynh</span>
-                    <span className="font-semibold text-slate-900 truncate block">{studentInfo.parentPhone}</span>
+                    <span className="text-xs text-slate-500 block">Họ và tên</span>
+                    <span className="font-semibold text-slate-900 truncate block">
+                      {studentInfo.user?.fullName || session?.user?.name || "Chưa cập nhật"}
+                    </span>
                   </div>
                 </div>
-              )}
 
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 border border-slate-100">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-teal-100 text-teal-600">
-                  <CheckCircle className="h-4 w-4" />
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 border border-slate-100">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-indigo-600">
+                    <User className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <span className="text-xs text-slate-500 block">Số CCCD</span>
+                    <span className="font-semibold text-slate-900 truncate block">{studentInfo.studentCode}</span>
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <span className="text-xs text-slate-500 block">Trạng thái bán trú</span>
-                  <span className={`font-semibold truncate block ${studentInfo.boardingStatus === "ACTIVE" ? "text-teal-600" : "text-rose-600"}`}>
-                    {studentInfo.boardingStatus === "ACTIVE" ? "Đang ăn bán trú" : "Không bán trú"}
-                  </span>
+
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 border border-slate-100">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-pink-100 text-pink-600">
+                    <Calendar className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <span className="text-xs text-slate-500 block">Ngày sinh</span>
+                    <span className="font-semibold text-slate-900 truncate block">
+                      {studentInfo.birthDate ? new Date(studentInfo.birthDate).toLocaleDateString("vi-VN", { timeZone: "UTC" }) : "Chưa cập nhật"}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 border border-slate-100">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-cyan-100 text-cyan-600">
+                    <User className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <span className="text-xs text-slate-500 block">Giới tính</span>
+                    <span className="font-semibold text-slate-900 truncate block">
+                      {studentInfo.gender === "FEMALE" ? "Nữ" : studentInfo.gender === "MALE" ? "Nam" : "Chưa cập nhật"}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 border border-slate-100">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-purple-100 text-purple-600">
+                    <School className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <span className="text-xs text-slate-500 block">Lớp học</span>
+                    <span className="font-semibold text-slate-900 truncate block">
+                      {studentInfo.class?.name || studentInfo.classId}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 border border-slate-100">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                    <Utensils className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <span className="text-xs text-slate-500 block">Chế độ suất ăn mặc định</span>
+                    <span className="font-semibold text-slate-900 truncate block">
+                      {getMealTypeName(studentInfo.mealType)}
+                    </span>
+                  </div>
+                </div>
+
+                {studentInfo.parentPhone && (
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 border border-slate-100">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+                      <Phone className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <span className="text-xs text-slate-500 block">SĐT Phụ huynh</span>
+                      <span className="font-semibold text-slate-900 truncate block">{studentInfo.parentPhone}</span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 border border-slate-100">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-teal-100 text-teal-600">
+                    <CheckCircle className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <span className="text-xs text-slate-500 block">Trạng thái bán trú</span>
+                    <span className={`font-semibold truncate block ${studentInfo.boardingStatus === "ACTIVE" ? "text-teal-600" : "text-rose-600"}`}>
+                      {studentInfo.boardingStatus === "ACTIVE" ? "Đang ăn bán trú" : "Không bán trú"}
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
-        </CardContent>
+            )}
+          </CardContent>
+        )}
       </Card>
 
       <Tabs defaultValue="cancel" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 mb-6 p-1 bg-slate-100">
-          <TabsTrigger value="cancel" className="data-[state=active]:bg-white data-[state=active]:text-blue-700 data-[state=active]:shadow-sm">
+        <TabsList className="grid w-full grid-cols-2 mb-6 p-1 bg-slate-200">
+          <TabsTrigger value="cancel" className="data-[state=active]:bg-red-600 data-[state=active]:text-white text-slate-600 font-medium data-[state=active]:shadow-sm">
             <Calendar className="h-4 w-4 mr-2" />
             {readOnly ? 'Lịch sử Cắt suất' : 'Cắt suất ăn'}
           </TabsTrigger>
-          <TabsTrigger value="override" className="data-[state=active]:bg-white data-[state=active]:text-blue-700 data-[state=active]:shadow-sm">
+          <TabsTrigger value="override" className="data-[state=active]:bg-green-600 data-[state=active]:text-white text-slate-600 font-medium data-[state=active]:shadow-sm">
             <RefreshCw className="h-4 w-4 mr-2" />
             {readOnly ? 'Lịch sử Đổi món' : 'Thay đổi món ăn'}
           </TabsTrigger>
@@ -471,7 +505,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                     Gửi yêu cầu Cắt suất ăn
                   </CardTitle>
                   <CardDescription>
-                    Chọn ngày muốn nghỉ ăn. Lớp phải có lịch bán trú vào ngày này.
+                    Chọn ngày muốn cắt suất/đổi món ăn. Học sinh phải có lịch ăn bán trú vào ngày này và chỉ được cắt suất/đổi món trong tuần hiện tại, hệ thống sẽ mở tuần kế tiếp vào thứ Bảy
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="pt-6">
@@ -495,6 +529,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                         id="cancelDate"
                         type="date"
                         min={minDate}
+                        max={maxDate}
                         value={cancelDate}
                         onChange={(e) => {
                            const d = new Date(e.target.value);
@@ -520,10 +555,25 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                         required
                       />
                     </div>
+                    
+                    {/* Nút ẩn bỏ qua giờ chốt (dành cho Test) */}
+                    <div className="flex items-center space-x-2 bg-amber-50 p-2 rounded border border-amber-200">
+                      <input 
+                        type="checkbox" 
+                        id="ignoreCutoffCancel" 
+                        checked={ignoreCutoff}
+                        onChange={(e) => setIgnoreCutoff(e.target.checked)}
+                        className="rounded border-amber-300 text-amber-600 focus:ring-amber-500"
+                      />
+                      <label htmlFor="ignoreCutoffCancel" className="text-xs font-medium text-amber-800 cursor-pointer">
+                        Bỏ qua giờ chốt (Dành cho Test)
+                      </label>
+                    </div>
+
                     <Button
                       type="submit"
                       disabled={submittingCancel || !cancelDate || !reason.trim()}
-                      className="w-full bg-blue-600 hover:bg-blue-700"
+                      className="w-full bg-green-600 hover:bg-green-700 text-white disabled:bg-gray-400 disabled:text-black disabled:opacity-100 font-medium"
                     >
                       {submittingCancel ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
                       Gửi yêu cầu
@@ -579,7 +629,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                       Đăng ký Đổi món
                     </CardTitle>
                     <CardDescription>
-                      Thay đổi suất ăn trong ngày so với suất đăng ký mặc định.
+                      Chọn ngày muốn cắt suất/đổi món ăn. Học sinh phải có lịch ăn bán trú vào ngày này và chỉ được cắt suất/đổi món trong tuần hiện tại, hệ thống sẽ mở tuần kế tiếp vào thứ Bảy
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="pt-6">
@@ -603,6 +653,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                         id="overrideDate"
                         type="date"
                         min={minDate}
+                        max={maxDate}
                         value={overrideDate}
                         onChange={(e) => {
                            const val = e.target.value;
@@ -653,10 +704,10 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                     <Button
                       type="submit"
                       disabled={submittingOverride || !overrideDate}
-                      className="w-full bg-blue-600 hover:bg-blue-700"
+                      className="w-full bg-green-600 hover:bg-green-700 text-white disabled:bg-gray-400 disabled:text-black disabled:opacity-100 font-medium"
                     >
                       {submittingOverride ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-                      Xác nhận đổi
+                      Gửi yêu cầu
                     </Button>
                   </form>
                 </CardContent>

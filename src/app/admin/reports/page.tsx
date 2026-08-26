@@ -36,6 +36,7 @@ import {
   CreditCard,
   Users,
   TrendingUp,
+  AlertTriangle,
 } from "lucide-react";
 
 export default function ReportsPage() {
@@ -48,6 +49,10 @@ export default function ReportsPage() {
 
   // Báo cáo suất ăn hàng ngày
   const [dailyReport, setDailyReport] = useState<{
+    date: string;
+    lockTime2: string;
+    isFullyLocked: boolean;
+    isExpectedLocked: boolean;
     totalSummary: {
       totalRegistered: number;
       totalCanceled: number;
@@ -55,6 +60,10 @@ export default function ReportsPage() {
       finalChay: number;
       finalChao: number;
       finalTotal: number;
+      expectedMan: number;
+      expectedChay: number;
+      expectedChao: number;
+      expectedTotal: number;
     };
     classSummaries: Array<{
       classId: string;
@@ -65,10 +74,78 @@ export default function ReportsPage() {
       finalChay: number;
       finalChao: number;
       finalTotal: number;
+      expectedMan: number;
+      expectedChay: number;
+      expectedChao: number;
+      expectedTotal: number;
       isLocked: boolean;
+      expectedLockedAt: string | null;
     }>;
   } | null>(null);
 
+  // Helper check if report is past lock time 2 (chốt chính thức)
+  const isPastLockTime2 = () => {
+    if (!dailyReport) return false;
+    const now = new Date();
+    const vnTimeStr = now.toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" });
+    const vnNow = new Date(vnTimeStr);
+    
+    // Convert report date
+    const [y, m, d] = dailyReport.date.split("-").map(Number);
+    const rDate = new Date(y, m - 1, d);
+    
+    const today = new Date(vnNow.getFullYear(), vnNow.getMonth(), vnNow.getDate());
+    
+    if (rDate < today) return true; // Quá khứ
+    if (rDate > today) return false; // Tương lai
+    
+    // Hôm nay, so sánh giờ phút
+    const [hours, minutes] = dailyReport.lockTime2.split(":").map(Number);
+    if (vnNow.getHours() > hours) return true;
+    if (vnNow.getHours() === hours && vnNow.getMinutes() >= minutes) return true;
+    
+    return false;
+  };
+
+  const handleManualLock = async (type: "EXPECTED" | "FINAL") => {
+    try {
+      const confirmMsg = type === "EXPECTED" 
+        ? "Bạn có chắc chắn muốn CHỐT DỰ KIẾN (Lần 1) với dữ liệu hiện tại?" 
+        : "Bạn có chắc chắn muốn CHỐT CHÍNH THỨC (Lần 2) với dữ liệu hiện tại? Số liệu này sẽ được khóa để chia ăn và tính tiền.";
+      
+      const confirm = await Swal.fire({
+        title: "Xác nhận",
+        text: confirmMsg,
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonText: "Đồng ý",
+        cancelButtonText: "Hủy",
+      });
+
+      if (!confirm.isConfirmed) return;
+
+      setLoading(true);
+      const res = await fetch("/api/daily-meals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: reportDate, type }),
+      });
+      const data = await res.json();
+      
+      if (res.ok) {
+        Swal.fire("Thành công", data.message, "success");
+        fetchDailyReport();
+      } else {
+        Swal.fire("Lỗi", data.error || "Không thể chốt suất", "error");
+      }
+    } catch (error) {
+      Swal.fire("Lỗi", "Lỗi kết nối", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Các state và fetch function khác giữ nguyên
   // Báo cáo công nợ
   interface DebtReportBill {
     studentId: string;
@@ -109,6 +186,32 @@ export default function ReportsPage() {
     }
   };
 
+  // Báo cáo nợ quá hạn đa tháng
+  interface OverdueDebt {
+    studentId: string;
+    studentName: string;
+    className: string;
+    unpaidCount: number;
+    totalDebt: number;
+    months: string[];
+  }
+  const [overdueReport, setOverdueReport] = useState<OverdueDebt[]>([]);
+
+  const fetchOverdueReport = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/reports/overdue-debt");
+      const data = await res.json();
+      if (data.success) {
+        setOverdueReport(data.data);
+      }
+    } catch {
+      Swal.fire("Lỗi", "Lỗi khi tải báo cáo nợ quá hạn", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div>
       <h1 className="text-2xl font-bold mb-6 no-print flex items-center gap-2">
@@ -125,6 +228,10 @@ export default function ReportsPage() {
           <TabsTrigger value="debt">
             <CreditCard className="h-4 w-4 mr-1" />
             Công nợ
+          </TabsTrigger>
+          <TabsTrigger value="overdue" className="text-red-600 data-[state=active]:bg-red-50 data-[state=active]:text-red-700">
+            <AlertTriangle className="h-4 w-4 mr-1" />
+            Nợ quá hạn
           </TabsTrigger>
         </TabsList>
 
@@ -159,7 +266,33 @@ export default function ReportsPage() {
 
           {dailyReport && (
             <>
+              {/* Vùng nút bấm chốt sổ thủ công */}
+              <div className="flex gap-4 mb-4 justify-end">
+                {!dailyReport.isFullyLocked && (
+                  <Button variant="outline" className="border-blue-500 text-blue-700 hover:bg-blue-50" onClick={() => handleManualLock("EXPECTED")}>
+                    {dailyReport.isExpectedLocked ? "Cập nhật lại Số Dự Kiến" : "Chốt số Dự Kiến (Lần 1)"}
+                  </Button>
+                )}
+                {(!dailyReport.isFullyLocked && isPastLockTime2()) && (
+                  <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => handleManualLock("FINAL")}>
+                    Chốt Chính Thức (Lần 2)
+                  </Button>
+                )}
+              </div>
+
               {/* Tổng hợp */}
+              <div className="flex items-center gap-2 mb-3 mt-4">
+                <h2 className="text-lg font-semibold text-slate-800">Tổng hợp toàn trường</h2>
+                {dailyReport.classSummaries.length === 0 ? (
+                  <Badge className="bg-slate-100 text-slate-500 border-slate-200">Không có dữ liệu</Badge>
+                ) : dailyReport.isFullyLocked ? (
+                  <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 border-emerald-300">Đã chốt sổ ngày ăn</Badge>
+                ) : dailyReport.isExpectedLocked ? (
+                  <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100 border-blue-300">Đã chốt suất dự kiến đi chợ</Badge>
+                ) : (
+                  <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 border-amber-300">Chưa chốt</Badge>
+                )}
+              </div>
               <div className="grid grid-cols-3 md:grid-cols-6 gap-3 mb-4">
                 <Card>
                   <CardContent className="pt-3 text-center">
@@ -217,42 +350,53 @@ export default function ReportsPage() {
                   <CardTitle>Chi tiết theo lớp - Ngày {reportDate}</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Lớp</TableHead>
-                        <TableHead className="text-center">Đăng ký</TableHead>
-                        <TableHead className="text-center">Cắt suất</TableHead>
-                        <TableHead className="text-center">Mặn</TableHead>
-                        <TableHead className="text-center">Chay</TableHead>
-                        <TableHead className="text-center">Cháo</TableHead>
-                        <TableHead className="text-center">Tổng</TableHead>
-                        <TableHead className="text-center">Trạng thái</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {dailyReport.classSummaries.map((cs) => (
-                        <TableRow key={cs.classId}>
-                          <TableCell className="font-medium">{cs.className}</TableCell>
-                          <TableCell className="text-center">{cs.totalRegistered}</TableCell>
-                          <TableCell className="text-center text-red-600">
-                            {cs.totalCanceled}
-                          </TableCell>
-                          <TableCell className="text-center">{cs.finalMan}</TableCell>
-                          <TableCell className="text-center">{cs.finalChay}</TableCell>
-                          <TableCell className="text-center">{cs.finalChao}</TableCell>
-                          <TableCell className="text-center font-bold">{cs.finalTotal}</TableCell>
-                          <TableCell className="text-center">
-                            {cs.isLocked ? (
-                              <Badge className="bg-green-100 text-green-700">Đã chốt</Badge>
-                            ) : (
-                              <Badge className="bg-yellow-100 text-yellow-700">Chưa chốt</Badge>
-                            )}
-                          </TableCell>
+                  {/* Kiểm tra nếu chưa qua giờ chốt và chưa khóa thì ẩn chi tiết */}
+                  {(!dailyReport.isFullyLocked && !isPastLockTime2()) ? (
+                    <div className="py-12 text-center border-2 border-dashed border-yellow-200 bg-yellow-50 rounded-lg">
+                      <AlertTriangle className="h-10 w-10 text-yellow-500 mx-auto mb-3" />
+                      <h3 className="text-lg font-semibold text-yellow-700 mb-1">Đang chờ chốt số liệu thực tế</h3>
+                      <p className="text-yellow-600 max-w-md mx-auto">
+                        Bảng chia thức ăn chi tiết của từng lớp đang bị ẩn để tránh sai sót. Dữ liệu sẽ tự động mở khóa sau thời gian chốt chính thức lúc <strong>{dailyReport.lockTime2}</strong>.
+                      </p>
+                    </div>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Lớp</TableHead>
+                          <TableHead className="text-center">Đăng ký</TableHead>
+                          <TableHead className="text-center">Cắt suất</TableHead>
+                          <TableHead className="text-center bg-orange-50">Mặn</TableHead>
+                          <TableHead className="text-center bg-green-50">Chay</TableHead>
+                          <TableHead className="text-center bg-yellow-50">Cháo</TableHead>
+                          <TableHead className="text-center font-bold">Tổng suất</TableHead>
+                          <TableHead className="text-center">Trạng thái</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {dailyReport.classSummaries.map((cs) => (
+                          <TableRow key={cs.classId}>
+                            <TableCell className="font-medium">{cs.className}</TableCell>
+                            <TableCell className="text-center">{cs.totalRegistered}</TableCell>
+                            <TableCell className="text-center text-red-600">
+                              {cs.totalCanceled}
+                            </TableCell>
+                            <TableCell className="text-center bg-orange-50">{cs.finalMan}</TableCell>
+                            <TableCell className="text-center bg-green-50">{cs.finalChay}</TableCell>
+                            <TableCell className="text-center bg-yellow-50">{cs.finalChao}</TableCell>
+                            <TableCell className="text-center font-bold text-blue-600">{cs.finalTotal}</TableCell>
+                            <TableCell className="text-center">
+                              {cs.isLocked ? (
+                                <Badge className="bg-green-100 text-green-700">Đã chốt</Badge>
+                              ) : (
+                                <Badge className="bg-yellow-100 text-yellow-700">Chưa chốt</Badge>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
                 </CardContent>
               </Card>
             </>
@@ -349,6 +493,66 @@ export default function ReportsPage() {
                     <TableRow>
                       <TableCell colSpan={6} className="text-center text-gray-400 py-8">
                         Không có công nợ hoặc chưa tải dữ liệu
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ============ BÁO CÁO NỢ QUÁ HẠN ============ */}
+        <TabsContent value="overdue">
+          <Card className="mb-4 border-red-200">
+            <CardHeader className="bg-red-50 border-b border-red-100">
+              <CardTitle className="text-red-700 flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5" />
+                Cảnh báo Học sinh Nợ quá hạn (Từ 2 tháng trở lên)
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-6">
+              <div className="flex gap-4 mb-4">
+                <Button onClick={fetchOverdueReport} disabled={loading} className="bg-red-600 hover:bg-red-700 text-white">
+                  {loading ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : (
+                    <AlertTriangle className="h-4 w-4 mr-2" />
+                  )}
+                  Quét Nợ Xấu
+                </Button>
+              </div>
+
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Học sinh</TableHead>
+                    <TableHead>Lớp</TableHead>
+                    <TableHead className="text-center">Số tháng nợ</TableHead>
+                    <TableHead>Chi tiết các tháng</TableHead>
+                    <TableHead className="text-right">Tổng dư nợ</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {overdueReport.map((st, idx) => (
+                    <TableRow key={idx}>
+                      <TableCell className="font-semibold">{st.studentName}</TableCell>
+                      <TableCell>{st.className}</TableCell>
+                      <TableCell className="text-center">
+                        <Badge className="bg-red-600 hover:bg-red-700">{st.unpaidCount} tháng</Badge>
+                      </TableCell>
+                      <TableCell className="text-sm text-slate-500">
+                        {st.months.join(", ")}
+                      </TableCell>
+                      <TableCell className="text-right font-bold text-red-600 text-lg">
+                        {new Intl.NumberFormat("vi-VN").format(st.totalDebt)}đ
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {overdueReport.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center text-gray-500 py-8">
+                        Bấm "Quét Nợ Xấu" để kiểm tra. Hệ thống sẽ hiển thị các học sinh nợ từ 2 tháng trở lên.
                       </TableCell>
                     </TableRow>
                   )}

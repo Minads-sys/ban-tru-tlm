@@ -5,6 +5,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Settings,
   Save,
@@ -25,13 +26,55 @@ interface SettingsFormState {
   SCHOOL_NAME: string;
   SCHOOL_ADDRESS: string;
   MEAL_UNIT_PRICE: string;
-  CUTOFF_TIME: string;
+  CUTOFF_TIME: string; // Có thể giữ lại hoặc thay thế bằng MEAL_LOCK_TIME_2
+  MEAL_LOCK_TIME_1: string;
+  MEAL_LOCK_TIME_1_SUNDAY: string;
+  MEAL_LOCK_TIME_2: string;
   SCHOOL_YEAR: string;
+  SCHOOL_YEAR_START: string;
+  SCHOOL_YEAR_END: string;
   BANK_NAME: string;
   BANK_ACCOUNT_NO: string;
   BANK_ACCOUNT_NAME: string;
   DEFAULT_VISIBLE_DAYS: string;
 }
+
+const VIETNAM_BANKS = [
+  "Vietcombank",
+  "VietinBank",
+  "BIDV",
+  "Agribank",
+  "MBBank",
+  "Techcombank",
+  "ACB",
+  "VPBank",
+  "TPBank",
+  "VIB",
+  "HDBank",
+  "Sacombank",
+  "SHB",
+  "SeABank",
+  "MSB",
+  "OCB",
+  "DongA Bank",
+  "Eximbank",
+  "LPBank",
+  "Nam A Bank",
+  "NCB",
+  "VietABank",
+  "BaoViet Bank",
+  "Kienlongbank",
+  "Bac A Bank",
+  "Vietbank",
+  "Saigonbank",
+  "PGBank",
+  "OceanBank",
+  "CBBank",
+  "GPBank",
+  "Shinhan Bank",
+  "Timo",
+  "Cake by VPBank"
+];
 
 export default function AdminSettingsPage() {
   const [formData, setFormData] = useState<SettingsFormState>({
@@ -39,7 +82,12 @@ export default function AdminSettingsPage() {
     SCHOOL_ADDRESS: '',
     MEAL_UNIT_PRICE: '30000',
     CUTOFF_TIME: '16:30',
+    MEAL_LOCK_TIME_1: '16:00',
+    MEAL_LOCK_TIME_1_SUNDAY: '19:00',
+    MEAL_LOCK_TIME_2: '08:00',
     SCHOOL_YEAR: '2026-2027',
+    SCHOOL_YEAR_START: '2026-09-05',
+    SCHOOL_YEAR_END: '2027-05-31',
     BANK_NAME: 'MBBank',
     BANK_ACCOUNT_NO: '',
     BANK_ACCOUNT_NAME: '',
@@ -63,11 +111,17 @@ export default function AdminSettingsPage() {
         }
         const data = await res.json();
         setFormData((prev) => ({
+          ...prev,
           SCHOOL_NAME: data.SCHOOL_NAME ?? prev.SCHOOL_NAME,
           SCHOOL_ADDRESS: data.SCHOOL_ADDRESS ?? prev.SCHOOL_ADDRESS,
           MEAL_UNIT_PRICE: data.MEAL_UNIT_PRICE ?? prev.MEAL_UNIT_PRICE,
           CUTOFF_TIME: data.CUTOFF_TIME ?? prev.CUTOFF_TIME,
+          MEAL_LOCK_TIME_1: data.MEAL_LOCK_TIME_1 ?? prev.MEAL_LOCK_TIME_1,
+          MEAL_LOCK_TIME_1_SUNDAY: data.MEAL_LOCK_TIME_1_SUNDAY ?? prev.MEAL_LOCK_TIME_1_SUNDAY,
+          MEAL_LOCK_TIME_2: data.MEAL_LOCK_TIME_2 ?? prev.MEAL_LOCK_TIME_2,
           SCHOOL_YEAR: data.SCHOOL_YEAR ?? prev.SCHOOL_YEAR,
+          SCHOOL_YEAR_START: data.SCHOOL_YEAR_START ?? prev.SCHOOL_YEAR_START,
+          SCHOOL_YEAR_END: data.SCHOOL_YEAR_END ?? prev.SCHOOL_YEAR_END,
           BANK_NAME: data.BANK_NAME ?? prev.BANK_NAME,
           BANK_ACCOUNT_NO: data.BANK_ACCOUNT_NO ?? prev.BANK_ACCOUNT_NO,
           BANK_ACCOUNT_NAME: data.BANK_ACCOUNT_NAME ?? prev.BANK_ACCOUNT_NAME,
@@ -233,10 +287,10 @@ export default function AdminSettingsPage() {
                 </div>
 
                 {/* Năm học */}
-                <div className="space-y-2 sm:col-span-2">
+                <div className="space-y-2">
                   <Label htmlFor="SCHOOL_YEAR" className="flex items-center gap-2 text-sm font-medium">
                     <Calendar className="h-4 w-4 text-slate-500" />
-                    Năm Học Hiện Tại (SCHOOL_YEAR)
+                    Năm Học Hiện Tại
                   </Label>
                   <Input
                     id="SCHOOL_YEAR"
@@ -247,6 +301,39 @@ export default function AdminSettingsPage() {
                     required
                     className="h-10"
                   />
+                </div>
+
+                {/* Ngày Bắt Đầu & Kết Thúc Năm Học */}
+                <div className="space-y-2 sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="SCHOOL_YEAR_START" className="flex items-center gap-2 text-sm font-medium">
+                      Ngày Bắt Đầu Năm Học
+                    </Label>
+                    <Input
+                      id="SCHOOL_YEAR_START"
+                      type="date"
+                      value={formData.SCHOOL_YEAR_START}
+                      onChange={(e) => handleChange('SCHOOL_YEAR_START', e.target.value)}
+                      required
+                      className="h-10"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="SCHOOL_YEAR_END" className="flex items-center gap-2 text-sm font-medium">
+                      Ngày Kết Thúc Năm Học
+                    </Label>
+                    <Input
+                      id="SCHOOL_YEAR_END"
+                      type="date"
+                      value={formData.SCHOOL_YEAR_END}
+                      onChange={(e) => handleChange('SCHOOL_YEAR_END', e.target.value)}
+                      required
+                      className="h-10"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground sm:col-span-2">
+                    Các chức năng Cắt suất, Đổi món và Tạo hóa đơn chỉ được phép thao tác trong khoảng thời gian Năm học này.
+                  </p>
                 </div>
               </CardContent>
             </Card>
@@ -270,14 +357,21 @@ export default function AdminSettingsPage() {
                     <Building className="h-4 w-4 text-slate-500" />
                     Ngân Hàng (BANK_NAME)
                   </Label>
-                  <Input
-                    id="BANK_NAME"
-                    type="text"
-                    placeholder="VD: MBBank, Vietcombank, TPBank"
+                  <Select
                     value={formData.BANK_NAME}
-                    onChange={(e) => handleChange('BANK_NAME', e.target.value)}
-                    className="h-10"
-                  />
+                    onValueChange={(value) => handleChange('BANK_NAME', value)}
+                  >
+                    <SelectTrigger id="BANK_NAME" className="h-10">
+                      <SelectValue placeholder="Chọn Ngân hàng" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {VIETNAM_BANKS.map((bank) => (
+                        <SelectItem key={bank} value={bank}>
+                          {bank}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 {/* Số tài khoản */}
@@ -327,22 +421,60 @@ export default function AdminSettingsPage() {
               </CardHeader>
 
               <CardContent className="grid gap-5 p-6 sm:grid-cols-2">
-                {/* Giờ khóa sổ cắt suất */}
+                {/* Giờ chốt dự kiến (Lần 1) */}
                 <div className="space-y-2">
-                  <Label htmlFor="CUTOFF_TIME" className="flex items-center gap-2 text-sm font-medium">
+                  <Label htmlFor="MEAL_LOCK_TIME_1" className="flex items-center gap-2 text-sm font-medium">
                     <Clock className="h-4 w-4 text-slate-500" />
-                    Giờ Khóa Sổ Cắt Suất Hàng Ngày
+                    Giờ Chốt Dự Kiến (Ngày Thường)
                   </Label>
                   <Input
-                    id="CUTOFF_TIME"
+                    id="MEAL_LOCK_TIME_1"
                     type="time"
-                    value={formData.CUTOFF_TIME}
-                    onChange={(e) => handleChange('CUTOFF_TIME', e.target.value)}
+                    value={formData.MEAL_LOCK_TIME_1}
+                    onChange={(e) => handleChange('MEAL_LOCK_TIME_1', e.target.value)}
                     required
                     className="h-10"
                   />
                   <p className="text-xs text-muted-foreground">
-                    Thời hạn cuối cùng Phụ huynh có thể gửi yêu cầu cắt suất ăn (VD: 16:30 chiều hôm trước).
+                    Giờ chốt số lượng dự kiến của ngày hôm trước để báo nhà cung cấp (VD: 16:00).
+                  </p>
+                </div>
+
+                {/* Giờ chốt dự kiến Chủ Nhật */}
+                <div className="space-y-2">
+                  <Label htmlFor="MEAL_LOCK_TIME_1_SUNDAY" className="flex items-center gap-2 text-sm font-medium">
+                    <Clock className="h-4 w-4 text-slate-500" />
+                    Giờ Chốt Dự Kiến (Chủ Nhật cho T2)
+                  </Label>
+                  <Input
+                    id="MEAL_LOCK_TIME_1_SUNDAY"
+                    type="time"
+                    value={formData.MEAL_LOCK_TIME_1_SUNDAY}
+                    onChange={(e) => handleChange('MEAL_LOCK_TIME_1_SUNDAY', e.target.value)}
+                    required
+                    className="h-10"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Giờ chốt số lượng dự kiến vào chiều Chủ Nhật để chuẩn bị cho sáng Thứ 2 (VD: 19:00).
+                  </p>
+                </div>
+
+                {/* Giờ khóa sổ cắt suất chính thức */}
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="MEAL_LOCK_TIME_2" className="flex items-center gap-2 text-sm font-medium">
+                    <Clock className="h-4 w-4 text-slate-500" />
+                    Giờ Chốt Chính Thức (Hạn Chót Cắt Suất Trong Ngày)
+                  </Label>
+                  <Input
+                    id="MEAL_LOCK_TIME_2"
+                    type="time"
+                    value={formData.MEAL_LOCK_TIME_2}
+                    onChange={(e) => handleChange('MEAL_LOCK_TIME_2', e.target.value)}
+                    required
+                    className="h-10"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Thời hạn cuối cùng Phụ huynh có thể gửi yêu cầu cắt suất ăn cho ngày hôm nay (VD: 08:00 sáng).
                   </p>
                 </div>
 

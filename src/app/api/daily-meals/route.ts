@@ -77,10 +77,11 @@ export async function GET(request: NextRequest) {
   });
   const overrideMap = new Map(mealOverrides.map(o => [o.studentId, o.mealType]));
 
-  // Kiểm tra đã chốt chưa
+  // Kiểm tra đã chốt chưa và lấy số dự kiến
   const existingSummaries = await prisma.dailyMealSummary.findMany({
     where: { summaryDate: date },
   });
+  const existingSummaryMap = new Map(existingSummaries.map(s => [s.classId, s]));
   const lockedClasses = new Set(
     existingSummaries.filter((s) => s.isLocked).map((s) => s.classId)
   );
@@ -90,7 +91,7 @@ export async function GET(request: NextRequest) {
     const students = schedule.class.students;
     const activeStudents = students.filter((s) => !cancelledStudentIds.has(s.id));
 
-    // Đếm suất ăn có tính MealOverride
+    // Đếm suất ăn có tính MealOverride (Số lượng thực tế realtime)
     let man = 0;
     let chay = 0;
     let chao = 0;
@@ -102,6 +103,8 @@ export async function GET(request: NextRequest) {
       else if (finalMealType === "CHAO") chao++;
     });
 
+    const exSum = existingSummaryMap.get(schedule.classId);
+
     return {
       classId: schedule.classId,
       className: schedule.class.name,
@@ -111,6 +114,13 @@ export async function GET(request: NextRequest) {
       finalChay: chay,
       finalChao: chao,
       finalTotal: man + chay + chao,
+      
+      expectedMan: exSum?.expectedMan || 0,
+      expectedChay: exSum?.expectedChay || 0,
+      expectedChao: exSum?.expectedChao || 0,
+      expectedTotal: (exSum?.expectedMan || 0) + (exSum?.expectedChay || 0) + (exSum?.expectedChao || 0),
+      expectedLockedAt: exSum?.expectedLockedAt || null,
+
       isLocked: lockedClasses.has(schedule.classId),
     };
   });
@@ -119,26 +129,42 @@ export async function GET(request: NextRequest) {
   const totalSummary = {
     totalRegistered: classSummaries.reduce((sum, c) => sum + c.totalRegistered, 0),
     totalCanceled: classSummaries.reduce((sum, c) => sum + c.totalCanceled, 0),
+    
     finalMan: classSummaries.reduce((sum, c) => sum + c.finalMan, 0),
     finalChay: classSummaries.reduce((sum, c) => sum + c.finalChay, 0),
     finalChao: classSummaries.reduce((sum, c) => sum + c.finalChao, 0),
     finalTotal: classSummaries.reduce((sum, c) => sum + c.finalTotal, 0),
+
+    expectedMan: classSummaries.reduce((sum, c) => sum + c.expectedMan, 0),
+    expectedChay: classSummaries.reduce((sum, c) => sum + c.expectedChay, 0),
+    expectedChao: classSummaries.reduce((sum, c) => sum + c.expectedChao, 0),
+    expectedTotal: classSummaries.reduce((sum, c) => sum + c.expectedTotal, 0),
   };
+
+  // Lấy cấu hình hệ thống giờ chốt
+  const settings = await prisma.systemSetting.findMany({
+    where: { key: { in: ["MEAL_LOCK_TIME_2", "CUTOFF_TIME"] } }
+  });
+  const lockTime2 = settings.find(s => s.key === "MEAL_LOCK_TIME_2")?.value 
+                 || settings.find(s => s.key === "CUTOFF_TIME")?.value 
+                 || "08:00";
 
   return NextResponse.json({
     date: dateStr,
     weekNumber,
     dayField,
+    lockTime2,
     totalSummary,
     classSummaries,
-    isFullyLocked: classSummaries.every((c) => c.isLocked),
+    isFullyLocked: classSummaries.length > 0 && classSummaries.every((c) => c.isLocked),
+    isExpectedLocked: classSummaries.length > 0 && classSummaries.some((c) => c.expectedLockedAt !== null),
   });
 }
 
 // POST: Chốt suất ăn cho ngày
 export async function POST(request: NextRequest) {
   try {
-    const { date: dateStr } = await request.json();
+    const { date: dateStr, type = "FINAL" } = await request.json();
 
     if (!dateStr) {
       return NextResponse.json({ error: "Thiếu tham số date" }, { status: 400 });
@@ -202,6 +228,8 @@ export async function POST(request: NextRequest) {
 
     // Lưu tổng hợp
     let totalLocked = 0;
+    const now = new Date();
+    
     for (const schedule of schedules) {
       const students = schedule.class.students;
       const activeStudents = students.filter((s) => !cancelledStudentIds.has(s.id));
@@ -217,39 +245,67 @@ export async function POST(request: NextRequest) {
         else if (finalMealType === "CHAO") chao++;
       });
 
-      await prisma.dailyMealSummary.upsert({
-        where: {
-          summaryDate_classId: {
+      if (type === "EXPECTED") {
+        await prisma.dailyMealSummary.upsert({
+          where: {
+            summaryDate_classId: {
+              summaryDate: date,
+              classId: schedule.classId,
+            },
+          },
+          update: {
+            expectedMan: man,
+            expectedChay: chay,
+            expectedChao: chao,
+            expectedLockedAt: now,
+          },
+          create: {
             summaryDate: date,
             classId: schedule.classId,
+            expectedMan: man,
+            expectedChay: chay,
+            expectedChao: chao,
+            expectedLockedAt: now,
           },
-        },
-        update: {
-          totalScheduleRegistered: students.length,
-          totalCanceled: students.length - activeStudents.length,
-          finalMan: man,
-          finalChay: chay,
-          finalChao: chao,
-          isLocked: true,
-          lockedAt: new Date(),
-        },
-        create: {
-          summaryDate: date,
-          classId: schedule.classId,
-          totalScheduleRegistered: students.length,
-          totalCanceled: students.length - activeStudents.length,
-          finalMan: man,
-          finalChay: chay,
-          finalChao: chao,
-          isLocked: true,
-          lockedAt: new Date(),
-        },
-      });
+        });
+      } else {
+        // FINAL
+        await prisma.dailyMealSummary.upsert({
+          where: {
+            summaryDate_classId: {
+              summaryDate: date,
+              classId: schedule.classId,
+            },
+          },
+          update: {
+            totalScheduleRegistered: students.length,
+            totalCanceled: students.length - activeStudents.length,
+            finalMan: man,
+            finalChay: chay,
+            finalChao: chao,
+            isLocked: true,
+            lockedAt: now,
+          },
+          create: {
+            summaryDate: date,
+            classId: schedule.classId,
+            totalScheduleRegistered: students.length,
+            totalCanceled: students.length - activeStudents.length,
+            finalMan: man,
+            finalChay: chay,
+            finalChao: chao,
+            isLocked: true,
+            lockedAt: now,
+          },
+        });
+      }
       totalLocked++;
     }
 
     return NextResponse.json({
-      message: `Đã chốt suất ăn ngày ${dateStr} cho ${totalLocked} lớp`,
+      message: type === "EXPECTED" 
+        ? `Đã chốt số dự kiến ngày ${dateStr} cho ${totalLocked} lớp`
+        : `Đã chốt chính thức suất ăn ngày ${dateStr} cho ${totalLocked} lớp`,
       lockedClasses: totalLocked,
     });
   } catch (error) {

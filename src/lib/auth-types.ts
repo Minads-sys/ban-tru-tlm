@@ -8,6 +8,7 @@ declare module 'next-auth' {
       permissions?: string[];
       studentId?: string;
       studentCode?: string;
+      requiresPasswordChange?: boolean;
     } & DefaultSession['user'];
   }
 
@@ -16,6 +17,7 @@ declare module 'next-auth' {
     permissions?: string[];
     studentId?: string;
     studentCode?: string;
+    requiresPasswordChange?: boolean;
   }
 }
 
@@ -26,5 +28,6 @@ declare module '@auth/core/jwt' {
     permissions?: string[];
     studentId?: string;
     studentCode?: string;
+    requiresPasswordChange?: boolean;
   }
 }

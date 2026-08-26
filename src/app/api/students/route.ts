@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db";
 import { BoardingStatus, CancellationStatus } from "@prisma/client";
+import { auth } from "@/lib/auth";
 
 // GET: Lấy danh sách học sinh
 export async function GET(request: NextRequest) {
@@ -32,8 +33,10 @@ export async function GET(request: NextRequest) {
 // POST: Thao tác trên học sinh bán trú
 export async function POST(request: NextRequest) {
   try {
+    const session = await auth();
     const body = await request.json();
     const { action, studentId } = body;
+    const adminId = body.adminId || session?.user?.id;
 
     if (!action) {
       return NextResponse.json({ error: "Thiếu action" }, { status: 400 });
@@ -101,6 +104,7 @@ export async function POST(request: NextRequest) {
           passwordHash,
           fullName: fullName.trim(),
           role: "STUDENT",
+          requiresPasswordChange: true,
         }
       });
 
@@ -143,7 +147,17 @@ export async function POST(request: NextRequest) {
 
         if (finalAmount > 0) {
           const { generateMealPaymentQR } = require("@/lib/vietqr");
-          const qrCodeUrl = generateMealPaymentQR(finalBoardingCode, month, year, finalAmount);
+          
+          const systemSettings = await prisma.systemSetting.findMany({
+            where: { key: { in: ['BANK_NAME', 'BANK_ACCOUNT_NO', 'BANK_ACCOUNT_NAME'] } },
+          });
+          const customBankInfo = {
+            bankName: systemSettings.find(s => s.key === 'BANK_NAME')?.value,
+            accountNo: systemSettings.find(s => s.key === 'BANK_ACCOUNT_NO')?.value,
+            accountName: systemSettings.find(s => s.key === 'BANK_ACCOUNT_NAME')?.value,
+          };
+
+          const qrCodeUrl = generateMealPaymentQR(finalBoardingCode, month, year, finalAmount, customBankInfo);
 
           await prisma.monthlyBill.create({
             data: {
@@ -275,7 +289,7 @@ export async function POST(request: NextRequest) {
           refundOrDebt: Math.abs(refundOrDebt),
           settlementType,
           note: note || "Hủy đăng ký ăn bán trú",
-          createdBy: body.adminId || "system",
+          createdBy: adminId || student.userId,
         },
       });
 

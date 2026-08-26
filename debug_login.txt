@@ -77,3 +77,54 @@
 2026-08-20T07:20:37.813Z - Parsed - username: "admin", passLen: 11, vCode: "undefined"
 2026-08-20T07:20:38.143Z - findUnique by username: true
 2026-08-20T07:20:38.265Z - isPasswordValid: true
+2026-08-26T11:49:20.395Z - Login attempt for: admin
+2026-08-26T11:49:20.395Z - Parsed - username: "admin", passLen: 11, vCode: "undefined"
+2026-08-26T11:49:20.915Z - findUnique by username: true
+2026-08-26T11:49:21.048Z - isPasswordValid: true
+2026-08-26T11:51:06.968Z - Login attempt for: Nguyễn Hoàng Nam
+2026-08-26T11:51:06.969Z - Parsed - username: "Nguyễn Hoàng Nam", passLen: 8, vCode: "001234"
+2026-08-26T11:51:07.352Z - findUnique by username: false
+2026-08-26T11:51:07.805Z - Fallback query found 2 users with vCode 001234
+2026-08-26T11:51:07.806Z - Normalized input name: "nguyenhoangnam"
+2026-08-26T11:51:07.806Z - Fallback name match: true, matched username: nguyenhoangnam
+2026-08-26T11:51:07.905Z - isPasswordValid: true
+2026-08-26T11:52:23.539Z - Login attempt for: Hoàng Đức Anh
+2026-08-26T11:52:23.539Z - Parsed - username: "Hoàng Đức Anh", passLen: 8, vCode: "003412"
+2026-08-26T11:52:23.933Z - findUnique by username: false
+2026-08-26T11:52:24.480Z - Fallback query found 2 users with vCode 003412
+2026-08-26T11:52:24.481Z - Normalized input name: "hoangducanh"
+2026-08-26T11:52:24.481Z - Fallback name match: true, matched username: hoangducanh
+2026-08-26T11:52:24.595Z - isPasswordValid: true
+2026-08-26T11:55:14.740Z - Login attempt for: Trần Ngọc Linh
+2026-08-26T11:55:14.740Z - Parsed - username: "Trần Ngọc Linh", passLen: 8, vCode: "001258"
+2026-08-26T11:55:15.128Z - findUnique by username: false
+2026-08-26T11:55:15.584Z - Fallback query found 1 users with vCode 001258
+2026-08-26T11:55:15.585Z - Normalized input name: "tranngoclinh"
+2026-08-26T11:55:15.585Z - Fallback name match: true, matched username: 079211001258
+2026-08-26T11:55:15.694Z - isPasswordValid: true
+2026-08-26T12:03:09.505Z - Login attempt for: Nguyễn Hoàng Nam
+2026-08-26T12:03:09.505Z - Parsed - username: "Nguyễn Hoàng Nam", passLen: 8, vCode: "001234"
+2026-08-26T12:03:09.890Z - findUnique by username: false
+2026-08-26T12:03:10.336Z - Fallback query found 2 users with vCode 001234
+2026-08-26T12:03:10.337Z - Normalized input name: "nguyenhoangnam"
+2026-08-26T12:03:10.337Z - Fallback name match: true, matched username: nguyenhoangnam
+2026-08-26T12:03:10.446Z - isPasswordValid: true
+2026-08-26T20:01:58.142Z - Login attempt for: Nguyễn Hoàng Nam
+2026-08-26T20:01:58.142Z - Parsed - username: "Nguyễn Hoàng Nam", passLen: 8, vCode: "001234"
+2026-08-26T20:01:58.506Z - findUnique by username: false
+2026-08-26T20:01:58.945Z - Fallback query found 2 users with vCode 001234
+2026-08-26T20:01:58.945Z - Normalized input name: "nguyenhoangnam"
+2026-08-26T20:01:58.945Z - Fallback name match: true, matched username: nguyenhoangnam
+2026-08-26T20:01:59.060Z - isPasswordValid: true
+2026-08-26T20:31:34.776Z - Login attempt for: admin
+2026-08-26T20:31:34.776Z - Parsed - username: "admin", passLen: 11, vCode: "undefined"
+2026-08-26T20:31:35.214Z - findUnique by username: true
+2026-08-26T20:31:35.342Z - isPasswordValid: true
+2026-08-26T21:51:47.979Z - Login attempt for: admin
+2026-08-26T21:51:47.979Z - Parsed - username: "admin", passLen: 11, vCode: "undefined"
+2026-08-26T21:51:48.357Z - findUnique by username: true
+2026-08-26T21:51:48.473Z - isPasswordValid: true
+2026-08-26T22:38:35.650Z - Login attempt for: admin
+2026-08-26T22:38:35.650Z - Parsed - username: "admin", passLen: 11, vCode: "undefined"
+2026-08-26T22:38:36.141Z - findUnique by username: true
+2026-08-26T22:38:36.283Z - isPasswordValid: true

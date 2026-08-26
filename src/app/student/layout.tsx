@@ -15,6 +15,10 @@ export default async function StudentLayout({
     redirect("/login");
   }
 
+  if (session.user.requiresPasswordChange) {
+    redirect("/force-change-password");
+  }
+
   // Ensure we have the studentCode even for old sessions
   let studentCode = session.user.studentCode;
   if (!studentCode && session.user.studentId) {

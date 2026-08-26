@@ -135,6 +135,7 @@ export async function POST(request: NextRequest) {
               passwordHash,
               fullName: row.hoTen,
               role: UserRole.STUDENT,
+              requiresPasswordChange: true,
             },
           });
           // Lấy boardingCode mới nhất để sinh mã tiếp theo

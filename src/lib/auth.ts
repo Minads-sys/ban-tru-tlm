@@ -105,6 +105,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           permissions: user.permissions,
           studentId: user.student?.id,
           studentCode: user.student?.studentCode,
+          requiresPasswordChange: user.requiresPasswordChange,
         };
       },
     }),
@@ -117,6 +118,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.permissions = user.permissions;
         token.studentId = user.studentId;
         token.studentCode = user.studentCode;
+        token.requiresPasswordChange = user.requiresPasswordChange;
       }
       return token;
     },
@@ -127,6 +129,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.permissions = token.permissions as string[];
         session.user.studentId = token.studentId as string | undefined;
         session.user.studentCode = token.studentCode as string | undefined;
+        session.user.requiresPasswordChange = token.requiresPasswordChange as boolean | undefined;
       }
       return session;
     },

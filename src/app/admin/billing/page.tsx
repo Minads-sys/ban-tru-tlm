@@ -647,7 +647,7 @@ export default function BillingPage() {
           @media print {
             @page {
               size: A5 portrait;
-              margin: 10mm;
+              margin: 6mm;
             }
             .print-bw, .print-bw * {
               color: #000 !important;
@@ -661,7 +661,7 @@ export default function BillingPage() {
             key={bill.id}
             className={`w-full max-w-[148mm] mx-auto p-4 print:p-0 flex flex-col ${idx < arr.length - 1 ? "print-break" : ""}`}
           >
-            <div className="flex justify-between items-start mb-2">
+            <div className="flex justify-between items-start mb-1">
               <div className="pr-2">
                 <h1 className="text-[15px] font-bold uppercase leading-tight">{settings.SCHOOL_NAME || "TRƯỜNG TIỂU HỌC BAN TRÚ"}</h1>
                 {settings.SCHOOL_ADDRESS && <p className="text-[11px] mt-1">{settings.SCHOOL_ADDRESS}</p>}
@@ -669,32 +669,32 @@ export default function BillingPage() {
               <div className="flex flex-col items-end shrink-0">
                 <Barcode
                   value={`PT${bill.month}${bill.year}${bill.student.boardingCode || bill.student.studentCode}`}
-                  height={35}
-                  width={1.3}
-                  fontSize={11}
+                  height={30}
+                  width={1.2}
+                  fontSize={10}
                   margin={0}
                   displayValue={true}
                 />
               </div>
             </div>
 
-            <div className="border-t-[1.5px] border-black my-2"></div>
+            <div className="border-t-[1.5px] border-black my-1"></div>
 
-            <div className="text-center mb-2">
-              <h2 className="text-[16px] font-bold mb-1">PHIẾU THANH TOÁN SUẤT ĂN BÁN TRÚ</h2>
+            <div className="text-center mb-1">
+              <h2 className="text-[16px] font-bold mb-0.5">PHIẾU THANH TOÁN SUẤT ĂN BÁN TRÚ</h2>
               <p className="text-[12px] italic">Tháng {bill.month} / {bill.year}</p>
             </div>
 
-            <div className="border-t-[1.5px] border-black my-2"></div>
+            <div className="border-t-[1.5px] border-black my-1"></div>
 
-            <div className="grid grid-cols-2 gap-x-2 gap-y-2 text-[12px] mb-2 leading-relaxed">
-              <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[12px] mb-1 leading-relaxed">
+              <div className="space-y-1">
                 <p className="flex"><span className="font-bold w-20 shrink-0">Mã Bán Trú:</span> <span>{bill.student.boardingCode || "Chưa cấp"}</span></p>
                 <p className="flex"><span className="font-bold w-20 shrink-0">Họ tên:</span> <span>{bill.student.user.fullName}</span></p>
                 <p className="flex"><span className="font-bold w-20 shrink-0">Lớp:</span> <span>{bill.student.class.name}</span></p>
                 <p className="flex"><span className="font-bold w-20 shrink-0">Loại suất:</span> <span>{bill.student.mealType === "MAN" ? "Mặn" : bill.student.mealType === "CHAY" ? "Chay" : "Cháo"}</span></p>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-1">
                 <p className="flex"><span className="font-bold w-36 shrink-0">Số ngày ăn dự kiến:</span> <span>{bill.scheduleMealDays} ngày</span></p>
                 <p className="flex"><span className="font-bold w-36 shrink-0">Số ngày cắt suất:</span> <span>{bill.canceledDays} ngày</span></p>
                 <div className="flex">
@@ -708,50 +708,56 @@ export default function BillingPage() {
               </div>
             </div>
 
-            <div className="border-t-[1.5px] border-black my-2"></div>
+            <div className="border-t-[1.5px] border-black my-1"></div>
 
             {bill.student.mealCancellations && bill.student.mealCancellations.length > 0 ? (
-              <div className="mb-2 text-[11px] border border-black p-2 rounded-sm print:rounded-none">
-                <p className="font-bold mb-1">Chi tiết các ngày đã duyệt cắt suất:</p>
+              <div className="mb-1 text-[11px] border border-black p-1 rounded-sm print:rounded-none">
+                <p className="font-bold mb-0.5">Chi tiết các ngày đã duyệt cắt suất:</p>
                 <div className="flex flex-wrap gap-1">
                   {bill.student.mealCancellations.map((c, i) => (
-                    <span key={i} className="px-1.5 py-0.5 border border-black rounded-sm print:rounded-none">
+                    <span key={i} className="px-1 py-0.5 border border-black rounded-sm print:rounded-none">
                       {new Date(c.cancelDate).toLocaleDateString('vi-VN')}
                     </span>
                   ))}
                 </div>
               </div>
-            ) : <div className="mb-2"></div>}
+            ) : <div className="mb-1"></div>}
 
-            <div className="border-[1.5px] border-black py-2 my-2 text-center">
-              <p className="text-[16px] font-bold mb-0.5">
+            <div className="border-[1.5px] border-black py-1 my-1 text-center">
+              <p className="text-[16px] font-bold mb-0">
                 SỐ TIỀN CẦN NỘP: {formatVND(bill.finalAmount)}
               </p>
-              <p className="text-[12px] italic">
+              <p className="text-[11px] italic">
                 (Bằng chữ: {numberToVietnameseWords(Number(bill.finalAmount))})
               </p>
             </div>
 
-            <div className="mt-4 pt-3 border-2 border-dashed border-black p-3 flex items-center shrink-0 rounded-sm print:rounded-none">
+            <div className="mt-1 pt-1.5 border-2 border-dashed border-black p-1.5 flex items-center shrink-0 rounded-sm print:rounded-none">
               {bill.qrCodeUrl && (
-                <div className="shrink-0 mr-4 border border-black p-1">
+                <div className="shrink-0 mr-3 border border-black p-1">
                   <img
                     src={bill.qrCodeUrl}
                     alt={`QR thanh toán ${bill.student.boardingCode || bill.student.studentCode}`}
-                    className="w-[100px] h-[100px] object-contain"
+                    className="w-[115px] h-[115px] object-contain"
                     loading="eager"
                   />
                 </div>
               )}
               <div className="flex-1">
-                <p className="text-[14px] font-bold mb-1 uppercase">Quét mã QR để thanh toán tự động</p>
-                <p className="text-[11px] mb-2">Hoặc chuyển khoản thủ công với nội dung (Bắt buộc):</p>
-                <span className="font-bold text-[15px] inline-block px-3 py-1.5 border-[1.5px] border-black">
+                <p className="text-[14px] font-bold mb-1 uppercase">1. Quét mã QR để thanh toán (Khuyến khích)</p>
+                <p className="text-[11px] mb-2">2. Nếu không quét được QR, vui lòng chuyển khoản thủ công và <b>BẮT BUỘC</b> nhập đúng nội dung sau:</p>
+                <span className="font-bold text-[15px] inline-block px-3 py-1.5 border-[2px] border-black bg-gray-100 print:bg-transparent">
                   BSTLM {bill.student.boardingCode || bill.student.studentCode} T{bill.month}
                 </span>
-                <p className="text-[10px] mt-2 italic text-gray-800">
-                  * Vui lòng nhập ĐÚNG nội dung chuyển khoản để hệ thống tự động gạch nợ.
-                </p>
+                <div className="mt-2 p-1.5 border border-black border-dashed bg-yellow-50 print:bg-transparent">
+                  <p className="text-[11px] font-bold uppercase print:text-black">
+                    ⚠️ LƯU Ý QUAN TRỌNG:
+                  </p>
+                  <p className="text-[10px] font-semibold mt-0.5">
+                    - Hệ thống gạch nợ tự động bằng máy. <br/>
+                    - Tuyệt đối <span className="underline">không sửa hoặc thêm</span> bất kỳ chữ nào vào nội dung chuyển khoản. Ghi sai cú pháp sẽ khiến hệ thống không nhận diện được và học sinh vẫn bị tính là <b>CHƯA NỘP TIỀN</b>.
+                  </p>
+                </div>
               </div>
             </div>
           </div>

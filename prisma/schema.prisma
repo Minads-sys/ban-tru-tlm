@@ -43,6 +43,7 @@ model User {
   role         UserRole @default(STUDENT)
   permissions  String[] @default([]) // For fine-grained access control
   isActive     Boolean  @default(true) @map("is_active")
+  requiresPasswordChange Boolean @default(false) @map("requires_password_change")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
@@ -205,6 +206,12 @@ model DailyMealSummary {
   finalChao              Int      @default(0) @map("final_chao")
   isLocked               Boolean  @default(false) @map("is_locked")
   lockedAt               DateTime? @map("locked_at")
+
+  // Thông tin Chốt dự kiến (Lần 1)
+  expectedMan            Int      @default(0) @map("expected_man")
+  expectedChay           Int      @default(0) @map("expected_chay")
+  expectedChao           Int      @default(0) @map("expected_chao")
+  expectedLockedAt       DateTime? @map("expected_locked_at")
 
   // Quan hệ
   class Class @relation(fields: [classId], references: [id])

@@ -22,7 +22,7 @@ export function StudentHeader({ user }: StudentHeaderProps) {
   const handleSignOut = async () => {
     setIsLoggingOut(true);
     try {
-      await signOut({ callbackUrl: "/login" });
+      await signOut({ callbackUrl: "/student-login" });
     } catch (error) {
       console.error("Sign out error:", error);
       setIsLoggingOut(false);
@@ -45,7 +45,7 @@ export function StudentHeader({ user }: StudentHeaderProps) {
           </div>
           <div className="flex flex-col">
             <span className="text-base font-bold leading-none tracking-tight sm:text-lg">
-              BÁN TRÚ TLM
+              Trường THPT Ten Lơ Man
             </span>
             <span className="text-[11px] font-medium text-muted-foreground">
               Cổng Học Sinh & Phụ Huynh

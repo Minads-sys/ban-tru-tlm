@@ -58,6 +58,27 @@ export async function POST(request: NextRequest) {
     const tomorrow = new Date(localToday);
     tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
 
+    // Kiểm tra nằm trong năm học
+    const schoolSettings = await prisma.systemSetting.findMany({
+      where: { key: { in: ["SCHOOL_YEAR_START", "SCHOOL_YEAR_END"] } }
+    });
+    const startSetting = schoolSettings.find(s => s.key === "SCHOOL_YEAR_START")?.value;
+    const endSetting = schoolSettings.find(s => s.key === "SCHOOL_YEAR_END")?.value;
+    
+    if (startSetting && endSetting) {
+      const [syY, syM, syD] = startSetting.split("-").map(Number);
+      const syStart = new Date(Date.UTC(syY, syM - 1, syD));
+      const [eyY, eyM, eyD] = endSetting.split("-").map(Number);
+      const syEnd = new Date(Date.UTC(eyY, eyM - 1, eyD, 23, 59, 59));
+      
+      if (requestDate < syStart || requestDate > syEnd) {
+        return NextResponse.json(
+          { error: "Ngày yêu cầu không nằm trong thời gian của Năm học hiện tại." },
+          { status: 400 }
+        );
+      }
+    }
+
     if (requestDate < tomorrow) {
       if (requestDate.getTime() === tomorrow.getTime()) {
         if (isPastCutoffTime(cutoffTime)) {
@@ -74,6 +95,24 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
+    }
+
+    // Kiểm tra không được thao tác cho tuần kế tiếp nếu chưa tới Thứ 7
+    const currentDayOfWeek = localToday.getUTCDay();
+    let daysUntilSunday = currentDayOfWeek === 0 ? 0 : 7 - currentDayOfWeek;
+    
+    if (currentDayOfWeek === 6 || currentDayOfWeek === 0) {
+      daysUntilSunday += 7;
+    }
+
+    const endOfAllowedWeek = new Date(localToday);
+    endOfAllowedWeek.setUTCDate(localToday.getUTCDate() + daysUntilSunday);
+    
+    if (requestDate > endOfAllowedWeek) {
+      return NextResponse.json(
+        { error: "Tuần kế tiếp chỉ được mở đăng ký từ Thứ Bảy tuần hiện tại." },
+        { status: 400 }
+      );
     }
 
     // Kiểm tra lớp có lịch ăn ngày này không

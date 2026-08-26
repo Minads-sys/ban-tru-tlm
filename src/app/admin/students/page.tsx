@@ -26,6 +26,7 @@ import {
   Edit,
   Trash2,
   Download,
+  KeyRound,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import {
@@ -149,6 +150,8 @@ export default function AdminStudentsPage() {
   // Delete dialog states
   const [deletingStudent, setDeletingStudent] = useState<StudentItem | null>(null);
   const [isSubmittingDelete, setIsSubmittingDelete] = useState<boolean>(false);
+  const [resettingPasswordStudent, setResettingPasswordStudent] = useState<StudentItem | null>(null);
+  const [isSubmittingReset, setIsSubmittingReset] = useState<boolean>(false);
 
   // Alerts
   const [statusMessage, setStatusMessage] = useState<{
@@ -457,6 +460,31 @@ export default function AdminStudentsPage() {
       setStatusMessage({ type: 'error', text: err instanceof Error ? err.message : 'Có lỗi xảy ra' });
     } finally {
       setIsSubmittingDelete(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!resettingPasswordStudent) return;
+    setIsSubmittingReset(true);
+    setStatusMessage(null);
+
+    try {
+      const res = await fetch(`/api/students/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: resettingPasswordStudent.userId }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Lỗi khi khôi phục mật khẩu');
+
+      setStatusMessage({ type: 'success', text: 'Khôi phục mật khẩu về ngày sinh thành công' });
+      setResettingPasswordStudent(null);
+    } catch (err) {
+      console.error('Reset password error:', err);
+      setStatusMessage({ type: 'error', text: err instanceof Error ? err.message : 'Có lỗi xảy ra' });
+    } finally {
+      setIsSubmittingReset(false);
     }
   };
 
@@ -949,6 +977,17 @@ export default function AdminStudentsPage() {
                             type="button"
                             size="icon"
                             variant="outline"
+                            title="Khôi phục mật khẩu (Ngày sinh)"
+                            onClick={() => setResettingPasswordStudent(student)}
+                            className="h-8 w-8 text-slate-500 hover:text-amber-600 hover:bg-amber-50 border-slate-200 shadow-2xs cursor-pointer shrink-0"
+                          >
+                            <KeyRound className="h-3.5 w-3.5" />
+                          </Button>
+
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
                             title="Xóa học sinh"
                             onClick={() => setDeletingStudent(student)}
                             className="h-8 w-8 text-slate-500 hover:text-red-600 hover:bg-red-50 border-slate-200 shadow-2xs cursor-pointer shrink-0"
@@ -1055,7 +1094,7 @@ export default function AdminStudentsPage() {
                 <div className="flex justify-between">
                   <span className="text-slate-500">Học sinh:</span>
                   <span className="font-bold text-slate-900">
-                    {cancellingStudent.user.fullName} ({cancellingStudent.id})
+                    {cancellingStudent.user.fullName}
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -1174,7 +1213,7 @@ export default function AdminStudentsPage() {
                 <div className="flex justify-between">
                   <span className="text-slate-500">Học sinh:</span>
                   <span className="font-bold text-slate-900">
-                    {settlementData.student.user.fullName} ({settlementData.student.id})
+                    {settlementData.student.user.fullName}
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -1290,12 +1329,6 @@ export default function AdminStudentsPage() {
                   <span className="text-slate-500">Họ và tên:</span>
                   <span className="font-bold text-slate-900">
                     {activatingStudent.user.fullName}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Số CCCD:</span>
-                  <span className="font-mono font-semibold text-slate-800">
-                    {activatingStudent.id}
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -1656,7 +1689,7 @@ export default function AdminStudentsPage() {
 
           {deletingStudent && (
             <div className="py-2 text-sm text-slate-700 space-y-3">
-              <p>Bạn có chắc chắn muốn xóa học sinh <strong>{deletingStudent.user.fullName}</strong> (CCCD: {deletingStudent.id}) khỏi hệ thống?</p>
+              <p>Bạn có chắc chắn muốn xóa học sinh <strong>{deletingStudent.user.fullName}</strong> khỏi hệ thống?</p>
               <div className="rounded-md bg-red-50 p-2.5 text-xs text-red-800 border border-red-200 flex items-start gap-2">
                 <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-red-600" />
                 <span>
@@ -1684,6 +1717,59 @@ export default function AdminStudentsPage() {
       </Dialog>
 
       {/* ========================================================
+          RESET PASSWORD DIALOG
+         ======================================================== */}
+      <Dialog 
+        open={Boolean(resettingPasswordStudent)} 
+        onOpenChange={(open) => {
+          if (!open) setResettingPasswordStudent(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+                <KeyRound className="h-5 w-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-lg font-bold text-slate-900">Khôi phục mật khẩu</DialogTitle>
+                <DialogDescription className="text-xs text-slate-500">
+                  Khôi phục mật khẩu về ngày sinh của học sinh
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          {resettingPasswordStudent && (
+            <div className="py-2 text-sm text-slate-700 space-y-3">
+              <p>Bạn có chắc chắn muốn khôi phục mật khẩu của học sinh <strong>{resettingPasswordStudent.user.fullName}</strong>?</p>
+              <div className="rounded-md bg-amber-50 p-2.5 text-xs text-amber-800 border border-amber-200 flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-600" />
+                <span>
+                  Lưu ý: Mật khẩu sẽ được khôi phục về ngày tháng năm sinh (định dạng ddmmyyyy). Học sinh sẽ <strong>bắt buộc phải đổi mật khẩu mới</strong> trong lần đăng nhập tiếp theo.
+                </span>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button type="button" variant="outline" onClick={() => setResettingPasswordStudent(null)} disabled={isSubmittingReset}>
+              Hủy bỏ
+            </Button>
+            <Button
+              type="button"
+              onClick={handleResetPassword}
+              disabled={isSubmittingReset}
+              className="bg-amber-600 hover:bg-amber-700 text-white font-bold gap-2"
+            >
+              {isSubmittingReset ? <RefreshCw className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
+              <span>Xác nhận khôi phục</span>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ========================================================
           STUDENT PORTAL DIALOG
          ======================================================== */}
       <Dialog open={!!viewingStudent} onOpenChange={(open) => !open && setViewingStudent(null)}>
@@ -1691,10 +1777,10 @@ export default function AdminStudentsPage() {
           <div className="sticky top-0 z-10 flex items-center justify-between bg-white px-6 py-4 border-b border-slate-200">
             <div>
               <DialogTitle className="text-xl font-bold text-slate-800">
-                Cổng thông tin bán trú
+                TRANG THÔNG TIN SUẤT ĂN BÁN TRÚ
               </DialogTitle>
               <DialogDescription className="text-sm text-slate-500 mt-1">
-                Góc nhìn phụ huynh/học sinh của <span className="font-semibold text-blue-600">{viewingStudent?.user.fullName}</span>
+                <span className="font-semibold text-blue-600">{viewingStudent?.user.fullName}</span> {viewingStudent?.class?.name ? `- Lớp: ${viewingStudent.class.name}` : ''}
               </DialogDescription>
             </div>
             <Button

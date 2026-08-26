@@ -14,6 +14,10 @@ export default async function AdminLayout({
     redirect("/login");
   }
 
+  if (session.user.requiresPasswordChange) {
+    redirect("/force-change-password");
+  }
+
   return (
     <div className="min-h-screen bg-slate-50">
       <SidebarNav user={session.user} />

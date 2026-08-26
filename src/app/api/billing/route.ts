@@ -166,11 +166,41 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 1. Lấy đơn giá suất ăn từ cài đặt hệ thống
-    const unitPriceSetting = await prisma.systemSetting.findUnique({
-      where: { key: 'MEAL_UNIT_PRICE' },
+    // Kiểm tra nằm trong năm học
+    const schoolSettings = await prisma.systemSetting.findMany({
+      where: { key: { in: ["SCHOOL_YEAR_START", "SCHOOL_YEAR_END"] } }
     });
+    const startSetting = schoolSettings.find(s => s.key === "SCHOOL_YEAR_START")?.value;
+    const endSetting = schoolSettings.find(s => s.key === "SCHOOL_YEAR_END")?.value;
+    
+    if (startSetting && endSetting) {
+      const [syY, syM] = startSetting.split("-").map(Number);
+      const [eyY, eyM] = endSetting.split("-").map(Number);
+      const startMonthValue = syY * 12 + syM;
+      const endMonthValue = eyY * 12 + eyM;
+      const requestMonthValue = year * 12 + month;
+      
+      if (requestMonthValue < startMonthValue || requestMonthValue > endMonthValue) {
+        return NextResponse.json(
+          { error: `Tháng ${month}/${year} không nằm trong thời gian của Năm học hiện tại. Vui lòng kiểm tra lại cấu hình Năm học.` },
+          { status: 400 }
+        );
+      }
+    }
+
+    // 1. Lấy đơn giá suất ăn và cài đặt ngân hàng từ cài đặt hệ thống
+    const systemSettings = await prisma.systemSetting.findMany({
+      where: { key: { in: ['MEAL_UNIT_PRICE', 'BANK_NAME', 'BANK_ACCOUNT_NO', 'BANK_ACCOUNT_NAME'] } },
+    });
+    
+    const unitPriceSetting = systemSettings.find(s => s.key === 'MEAL_UNIT_PRICE');
     const unitPrice = unitPriceSetting ? parseFloat(unitPriceSetting.value) : 35000;
+
+    const customBankInfo = {
+      bankName: systemSettings.find(s => s.key === 'BANK_NAME')?.value,
+      accountNo: systemSettings.find(s => s.key === 'BANK_ACCOUNT_NO')?.value,
+      accountName: systemSettings.find(s => s.key === 'BANK_ACCOUNT_NAME')?.value,
+    };
 
     // 2. Lấy danh sách học sinh đang ăn bán trú (ACTIVE), lọc theo lớp nếu có
     const studentWhere: Record<string, unknown> = {
@@ -301,7 +331,7 @@ export async function POST(request: NextRequest) {
           const totalAmount = netPayableDays * unitPrice;
           const finalAmount = Math.max(0, totalAmount - previousDeduction);
 
-          const qrCodeUrl = generateMealPaymentQR(student.boardingCode || student.studentCode, month, year, finalAmount);
+          const qrCodeUrl = generateMealPaymentQR(student.boardingCode || student.studentCode, month, year, finalAmount, customBankInfo);
 
           return prisma.monthlyBill.upsert({
             where: {
@@ -383,8 +413,18 @@ export async function PUT(request: NextRequest) {
     const totalAmount = netPayableDays * unitPrice;
     const finalAmount = Math.max(0, totalAmount - previousDeduction);
     
+    // Fetch bank settings to generate QR code correctly
+    const systemSettings = await prisma.systemSetting.findMany({
+      where: { key: { in: ['BANK_NAME', 'BANK_ACCOUNT_NO', 'BANK_ACCOUNT_NAME'] } },
+    });
+    const customBankInfo = {
+      bankName: systemSettings.find(s => s.key === 'BANK_NAME')?.value,
+      accountNo: systemSettings.find(s => s.key === 'BANK_ACCOUNT_NO')?.value,
+      accountName: systemSettings.find(s => s.key === 'BANK_ACCOUNT_NAME')?.value,
+    };
+    
     // Cập nhật QR code với số tiền mới
-    const qrCodeUrl = generateMealPaymentQR(currentBill.student.boardingCode || currentBill.student.studentCode, currentBill.month, currentBill.year, finalAmount);
+    const qrCodeUrl = generateMealPaymentQR(currentBill.student.boardingCode || currentBill.student.studentCode, currentBill.month, currentBill.year, finalAmount, customBankInfo);
 
     const updatedBill = await prisma.monthlyBill.update({
       where: { id },
