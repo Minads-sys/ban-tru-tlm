@@ -9,8 +9,19 @@ import {
 import bcrypt from "bcryptjs";
 import { MealType, BoardingStatus, UserRole } from "@prisma/client";
 
+import { auth } from "@/lib/auth";
+
 export async function POST(request: NextRequest) {
   try {
+    const session = await auth();
+
+    if (!session?.user || session.user.role !== "ADMIN") {
+      return NextResponse.json(
+        { error: "Unauthorized. Chỉ Quản trị viên mới có quyền thực hiện chức năng này." },
+        { status: 403 }
+      );
+    }
+
     const formData = await request.formData();
     const file = formData.get("file") as File;
     const type = formData.get("type") as string;

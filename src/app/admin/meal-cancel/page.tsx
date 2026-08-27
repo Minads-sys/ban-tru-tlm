@@ -145,7 +145,7 @@ export default async function AdminMealCancelPage() {
                   <TableBody>
                     {pendingCancellations.map((item, index) => {
                       const studentName = item.student?.user?.fullName || 'Chưa cập nhật';
-                      const studentCode = item.studentId;
+                      const studentCode = item.student?.studentCode || '-';
                       const className = item.student?.class?.name || item.student?.classId || '-';
 
                       return (

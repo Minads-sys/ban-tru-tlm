@@ -128,3 +128,7 @@
 2026-08-26T22:38:35.650Z - Parsed - username: "admin", passLen: 11, vCode: "undefined"
 2026-08-26T22:38:36.141Z - findUnique by username: true
 2026-08-26T22:38:36.283Z - isPasswordValid: true
+2026-08-27T02:16:04.018Z - Login attempt for: demo1
+2026-08-27T02:16:04.018Z - Parsed - username: "demo1", passLen: 9, vCode: "undefined"
+2026-08-27T02:16:04.528Z - findUnique by username: true
+2026-08-27T02:16:04.656Z - isPasswordValid: true

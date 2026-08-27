@@ -150,6 +150,7 @@ export default function ReportsPage() {
   interface DebtReportBill {
     studentId: string;
     student: {
+      studentCode: string;
       user: { fullName: string };
       class: { name: string };
     };
@@ -478,7 +479,7 @@ export default function ReportsPage() {
                   {debtReport.map((bill, idx) => (
                     <TableRow key={bill.studentId}>
                       <TableCell>{idx + 1}</TableCell>
-                      <TableCell className="font-mono">{bill.studentId}</TableCell>
+                      <TableCell className="font-mono">{bill.student.studentCode}</TableCell>
                       <TableCell>{bill.student.user.fullName}</TableCell>
                       <TableCell>{bill.student.class.name}</TableCell>
                       <TableCell className="text-right font-semibold text-red-600">

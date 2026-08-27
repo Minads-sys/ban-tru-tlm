@@ -42,6 +42,7 @@ interface NavItem {
   href: string;
   icon: React.ComponentType<{ className?: string }>;
   permission?: Permission;
+  adminOnly?: boolean;
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -97,6 +98,7 @@ const NAV_ITEMS: NavItem[] = [
     href: "/admin/import",
     icon: FileSpreadsheet,
     permission: "MANAGE_STUDENTS",
+    adminOnly: true,
   },
   {
     title: "Báo cáo",
@@ -163,6 +165,7 @@ export function SidebarNav({ user }: SidebarNavProps) {
         {/* Nav links */}
         <nav className="space-y-1 px-3 py-4">
           {NAV_ITEMS.filter(item => {
+            if (item.adminOnly && user?.role !== "ADMIN") return false;
             if (!item.permission) return true;
             if (user?.role === "ADMIN") return true;
             const userPermissions = user?.permissions || [];
