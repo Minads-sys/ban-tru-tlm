@@ -75,7 +75,11 @@ export async function POST(request: NextRequest) {
     if (type === "student") {
       const existingClasses = await prisma.class.findMany({ select: { id: true } });
       const classIds = existingClasses.map((c) => c.id);
-      const result = await parseStudentExcel(buffer, classIds);
+      
+      const existingUsers = await prisma.user.findMany({ select: { username: true } });
+      const existingUsernames = existingUsers.map(u => u.username);
+
+      const result = await parseStudentExcel(buffer, classIds, existingUsernames);
 
       if (action === "preview") {
         return NextResponse.json(result);

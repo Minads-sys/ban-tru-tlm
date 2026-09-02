@@ -381,7 +381,8 @@ export async function parseClassExcel(buffer: Uint8Array): Promise<ImportResult<
  */
 export async function parseStudentExcel(
   buffer: Uint8Array,
-  existingClassIds: string[]
+  existingClassIds: string[],
+  existingUsernames: string[] = []
 ): Promise<ImportResult<StudentImportRow>> {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buffer as any);
@@ -389,7 +390,7 @@ export async function parseStudentExcel(
   const data: StudentImportRow[] = [];
   const errors: ValidationError[] = [];
   const seenMaHS = new Set<string>();
-  const seenUsername = new Set<string>();
+  const seenUsername = new Set<string>(existingUsernames);
   const validMealTypes = ["MAN", "CHAY", "CHAO"];
   const validBoardingOptions = ["CO", "KHONG"];
   const classIdSet = new Set(existingClassIds);
@@ -416,8 +417,23 @@ export async function parseStudentExcel(
     }
 
     let tenDN = String(row.getCell(6).value || "").trim().toLowerCase();
+    
+    // Nếu để trống thì tự động tạo từ họ tên
     if (!tenDN && hoTen) {
       tenDN = removeVietnameseTones(hoTen);
+    }
+
+    // Tự động giải quyết trùng lặp tên đăng nhập
+    if (tenDN) {
+      if (seenUsername.has(tenDN)) {
+        let counter = 1;
+        let newTenDn = `${tenDN}${counter}`;
+        while (seenUsername.has(newTenDn)) {
+          counter++;
+          newTenDn = `${tenDN}${counter}`;
+        }
+        tenDN = newTenDn;
+      }
     }
 
     let matKhau = String(row.getCell(7).value || "").trim();
@@ -434,7 +450,6 @@ export async function parseStudentExcel(
 
     // Validations
     if (seenMaHS.has(maHS)) errors.push({ row: rowNumber, column: "MaHocSinh", message: `Mã HS "${maHS}" bị trùng trong file` });
-    if (seenUsername.has(tenDN)) errors.push({ row: rowNumber, column: "TenDangNhap", message: `Tên đăng nhập "${tenDN}" bị trùng` });
     if (!hoTen) errors.push({ row: rowNumber, column: "HoTen", message: "Họ tên không được để trống" });
     if (!["NAM", "NU"].includes(gioiTinh)) errors.push({ row: rowNumber, column: "GioiTinh", message: `Giới tính "${gioiTinh}" không hợp lệ (NAM/NU)` });
     if (!tenDN) errors.push({ row: rowNumber, column: "TenDangNhap", message: "Tên đăng nhập không được để trống" });
