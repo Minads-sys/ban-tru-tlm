@@ -148,14 +148,21 @@ export default function ReportsPage() {
   // Các state và fetch function khác giữ nguyên
   // Báo cáo công nợ
   interface DebtReportBill {
+    id: string;
     studentId: string;
     student: {
       studentCode: string;
+      boardingCode?: string | null;
       user: { fullName: string };
-      class: { name: string };
+      class?: { name: string } | null;
     };
-    finalAmount: string;
+    finalAmount: string | number;
     paymentStatus: string;
+    transactions?: Array<{
+      id: string;
+      amount: string | number;
+      transDate: string;
+    }>;
   }
   const [debtReport, setDebtReport] = useState<DebtReportBill[]>([]);
 
@@ -176,11 +183,17 @@ export default function ReportsPage() {
     setLoading(true);
     try {
       const res = await fetch(
-        `/api/billing?month=${reportMonth}&year=${reportYear}&paymentStatus=UNPAID`
+        `/api/billing?month=${reportMonth}&year=${reportYear}&limit=5000`
       );
-      const data = await res.json();
-      setDebtReport(data);
-    } catch {
+      const json = await res.json();
+      const rawBills: any[] = Array.isArray(json) ? json : (json?.data || []);
+      // Lọc các học sinh chưa thanh toán (UNPAID) hoặc thanh toán 1 phần (PARTIAL)
+      const debts = rawBills.filter(
+        (b) => b.paymentStatus === "UNPAID" || b.paymentStatus === "PARTIAL"
+      );
+      setDebtReport(debts);
+    } catch (err) {
+      console.error("Lỗi khi tải báo cáo công nợ:", err);
       Swal.fire("Lỗi", "Lỗi khi tải báo cáo công nợ", "error");
     } finally {
       setLoading(false);
@@ -451,14 +464,17 @@ export default function ReportsPage() {
             </CardHeader>
             <CardContent>
               {debtReport.length > 0 && (
-                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md flex flex-col sm:flex-row justify-between sm:items-center gap-2">
                   <p className="text-red-700 font-medium">
-                    Tổng: {debtReport.length} học sinh chưa thanh toán -{" "}
+                    Tổng: <strong>{debtReport.length}</strong> học sinh chưa hoàn tất công nợ
+                  </p>
+                  <p className="text-red-700 font-bold text-base">
+                    Tổng nợ:{" "}
                     {new Intl.NumberFormat("vi-VN").format(
-                      debtReport.reduce(
-                        (sum, b) => sum + parseInt(b.finalAmount),
-                        0
-                      )
+                      debtReport.reduce((sum, b) => {
+                        const paid = (b.transactions || []).reduce((s, t) => s + Number(t.amount), 0);
+                        return sum + Math.max(0, Number(b.finalAmount) - paid);
+                      }, 0)
                     )}
                     đ
                   </p>
@@ -467,32 +483,57 @@ export default function ReportsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>STT</TableHead>
-                    <TableHead>Mã HS</TableHead>
+                    <TableHead className="w-12">STT</TableHead>
+                    <TableHead>Mã BT / HS</TableHead>
                     <TableHead>Họ tên</TableHead>
                     <TableHead>Lớp</TableHead>
-                    <TableHead className="text-right">Số tiền</TableHead>
-                    <TableHead>Trạng thái</TableHead>
+                    <TableHead className="text-right">Tổng tiền</TableHead>
+                    <TableHead className="text-right">Đã nộp</TableHead>
+                    <TableHead className="text-right font-bold text-red-600">Còn nợ</TableHead>
+                    <TableHead className="text-center">Trạng thái</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {debtReport.map((bill, idx) => (
-                    <TableRow key={bill.studentId}>
-                      <TableCell>{idx + 1}</TableCell>
-                      <TableCell className="font-mono">{bill.student.studentCode}</TableCell>
-                      <TableCell>{bill.student.user.fullName}</TableCell>
-                      <TableCell>{bill.student.class.name}</TableCell>
-                      <TableCell className="text-right font-semibold text-red-600">
-                        {new Intl.NumberFormat("vi-VN").format(parseInt(bill.finalAmount))}đ
-                      </TableCell>
-                      <TableCell>
-                        <Badge className="bg-red-100 text-red-700">Chưa TT</Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {debtReport.map((bill, idx) => {
+                    const billTotal = Number(bill.finalAmount);
+                    const paidAmount = (bill.transactions || []).reduce((s, t) => s + Number(t.amount), 0);
+                    const remaining = Math.max(0, billTotal - paidAmount);
+                    const isPartial = bill.paymentStatus === "PARTIAL";
+
+                    return (
+                      <TableRow key={bill.id || bill.studentId || idx}>
+                        <TableCell>{idx + 1}</TableCell>
+                        <TableCell className="font-mono text-xs">
+                          {bill.student.boardingCode ? (
+                            <span className="font-bold text-blue-700">{bill.student.boardingCode}</span>
+                          ) : (
+                            bill.student.studentCode
+                          )}
+                        </TableCell>
+                        <TableCell className="font-medium">{bill.student.user?.fullName}</TableCell>
+                        <TableCell>{bill.student.class?.name || "—"}</TableCell>
+                        <TableCell className="text-right text-slate-600">
+                          {new Intl.NumberFormat("vi-VN").format(billTotal)}đ
+                        </TableCell>
+                        <TableCell className="text-right text-emerald-600 font-medium">
+                          {paidAmount > 0 ? `-${new Intl.NumberFormat("vi-VN").format(paidAmount)}đ` : "—"}
+                        </TableCell>
+                        <TableCell className="text-right font-bold text-red-600">
+                          {new Intl.NumberFormat("vi-VN").format(remaining)}đ
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {isPartial ? (
+                            <Badge className="bg-amber-100 text-amber-800 border-amber-300">Đã nộp 1 phần</Badge>
+                          ) : (
+                            <Badge className="bg-red-100 text-red-700 border-red-300">Chưa TT</Badge>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                   {debtReport.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center text-gray-400 py-8">
+                      <TableCell colSpan={8} className="text-center text-gray-400 py-8">
                         Không có công nợ hoặc chưa tải dữ liệu
                       </TableCell>
                     </TableRow>

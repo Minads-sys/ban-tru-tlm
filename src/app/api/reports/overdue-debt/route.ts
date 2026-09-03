@@ -5,10 +5,10 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   try {
-    // Tìm tất cả các hóa đơn UNPAID (chưa thanh toán)
+    // Tìm tất cả các hóa đơn UNPAID hoặc PARTIAL (còn nợ tiền)
     const unpaidBills = await prisma.monthlyBill.findMany({
       where: {
-        paymentStatus: "UNPAID",
+        paymentStatus: { in: ["UNPAID", "PARTIAL"] },
         finalAmount: { gt: 0 }
       },
       include: {
@@ -17,6 +17,9 @@ export async function GET(request: NextRequest) {
             user: { select: { fullName: true } },
             class: { select: { name: true } }
           }
+        },
+        transactions: {
+          select: { amount: true }
         }
       },
       orderBy: [
@@ -29,6 +32,10 @@ export async function GET(request: NextRequest) {
     const grouped = new Map<string, any>();
 
     for (const bill of unpaidBills) {
+      const paid = (bill.transactions || []).reduce((sum, t) => sum + Number(t.amount), 0);
+      const remaining = Math.max(0, Number(bill.finalAmount) - paid);
+      if (remaining <= 0) continue;
+
       if (!grouped.has(bill.studentId)) {
         grouped.set(bill.studentId, {
           studentId: bill.studentId,
@@ -42,8 +49,12 @@ export async function GET(request: NextRequest) {
       
       const st = grouped.get(bill.studentId);
       st.unpaidCount += 1;
-      st.totalDebt += Number(bill.finalAmount);
-      st.months.push(`Tháng ${bill.month}/${bill.year}`);
+      st.totalDebt += remaining;
+      st.months.push(
+        bill.paymentStatus === "PARTIAL"
+          ? `Tháng ${bill.month}/${bill.year} (Nợ: ${remaining.toLocaleString("vi-VN")}đ)`
+          : `Tháng ${bill.month}/${bill.year}`
+      );
     }
 
     // Lọc những học sinh nợ từ 2 tháng trở lên và sắp xếp theo số tháng nợ giảm dần, tổng tiền giảm dần
