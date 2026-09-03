@@ -42,50 +42,57 @@ export function parseTransferContent(content: string): ParsedTransferContent {
   if (!content) return { matched: false };
   const cleanContent = content.trim();
 
-  // Pattern 1: Chuẩn BSTLM + Mã + T + (Tháng + Năm liền nhau hoặc cách nhau)
-  // Hỗ trợ: T0926, T926, T1026, T092026, T9-26, T09/26, T9 2026, T9, T09
-  const bstlmRegex = /(?:^|[^A-Za-z0-9])BSTLM\s*[-_./\s]?\s*([A-Za-z0-9_-]+)\s*[-_./\s]?\s*T(?:HÁNG|HANG)?\s*(0[1-9]|1[0-2]|[1-9])(?:[\s/_-]*(\d{4}|\d{2}))?(?![0-9])/i;
-  const match1 = cleanContent.match(bstlmRegex);
-  if (match1) {
-    const rawCode = match1[1].trim().replace(/[-_.]+$/, '').toUpperCase();
-    const month = parseInt(match1[2], 10);
-    let year: number | undefined = undefined;
-    if (match1[3]) {
-      const parsedYear = parseInt(match1[3], 10);
-      year = match1[3].length === 2 ? 2000 + parsedYear : parsedYear;
+  // Chuẩn hóa: hỗ trợ nếu SePay hoặc người chuyển có thêm tiền tố SEVQR hoặc SE
+  // Ví dụ: "SEVQR BSTLM BT00001 T0926", "SEVQRBSTLM BT00001 T0926", "SEVQR BT00001 T0926", "SEVQRBT00001 T0926"
+  const normalizedContent = cleanContent.replace(/^(?:SEVQR|SE)[_\s-]*/i, '');
+  const candidateTexts = cleanContent !== normalizedContent ? [cleanContent, normalizedContent] : [cleanContent];
+
+  for (const text of candidateTexts) {
+    // Pattern 1: Chuẩn BSTLM + Mã + T + (Tháng + Năm liền nhau hoặc cách nhau)
+    // Hỗ trợ: T0926, T926, T1026, T092026, T9-26, T09/26, T9 2026, T9, T09
+    const bstlmRegex = /(?:^|[^A-Za-z0-9])BSTLM\s*[-_./\s]?\s*([A-Za-z0-9_-]+)\s*[-_./\s]?\s*T(?:HÁNG|HANG)?\s*(0[1-9]|1[0-2]|[1-9])(?:[\s/_-]*(\d{4}|\d{2}))?(?![0-9])/i;
+    const match1 = text.match(bstlmRegex);
+    if (match1) {
+      const rawCode = match1[1].trim().replace(/[-_.]+$/, '').toUpperCase();
+      const month = parseInt(match1[2], 10);
+      let year: number | undefined = undefined;
+      if (match1[3]) {
+        const parsedYear = parseInt(match1[3], 10);
+        year = match1[3].length === 2 ? 2000 + parsedYear : parsedYear;
+      }
+
+      if (month >= 1 && month <= 12) {
+        return {
+          matched: true,
+          code: rawCode,
+          month,
+          year,
+          patternUsed: 'BSTLM_STANDARD',
+        };
+      }
     }
 
-    if (month >= 1 && month <= 12) {
-      return {
-        matched: true,
-        code: rawCode,
-        month,
-        year,
-        patternUsed: 'BSTLM_STANDARD',
-      };
-    }
-  }
+    // Pattern 2: Dạng rút gọn cho phụ huynh quên chữ BSTLM: "BT00001 T0926", "BT00001 T9"
+    const shortRegex = /(?:^|[^A-Za-z0-9])(BT\d+|HS\d+)\s*[-_./\s]?\s*T(?:HÁNG|HANG)?\s*(0[1-9]|1[0-2]|[1-9])(?:[\s/_-]*(\d{4}|\d{2}))?(?![0-9])/i;
+    const match2 = text.match(shortRegex);
+    if (match2) {
+      const rawCode = match2[1].trim().replace(/[-_.]+$/, '').toUpperCase();
+      const month = parseInt(match2[2], 10);
+      let year: number | undefined = undefined;
+      if (match2[3]) {
+        const parsedYear = parseInt(match2[3], 10);
+        year = match2[3].length === 2 ? 2000 + parsedYear : parsedYear;
+      }
 
-  // Pattern 2: Dạng rút gọn cho phụ huynh quên chữ BSTLM: "BT00001 T0926", "BT00001 T9"
-  const shortRegex = /(?:^|[^A-Za-z0-9])(BT\d+|HS\d+)\s*[-_./\s]?\s*T(?:HÁNG|HANG)?\s*(0[1-9]|1[0-2]|[1-9])(?:[\s/_-]*(\d{4}|\d{2}))?(?![0-9])/i;
-  const match2 = cleanContent.match(shortRegex);
-  if (match2) {
-    const rawCode = match2[1].trim().replace(/[-_.]+$/, '').toUpperCase();
-    const month = parseInt(match2[2], 10);
-    let year: number | undefined = undefined;
-    if (match2[3]) {
-      const parsedYear = parseInt(match2[3], 10);
-      year = match2[3].length === 2 ? 2000 + parsedYear : parsedYear;
-    }
-
-    if (month >= 1 && month <= 12) {
-      return {
-        matched: true,
-        code: rawCode,
-        month,
-        year,
-        patternUsed: 'SHORT_CODE',
-      };
+      if (month >= 1 && month <= 12) {
+        return {
+          matched: true,
+          code: rawCode,
+          month,
+          year,
+          patternUsed: 'SHORT_CODE',
+        };
+      }
     }
   }
 
