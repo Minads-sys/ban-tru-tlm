@@ -310,13 +310,47 @@ export async function POST(request: NextRequest) {
       );
     });
 
-    // 5. Tạo hóa đơn - dùng Prisma transaction cho nhóm nhỏ
+    // 5. Kiểm tra và bảo vệ hóa đơn đã thanh toán (PAID hoặc PARTIAL)
+    // Tuyệt đối không ghi đè số tiền của học sinh đã nộp tiền (ví dụ học sinh vào giữa tháng đã đóng tiền)
+    const existingBills = await prisma.monthlyBill.findMany({
+      where: {
+        studentId: { in: activeStudents.map((s) => s.id) },
+        month,
+        year,
+      },
+      select: {
+        studentId: true,
+        paymentStatus: true,
+      },
+    });
+
+    const paidOrPartialStudentIds = new Set(
+      existingBills
+        .filter((b) => b.paymentStatus === PaymentStatus.PAID || b.paymentStatus === PaymentStatus.PARTIAL)
+        .map((b) => b.studentId)
+    );
+
+    const studentsToProcess = activeStudents.filter((s) => !paidOrPartialStudentIds.has(s.id));
+
+    if (studentsToProcess.length === 0) {
+      return NextResponse.json({
+        success: true,
+        message: `Tất cả ${activeStudents.length} học sinh đều đã có hóa đơn đã thanh toán (PAID). Hệ thống giữ nguyên dữ liệu gốc, không ghi đè.`,
+        count: 0,
+        preservedCount: paidOrPartialStudentIds.size,
+        month,
+        year,
+        classId: classId || null,
+      });
+    }
+
+    // 6. Tạo/Cập nhật hóa đơn cho các học sinh chưa thanh toán - dùng Prisma transaction
     let generatedCount = 0;
     const classMealDaysCache = new Map<string, number>();
     const BATCH_SIZE = 30;
 
-    for (let i = 0; i < activeStudents.length; i += BATCH_SIZE) {
-      const batch = activeStudents.slice(i, i + BATCH_SIZE);
+    for (let i = 0; i < studentsToProcess.length; i += BATCH_SIZE) {
+      const batch = studentsToProcess.slice(i, i + BATCH_SIZE);
 
       await prisma.$transaction(
         batch.map((student) => {
@@ -372,12 +406,16 @@ export async function POST(request: NextRequest) {
       generatedCount += batch.length;
     }
 
+    const preservedCount = paidOrPartialStudentIds.size;
+    const preservedText = preservedCount > 0 ? ` (Giữ nguyên ${preservedCount} hóa đơn đã thanh toán)` : '';
+
     return NextResponse.json({
       success: true,
       message: classId
-        ? `Đã tạo/cập nhật ${generatedCount} hóa đơn lớp ${classId} tháng ${month}/${year}`
-        : `Đã tạo/cập nhật thành công ${generatedCount} hóa đơn cho tháng ${month}/${year}`,
+        ? `Đã tạo/cập nhật ${generatedCount} hóa đơn lớp ${classId} tháng ${month}/${year}${preservedText}`
+        : `Đã tạo/cập nhật thành công ${generatedCount} hóa đơn cho tháng ${month}/${year}${preservedText}`,
       count: generatedCount,
+      preservedCount,
       month,
       year,
       classId: classId || null,
