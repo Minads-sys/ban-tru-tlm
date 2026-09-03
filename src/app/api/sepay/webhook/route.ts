@@ -9,23 +9,47 @@ export async function POST(request: NextRequest) {
     const rawBody = await request.text();
     console.log('[SePay Webhook] Received raw body:', rawBody);
 
-    // 1. Xác thực Webhook Secret (từ Database hoặc file .env)
+    // 1. Xác thực bắt buộc API Key / Webhook Secret để chống giả mạo
     const secretSetting = await prisma.systemSetting.findUnique({
       where: { key: 'SEPAY_WEBHOOK_SECRET' },
     });
-    const webhookSecret = secretSetting?.value || process.env.SEPAY_WEBHOOK_SECRET;
+    const apiKeySetting = await prisma.systemSetting.findUnique({
+      where: { key: 'SEPAY_API_KEY' },
+    });
 
-    if (webhookSecret && webhookSecret !== 'your-sepay-webhook-secret') {
-      const authHeader = request.headers.get('authorization') || request.headers.get('x-api-key') || '';
-      const token = authHeader.replace(/^(Apikey|Bearer)\s+/i, '').trim();
+    const configuredKeys = [
+      secretSetting?.value,
+      apiKeySetting?.value,
+      process.env.SEPAY_WEBHOOK_SECRET,
+      process.env.SEPAY_API_KEY,
+    ].filter((k): k is string => Boolean(k && k.trim() && !k.startsWith('your-sepay-')));
 
-      if (token !== webhookSecret && authHeader.trim() !== webhookSecret) {
-        console.warn('[SePay Webhook] Unauthorized access attempt', { authHeader });
-        return NextResponse.json(
-          { success: false, message: 'Unauthorized: Invalid webhook secret' },
-          { status: 401 }
-        );
-      }
+    const authHeader = request.headers.get('authorization') || request.headers.get('x-api-key') || '';
+    const incomingToken = authHeader.replace(/^(Apikey|Bearer)\s+/i, '').trim();
+
+    // Nếu server chưa được cấu hình khóa: Chặn ngay lập tức để bảo vệ dữ liệu tài chính
+    if (configuredKeys.length === 0) {
+      console.error('[SePay Webhook] 403 Forbidden: Server chưa cấu hình API Key bảo mật.');
+      return NextResponse.json(
+        { success: false, message: 'Server security error: SEPAY_WEBHOOK_SECRET or SEPAY_API_KEY is not configured yet.' },
+        { status: 403 }
+      );
+    }
+
+    // Kiểm tra so khớp API Key: Phải đúng 100% với giá trị đã cấu hình
+    const isAuthorized = configuredKeys.some(
+      (validKey) => validKey === incomingToken || validKey === authHeader.trim()
+    );
+
+    if (!isAuthorized) {
+      console.warn('[SePay Webhook] 401 Unauthorized - Phát hiện truy cập không hợp lệ hoặc sai API Key:', {
+        authHeader,
+        ip: request.headers.get('x-forwarded-for') || 'unknown',
+      });
+      return NextResponse.json(
+        { success: false, message: 'Unauthorized: Invalid or missing SePay API Key' },
+        { status: 401 }
+      );
     }
 
     if (!rawBody || !rawBody.trim()) {

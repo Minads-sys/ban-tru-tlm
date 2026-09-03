@@ -20,6 +20,10 @@ import {
   CreditCard,
   Building,
   UserCheck,
+  Shield,
+  KeyRound,
+  Copy,
+  Check,
 } from 'lucide-react';
 
 interface SettingsFormState {
@@ -37,6 +41,8 @@ interface SettingsFormState {
   BANK_ACCOUNT_NO: string;
   BANK_ACCOUNT_NAME: string;
   DEFAULT_VISIBLE_DAYS: string;
+  SEPAY_WEBHOOK_SECRET: string;
+  SEPAY_API_KEY: string;
 }
 
 const VIETNAM_BANKS = [
@@ -92,8 +98,11 @@ export default function AdminSettingsPage() {
     BANK_ACCOUNT_NO: '',
     BANK_ACCOUNT_NAME: '',
     DEFAULT_VISIBLE_DAYS: '["monday", "tuesday", "wednesday", "thursday", "friday"]',
+    SEPAY_WEBHOOK_SECRET: '',
+    SEPAY_API_KEY: '',
   });
 
+  const [copiedSecret, setCopiedSecret] = useState(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<{
@@ -126,6 +135,8 @@ export default function AdminSettingsPage() {
           BANK_ACCOUNT_NO: data.BANK_ACCOUNT_NO ?? prev.BANK_ACCOUNT_NO,
           BANK_ACCOUNT_NAME: data.BANK_ACCOUNT_NAME ?? prev.BANK_ACCOUNT_NAME,
           DEFAULT_VISIBLE_DAYS: data.DEFAULT_VISIBLE_DAYS ?? prev.DEFAULT_VISIBLE_DAYS,
+          SEPAY_WEBHOOK_SECRET: data.SEPAY_WEBHOOK_SECRET ?? prev.SEPAY_WEBHOOK_SECRET,
+          SEPAY_API_KEY: data.SEPAY_API_KEY ?? prev.SEPAY_API_KEY,
         }));
       } catch (err) {
         console.error(err);
@@ -404,6 +415,88 @@ export default function AdminSettingsPage() {
                     onChange={(e) => handleChange('BANK_ACCOUNT_NAME', e.target.value.toUpperCase())}
                     className="h-10 uppercase font-semibold"
                   />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* CARD SEPAY: Cấu hình Xác thực Bảo mật SePay (Chống giả mạo Webhook) */}
+            <Card className="shadow-sm border-blue-200 bg-blue-50/20">
+              <CardHeader className="border-b bg-card">
+                <CardTitle className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+                  <Shield className="h-5 w-5 text-blue-600" />
+                  Xác Thực API Bảo Mật SePay (Chống Giả Mạo Giao Dịch)
+                </CardTitle>
+                <CardDescription>
+                  Bảo vệ cổng Webhook: Mọi request thông báo thanh toán từ SePay bắt buộc phải gửi kèm API Key này để xác minh nguồn gốc.
+                </CardDescription>
+              </CardHeader>
+
+              <CardContent className="grid gap-5 p-6">
+                <div className="space-y-2">
+                  <Label htmlFor="SEPAY_WEBHOOK_SECRET" className="flex items-center gap-2 text-sm font-medium text-slate-800">
+                    <KeyRound className="h-4 w-4 text-blue-600" />
+                    Mã API Key Webhook (SEPAY_WEBHOOK_SECRET)
+                  </Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="SEPAY_WEBHOOK_SECRET"
+                      type="text"
+                      placeholder="VD: SEPAY_TLM_LIVE_2026_BIDV96247"
+                      value={formData.SEPAY_WEBHOOK_SECRET}
+                      onChange={(e) => handleChange('SEPAY_WEBHOOK_SECRET', e.target.value)}
+                      className="h-10 font-mono text-sm bg-white"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="shrink-0 gap-1.5 bg-white"
+                      onClick={() => {
+                        if (formData.SEPAY_WEBHOOK_SECRET) {
+                          navigator.clipboard.writeText(formData.SEPAY_WEBHOOK_SECRET);
+                          setCopiedSecret(true);
+                          setTimeout(() => setCopiedSecret(false), 2000);
+                        }
+                      }}
+                    >
+                      {copiedSecret ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+                      {copiedSecret ? "Đã copy" : "Copy"}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="shrink-0 text-xs"
+                      onClick={() => {
+                        const randomKey = `SEPAY_TLM_${Math.random().toString(36).substring(2, 10).toUpperCase()}_KEY`;
+                        handleChange('SEPAY_WEBHOOK_SECRET', randomKey);
+                      }}
+                    >
+                      Tạo ngẫu nhiên
+                    </Button>
+                  </div>
+                  <div className="rounded-md bg-blue-100/60 p-3 text-xs text-blue-900 space-y-1">
+                    <p className="font-semibold">👉 Hướng dẫn cài đặt trên SePay:</p>
+                    <p>1. Trên SePay Webhook, tại tab <strong>Bảo mật</strong>, chọn phương thức: <strong>API Key</strong>.</p>
+                    <p>2. Dán chính xác mã này vào ô <strong>"Nhập API Key"</strong> trên SePay.</p>
+                    <p>3. Khi có giao dịch, SePay sẽ gửi header <code>Authorization: Apikey [MÃ_NÀY]</code>. Nếu kẻ xấu cố tình gửi request giả mạo không có mã này, server sẽ lập tức từ chối <strong>401 Unauthorized</strong>!</p>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="SEPAY_API_KEY" className="flex items-center gap-2 text-sm font-medium text-slate-800">
+                    <KeyRound className="h-4 w-4 text-slate-500" />
+                    Khóa API Token SePay (SEPAY_API_KEY - Dùng cho nút Đồng bộ chủ động)
+                  </Label>
+                  <Input
+                    id="SEPAY_API_KEY"
+                    type="password"
+                    placeholder="Mã API Token lấy từ menu Tích hợp API trên my.sepay.vn"
+                    value={formData.SEPAY_API_KEY}
+                    onChange={(e) => handleChange('SEPAY_API_KEY', e.target.value)}
+                    className="h-10 font-mono text-sm bg-white"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Dùng cho nút "Đồng bộ SePay" trên trang Quản lý Hóa đơn để chủ động kéo lịch sử giao dịch trực tiếp từ SePay về đối soát khi cần.
+                  </p>
                 </div>
               </CardContent>
             </Card>
