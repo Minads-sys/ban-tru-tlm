@@ -153,6 +153,14 @@ export default function BillingPage() {
     currentClass: string;
   } | null>(null);
 
+  // State for PDF ZIP Export Modal
+  const [openPdfZipModal, setOpenPdfZipModal] = useState(false);
+  const [pdfZipMonth, setPdfZipMonth] = useState<number>(month);
+  const [pdfZipYear, setPdfZipYear] = useState<number>(year);
+  const [pdfZipClassId, setPdfZipClassId] = useState<string>("ALL");
+  const [pdfZipStatus, setPdfZipStatus] = useState<string>("ALL");
+  const [downloadingPdfZip, setDownloadingPdfZip] = useState(false);
+
   // ================= TAB 2: SEPAY TRANSACTIONS STATE =================
   const [transactions, setTransactions] = useState<SepayTransaction[]>([]);
   const [txLoading, setTxLoading] = useState(false);
@@ -622,6 +630,39 @@ export default function BillingPage() {
     setTimeout(() => window.print(), 800);
   };
 
+  // Tải trọn bộ PDF phân theo thư mục lớp (ZIP)
+  const handleDownloadPdfZip = async () => {
+    setDownloadingPdfZip(true);
+    try {
+      const url = `/api/billing/export-pdf-zip?month=${pdfZipMonth}&year=${pdfZipYear}&classId=${pdfZipClassId}&status=${pdfZipStatus}`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Lỗi tải file ZIP" }));
+        throw new Error(err.error || "Không thể tải file ZIP");
+      }
+      const blob = await res.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = downloadUrl;
+      const mm = String(pdfZipMonth).padStart(2, "0");
+      const selectedClassObj = classes.find((c) => c.id === pdfZipClassId);
+      const classNamePart = selectedClassObj ? `_Lop_${selectedClassObj.name.replace(/\s+/g, "_")}` : "_Toan_Truong";
+      a.download = `Phieu_Tien_An${classNamePart}_T${mm}_${pdfZipYear}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+
+      Swal.fire("Thành công", "Đã tải về trọn bộ PDF phân theo thư mục lớp!", "success");
+      setOpenPdfZipModal(false);
+    } catch (err: any) {
+      console.error(err);
+      Swal.fire("Lỗi", err.message || "Lỗi khi tải file ZIP", "error");
+    } finally {
+      setDownloadingPdfZip(false);
+    }
+  };
+
   const openEditModal = (bill: BillData) => {
     setEditingBill(bill);
     setEditForm({
@@ -867,6 +908,21 @@ export default function BillingPage() {
             <Button onClick={printBills} variant="outline" disabled={bills.length === 0}>
               <Printer className="h-4 w-4 mr-2" />
               In phiếu trang hiện tại
+            </Button>
+
+            <Button
+              onClick={() => {
+                setPdfZipMonth(month);
+                setPdfZipYear(year);
+                setPdfZipClassId(classFilter === "all" ? "ALL" : classFilter);
+                setPdfZipStatus("ALL");
+                setOpenPdfZipModal(true);
+              }}
+              variant="outline"
+              className="border-emerald-500 text-emerald-700 hover:bg-emerald-50 font-semibold"
+            >
+              <FileDown className="h-4 w-4 mr-1.5 text-emerald-600" />
+              Tải PDF theo lớp (ZIP)
             </Button>
           </div>
 
@@ -1736,7 +1792,124 @@ export default function BillingPage() {
         </Dialog>
       )}
 
-      {/* =============== PHIẾU IN A5 (CHỈ RENDER KHI PRINT) =============== */}
+      {/* ================= MODAL TẢI PDF THEO LỚP (ZIP) ================= */}
+      <Dialog open={openPdfZipModal} onOpenChange={setOpenPdfZipModal}>
+        <DialogContent className="w-[96vw] max-w-md p-4 sm:p-6">
+          <DialogHeader className="pb-2 border-b">
+            <DialogTitle className="flex items-center gap-2 text-base sm:text-lg font-bold text-slate-900">
+              <FileDown className="h-5 w-5 text-emerald-600 shrink-0" />
+              Tải trọn bộ Phiếu PDF theo Lớp (ZIP)
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3.5 py-2 text-xs sm:text-sm">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs font-semibold">Tháng:</Label>
+                <Select value={String(pdfZipMonth)} onValueChange={(val) => setPdfZipMonth(Number(val))}>
+                  <SelectTrigger className="mt-1 h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                      <SelectItem key={m} value={String(m)}>
+                        Tháng {m}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs font-semibold">Năm:</Label>
+                <Select value={String(pdfZipYear)} onValueChange={(val) => setPdfZipYear(Number(val))}>
+                  <SelectTrigger className="mt-1 h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[year - 1, year, year + 1].map((y) => (
+                      <SelectItem key={y} value={String(y)}>
+                        Năm {y}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-xs font-semibold">Phạm vi xuất theo lớp:</Label>
+              <Select value={pdfZipClassId} onValueChange={setPdfZipClassId}>
+                <SelectTrigger className="mt-1 h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">🌟 Tất cả các lớp (Toàn trường - {classes.length} lớp)</SelectItem>
+                  {classes.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      Lớp {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label className="text-xs font-semibold">Lọc trạng thái hóa đơn:</Label>
+              <Select value={pdfZipStatus} onValueChange={setPdfZipStatus}>
+                <SelectTrigger className="mt-1 h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">Tất cả học sinh có hóa đơn</SelectItem>
+                  <SelectItem value="DEBT">Chỉ học sinh còn nợ (Chưa TT & Nộp 1 phần)</SelectItem>
+                  <SelectItem value="UNPAID">Chỉ học sinh Chưa thanh toán</SelectItem>
+                  <SelectItem value="PAID">Chỉ học sinh Đã thanh toán</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Khung mô tả cấu trúc file & thư mục */}
+            <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-xs space-y-1.5">
+              <div className="font-semibold text-slate-800 flex items-center gap-1">
+                <span>📁 Cấu trúc thư mục & file nén tải về:</span>
+              </div>
+              <div className="font-mono text-[11px] text-slate-700 bg-white p-2 rounded border space-y-1 leading-relaxed">
+                <p className="text-emerald-800 font-bold">📦 Phieu_Tien_An_Thang_{String(pdfZipMonth).padStart(2, '0')}_{pdfZipYear}.zip</p>
+                <p className="pl-3 text-blue-700">├── 📁 Lop_{classes.find(c => c.id === pdfZipClassId)?.name || '10A1'}/</p>
+                <p className="pl-6 text-slate-600">├── 📄 {classes.find(c => c.id === pdfZipClassId)?.name || '10A1'}_Nguyen_Van_A_Thang_{String(pdfZipMonth).padStart(2, '0')}_{pdfZipYear}_BT00863.pdf</p>
+                <p className="pl-6 text-slate-600">└── 📄 {classes.find(c => c.id === pdfZipClassId)?.name || '10A1'}_Tran_Thi_B_Thang_{String(pdfZipMonth).padStart(2, '0')}_{pdfZipYear}_BT00864.pdf</p>
+              </div>
+              <p className="text-[11px] text-slate-500 italic">
+                * Cấu trúc tên file: <strong>Lop_ho_tên_thang_năm_Mã ban trú.pdf</strong>
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter className="pt-2 border-t mt-1 flex flex-row justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setOpenPdfZipModal(false)} disabled={downloadingPdfZip}>
+              Hủy
+            </Button>
+            <Button
+              onClick={handleDownloadPdfZip}
+              disabled={downloadingPdfZip}
+              size="sm"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+            >
+              {downloadingPdfZip ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+                  Đang xuất & nén ZIP...
+                </>
+              ) : (
+                <>
+                  <FileDown className="h-4 w-4 mr-1.5" />
+                  Bắt đầu Tải về (ZIP)
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <div
         className="absolute -z-50 opacity-0 print:static print:z-auto print:opacity-100 print:w-full print:m-0 print:p-0 print-bw"
         style={{ fontFamily: "'Times New Roman', Times, serif" }}
