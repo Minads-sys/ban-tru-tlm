@@ -57,6 +57,7 @@ import {
 } from '@/components/ui/dialog';
 import { StudentPortal } from '@/components/student-portal';
 import { useRealtime } from '@/hooks/use-realtime';
+import { SearchableClassSelect } from '@/components/searchable-class-select';
 
 interface StudentItem {
   id: string;
@@ -204,15 +205,47 @@ export default function AdminStudentsPage() {
     onChanged: () => fetchStudents(selectedClass, selectedStatus),
   });
 
-  // Extract distinct class list from students for filter dropdown
+  // Danh sách toàn bộ lớp học từ CSDL
+  const [classes, setClasses] = useState<{ id: string; name: string }[]>([]);
+
+  const fetchClasses = useCallback(async () => {
+    try {
+      const res = await fetch('/api/classes');
+      if (res.ok) {
+        const data = await res.json();
+        setClasses(data);
+      }
+    } catch (err) {
+      console.error('Fetch classes error:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchClasses();
+  }, [fetchClasses]);
+
+  // Realtime: tự cập nhật khi có thay đổi trên bảng classes
+  useRealtime({
+    table: 'classes',
+    event: '*',
+    onChanged: () => fetchClasses(),
+  });
+
+  // Tổng hợp danh sách lớp từ bảng classes + students, sắp xếp tự nhiên (10A1, 10A2... TEST 1)
   const classOptions = useMemo(() => {
     const classSet = new Set<string>();
-    students.forEach((s) => {
-      if (s.classId) classSet.add(s.classId);
+    classes.forEach((c) => {
+      if (c.name) classSet.add(c.name);
+      else if (c.id) classSet.add(c.id);
     });
-    // Add some common classes if empty
-    return Array.from(classSet).sort();
-  }, [students]);
+    students.forEach((s) => {
+      if (s.class?.name) classSet.add(s.class.name);
+      else if (s.classId) classSet.add(s.classId);
+    });
+    return Array.from(classSet).sort((a, b) =>
+      a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
+    );
+  }, [classes, students]);
 
   // Filter students by search term (Mã HS, Mã Bán Trú, Tên HS)
   const filteredStudents = useMemo(() => {
@@ -1437,19 +1470,12 @@ export default function AdminStudentsPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-slate-700">Lớp học (*)</label>
-                <Select
+                <SearchableClassSelect
                   value={createFormData.classId}
-                  onValueChange={(val) => setCreateFormData({ ...createFormData, classId: val })}
-                >
-                  <SelectTrigger className="h-10 text-sm">
-                    <SelectValue placeholder="Chọn lớp" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {classOptions.map((cls) => (
-                      <SelectItem key={cls} value={cls}>Lớp {cls}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  onChange={(val) => setCreateFormData({ ...createFormData, classId: val })}
+                  options={classOptions}
+                  placeholder="Tìm và chọn lớp"
+                />
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-slate-700">Loại suất ăn (*)</label>
@@ -1602,19 +1628,12 @@ export default function AdminStudentsPage() {
 
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-slate-700">Lớp học</label>
-                <Select
+                <SearchableClassSelect
                   value={editFormData.classId}
-                  onValueChange={(val) => setEditFormData({ ...editFormData, classId: val })}
-                >
-                  <SelectTrigger className="h-10 text-sm">
-                    <SelectValue placeholder="Chọn lớp" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {classOptions.map((cls) => (
-                      <SelectItem key={cls} value={cls}>Lớp {cls}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  onChange={(val) => setEditFormData({ ...editFormData, classId: val })}
+                  options={classOptions}
+                  placeholder="Tìm và chọn lớp"
+                />
               </div>
 
               <div className="space-y-1.5">
