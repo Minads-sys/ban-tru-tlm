@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import Swal from "sweetalert2";
 
 import { numberToVietnameseWords } from "@/lib/utils";
@@ -175,6 +175,21 @@ export default function BillingPage() {
   const [studentUnpaidBills, setStudentUnpaidBills] = useState<any[]>([]);
   const [selectedBillId, setSelectedBillId] = useState("");
   const [matchingInProgress, setMatchingInProgress] = useState(false);
+  const [matchSearchTerm, setMatchSearchTerm] = useState("");
+  const [autoDetectedStudent, setAutoDetectedStudent] = useState<any | null>(null);
+
+  // Bộ lọc tìm kiếm học sinh theo tên, lớp, mã bán trú (tính toán tức thời)
+  const filteredMatchStudents = useMemo(() => {
+    if (!matchSearchTerm.trim()) return matchStudents;
+    const term = matchSearchTerm.toLowerCase().trim();
+    return matchStudents.filter((st) => {
+      const name = st.user?.fullName?.toLowerCase() || "";
+      const className = st.class?.name?.toLowerCase() || st.classId?.toLowerCase() || "";
+      const boardingCode = st.boardingCode?.toLowerCase() || "";
+      const studentCode = st.studentCode?.toLowerCase() || "";
+      return name.includes(term) || className.includes(term) || boardingCode.includes(term) || studentCode.includes(term);
+    });
+  }, [matchStudents, matchSearchTerm]);
 
   // ================= TAB 3: SANDBOX TEST STATE =================
   const [testCode, setTestCode] = useState("BT00001");
@@ -332,19 +347,37 @@ export default function BillingPage() {
     setSelectedStudentId("");
     setSelectedBillId("");
     setStudentUnpaidBills([]);
+    setMatchSearchTerm("");
+    setAutoDetectedStudent(null);
 
     // Fetch active students for selector
     try {
       const res = await fetch("/api/students?status=ACTIVE");
       const data = await res.json();
-      setMatchStudents(Array.isArray(data) ? data : []);
+      const studentsList: any[] = Array.isArray(data) ? data : [];
+      setMatchStudents(studentsList);
+
+      // Tự động quét nội dung giao dịch để tìm mã học sinh (VD: BT00864, HS001...)
+      const rawText = tx.content || '';
+      const codeMatch = rawText.match(/(BT\d+|HS\d+)/i);
+      if (codeMatch) {
+        const detectedCode = codeMatch[1].toUpperCase();
+        const found = studentsList.find((st) =>
+          st.boardingCode?.toUpperCase() === detectedCode ||
+          st.studentCode?.toUpperCase() === detectedCode
+        );
+        if (found) {
+          setAutoDetectedStudent(found);
+          handleStudentSelectForMatch(found.id, tx);
+        }
+      }
     } catch (err) {
       console.error(err);
     }
   };
 
   // When student is selected in Manual Match Modal, load their bills
-  const handleStudentSelectForMatch = async (stId: string) => {
+  const handleStudentSelectForMatch = async (stId: string, currentTx?: SepayTransaction | null) => {
     setSelectedStudentId(stId);
     setSelectedBillId("");
     if (!stId) {
@@ -356,7 +389,22 @@ export default function BillingPage() {
       const res = await fetch(`/api/billing?studentId=${stId}`);
       const data = await res.json();
       if (data.data) {
-        setStudentUnpaidBills(data.data);
+        const bills: any[] = data.data;
+        setStudentUnpaidBills(bills);
+
+        // Tự động chọn hóa đơn chưa thanh toán phù hợp nhất
+        const targetTx = currentTx || selectedTxForMatch;
+        const rawText = targetTx?.content || '';
+        const monthMatch = rawText.match(/T(?:HÁNG|HANG)?\s*(0[1-9]|1[0-2]|[1-9])/i) || rawText.match(/[-_](\d{2})(0[1-9]|1[0-2])(\d{2})/);
+        let detectedMonth = monthMatch ? parseInt(monthMatch[monthMatch.length - 1], 10) : undefined;
+        
+        let matchingBill = detectedMonth ? bills.find(b => b.month === detectedMonth && b.paymentStatus !== "PAID") : null;
+        if (!matchingBill) {
+          matchingBill = bills.find(b => b.paymentStatus !== "PAID") || bills[0];
+        }
+        if (matchingBill) {
+          setSelectedBillId(matchingBill.id);
+        }
       }
     } catch (err) {
       console.error(err);
@@ -1353,21 +1401,133 @@ export default function BillingPage() {
                 )}
               </div>
 
-              {/* Chọn học sinh */}
-              <div>
-                <Label className="font-medium">1. Chọn học sinh cần gạch nợ:</Label>
-                <Select value={selectedStudentId} onValueChange={handleStudentSelectForMatch}>
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="-- Chọn học sinh --" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-60">
-                    {matchStudents.map((st) => (
-                      <SelectItem key={st.id} value={st.id}>
-                        {st.user?.fullName} ({st.class?.name}) — Mã: {st.boardingCode || st.studentCode}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              {/* Chọn học sinh với ô tìm kiếm gõ trực tiếp */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="font-semibold text-slate-900">1. Chọn học sinh cần gạch nợ:</Label>
+                  {selectedStudentId && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedStudentId("");
+                        setSelectedBillId("");
+                        setStudentUnpaidBills([]);
+                        setAutoDetectedStudent(null);
+                      }}
+                      className="text-xs text-blue-600 hover:text-blue-800 underline font-medium"
+                    >
+                      Đổi học sinh khác
+                    </button>
+                  )}
+                </div>
+
+                {/* Nếu đã chọn học sinh -> Hiện thẻ thông tin học sinh được chọn */}
+                {selectedStudentId ? (
+                  (() => {
+                    const st = matchStudents.find((s) => s.id === selectedStudentId);
+                    return (
+                      <div className="flex items-center justify-between p-3 rounded-lg border bg-emerald-50 border-emerald-300">
+                        <div className="space-y-0.5">
+                          <div className="font-bold text-emerald-950 text-sm flex items-center gap-1.5">
+                            <CheckCircle className="h-4 w-4 text-emerald-600 shrink-0" />
+                            {st?.user?.fullName || "Học sinh"}
+                            <span className="text-xs font-normal text-emerald-800">
+                              (Lớp {st?.class?.name || st?.classId})
+                            </span>
+                          </div>
+                          <div className="text-xs text-emerald-700 flex gap-3">
+                            <span>Mã bán trú: <strong className="font-mono">{st?.boardingCode || "Chưa có"}</strong></span>
+                            {st?.studentCode && <span>Mã HS: <strong className="font-mono">{st.studentCode}</strong></span>}
+                          </div>
+                        </div>
+                        <Badge variant="outline" className="bg-white text-emerald-700 border-emerald-300">
+                          Đã chọn
+                        </Badge>
+                      </div>
+                    );
+                  })()
+                ) : (
+                  /* Nếu chưa chọn -> Hiện ô tìm kiếm và danh sách lọc trực tiếp */
+                  <div className="space-y-2">
+                    {/* Gợi ý tự động nếu phát hiện mã trong nội dung */}
+                    {autoDetectedStudent && (
+                      <div
+                        onClick={() => handleStudentSelectForMatch(autoDetectedStudent.id)}
+                        className="p-2.5 rounded-lg border border-amber-300 bg-amber-50 cursor-pointer hover:bg-amber-100 transition-colors flex items-center justify-between"
+                      >
+                        <div className="text-xs text-amber-900">
+                          <div className="font-semibold flex items-center gap-1">
+                            ✨ Phát hiện mã trong nội dung chuyển khoản:
+                          </div>
+                          <div>
+                            {autoDetectedStudent.user?.fullName} (Lớp {autoDetectedStudent.class?.name || autoDetectedStudent.classId}) — Mã: <span className="font-mono font-bold text-amber-950">{autoDetectedStudent.boardingCode}</span>
+                          </div>
+                        </div>
+                        <Button size="sm" variant="outline" className="h-7 text-xs bg-white text-amber-800 border-amber-300 hover:bg-amber-200">
+                          Chọn ngay
+                        </Button>
+                      </div>
+                    )}
+
+                    <div className="relative">
+                      <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+                      <Input
+                        type="text"
+                        placeholder="🔍 Gõ tên học sinh, lớp (VD: 10A1) hoặc mã BT..."
+                        value={matchSearchTerm}
+                        onChange={(e) => setMatchSearchTerm(e.target.value)}
+                        className="pl-9 pr-8 h-9 text-sm"
+                        autoFocus
+                      />
+                      {matchSearchTerm && (
+                        <button
+                          type="button"
+                          onClick={() => setMatchSearchTerm("")}
+                          className="absolute right-2.5 top-2.5 text-xs text-slate-400 hover:text-slate-600 font-bold"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Danh sách cuộn kết quả tìm kiếm */}
+                    <div className="max-h-48 overflow-y-auto rounded-md border divide-y bg-white shadow-inner">
+                      {filteredMatchStudents.length === 0 ? (
+                        <div className="p-4 text-center text-xs text-slate-400">
+                          Không tìm thấy học sinh nào phù hợp với "{matchSearchTerm}"
+                        </div>
+                      ) : (
+                        filteredMatchStudents.slice(0, 50).map((st) => (
+                          <div
+                            key={st.id}
+                            onClick={() => handleStudentSelectForMatch(st.id)}
+                            className="p-2.5 hover:bg-blue-50 cursor-pointer flex items-center justify-between text-xs transition-colors group"
+                          >
+                            <div>
+                              <span className="font-semibold text-slate-900 group-hover:text-blue-700">
+                                {st.user?.fullName}
+                              </span>
+                              <span className="text-slate-500 ml-1.5 font-normal">
+                                (Lớp {st.class?.name || st.classId})
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              {st.boardingCode && (
+                                <span className="font-mono font-bold text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded text-[11px]">
+                                  {st.boardingCode}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    <div className="flex justify-between items-center text-[11px] text-slate-500 px-1">
+                      <span>Hiển thị {Math.min(filteredMatchStudents.length, 50)} / {filteredMatchStudents.length} học sinh</span>
+                      <span>💡 Gõ tên không dấu hoặc có dấu đều được</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Chọn hóa đơn */}

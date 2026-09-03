@@ -94,6 +94,26 @@ export function parseTransferContent(content: string): ParsedTransferContent {
         };
       }
     }
+
+    // Pattern 3: Dạng mã kèm ngày tháng giờ (VD: "BT00864-030926-22:19:55")
+    const timestampRegex = /(?:^|[^A-Za-z0-9])(BT\d+|HS\d+)[-_](\d{2})(0[1-9]|1[0-2])(\d{2}|\d{4})[-_]/i;
+    const match3 = text.match(timestampRegex);
+    if (match3) {
+      const rawCode = match3[1].trim().toUpperCase();
+      const month = parseInt(match3[3], 10);
+      const parsedYear = parseInt(match3[4], 10);
+      const year = match3[4].length === 2 ? 2000 + parsedYear : parsedYear;
+
+      if (month >= 1 && month <= 12) {
+        return {
+          matched: true,
+          code: rawCode,
+          month,
+          year,
+          patternUsed: 'TIMESTAMP_CODE',
+        };
+      }
+    }
   }
 
   return { matched: false };
