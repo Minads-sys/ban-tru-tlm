@@ -1384,41 +1384,44 @@ export default function BillingPage() {
 
       {/* ================= MODAL GẠCH NỢ THỦ CÔNG ================= */}
       <Dialog open={!!selectedTxForMatch} onOpenChange={(open) => !open && setSelectedTxForMatch(null)}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <UserCheck className="h-5 w-5 text-amber-600" />
-              Gạch nợ thủ công giao dịch SePay
+        <DialogContent className="w-[96vw] max-w-lg max-h-[92vh] flex flex-col p-3.5 sm:p-5 overflow-hidden">
+          <DialogHeader className="pb-2 border-b shrink-0">
+            <DialogTitle className="flex items-center gap-2 text-base sm:text-lg font-bold text-slate-900">
+              <UserCheck className="h-5 w-5 text-amber-600 shrink-0" />
+              Gạch nợ thủ công SePay
             </DialogTitle>
           </DialogHeader>
 
           {selectedTxForMatch && (
-            <div className="space-y-4 py-2 text-sm">
-              {/* Chi tiết GD */}
-              <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-1.5 text-xs">
-                <p>
-                  <span className="font-medium text-slate-500">Số tiền:</span>{" "}
-                  <span className="font-bold text-green-700 text-sm">{formatVND(selectedTxForMatch.amount)}</span>
-                </p>
-                <p>
-                  <span className="font-medium text-slate-500">Nội dung:</span>{" "}
-                  <span className="font-mono bg-white px-1.5 py-0.5 rounded border">{selectedTxForMatch.content}</span>
-                </p>
-                <p>
-                  <span className="font-medium text-slate-500">Thời gian:</span>{" "}
-                  {new Date(selectedTxForMatch.transDate).toLocaleString("vi-VN")}
-                </p>
+            <div className="overflow-y-auto space-y-2.5 py-1 pr-1 text-sm flex-1">
+              {/* Chi tiết GD gọn gàng */}
+              <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-xs space-y-1">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-medium">Giao dịch SePay:</span>
+                  <span className="font-extrabold text-green-700 text-sm sm:text-base">{formatVND(selectedTxForMatch.amount)}</span>
+                </div>
+                <div className="flex justify-between items-center text-[11px] text-slate-500">
+                  <span>{new Date(selectedTxForMatch.transDate).toLocaleString("vi-VN")}</span>
+                  {selectedTxForMatch.gateway && (
+                    <span className="font-semibold text-slate-700 bg-slate-200/70 px-1.5 py-0.2 rounded text-[10px]">
+                      {selectedTxForMatch.gateway}
+                    </span>
+                  )}
+                </div>
+                <div className="pt-1 border-t border-slate-200/60 font-mono text-[11px] bg-white px-2 py-1 rounded border break-all text-slate-700 leading-tight">
+                  {selectedTxForMatch.content}
+                </div>
                 {selectedTxForMatch.unmatchedReason && (
-                  <p className="text-amber-700 italic">
-                    Lý do chưa khớp: {selectedTxForMatch.unmatchedReason}
+                  <p className="text-amber-700 italic text-[11px] leading-tight">
+                    ⚠️ {selectedTxForMatch.unmatchedReason}
                   </p>
                 )}
               </div>
 
               {/* Chọn học sinh với ô tìm kiếm gõ trực tiếp */}
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <Label className="font-semibold text-slate-900">1. Chọn học sinh cần gạch nợ:</Label>
+                  <Label className="font-semibold text-xs sm:text-sm text-slate-900">1. Chọn học sinh cần gạch nợ:</Label>
                   {selectedStudentId && (
                     <button
                       type="button"
@@ -1440,21 +1443,21 @@ export default function BillingPage() {
                   (() => {
                     const st = matchStudents.find((s) => s.id === selectedStudentId);
                     return (
-                      <div className="flex items-center justify-between p-3 rounded-lg border bg-emerald-50 border-emerald-300">
-                        <div className="space-y-0.5">
-                          <div className="font-bold text-emerald-950 text-sm flex items-center gap-1.5">
+                      <div className="flex items-center justify-between p-2 sm:p-2.5 rounded-lg border bg-emerald-50 border-emerald-300">
+                        <div className="space-y-0.5 min-w-0 pr-2">
+                          <div className="font-bold text-emerald-950 text-xs sm:text-sm flex items-center gap-1.5 truncate">
                             <CheckCircle className="h-4 w-4 text-emerald-600 shrink-0" />
-                            {st?.user?.fullName || "Học sinh"}
-                            <span className="text-xs font-normal text-emerald-800">
+                            <span className="truncate">{st?.user?.fullName || "Học sinh"}</span>
+                            <span className="text-xs font-normal text-emerald-800 shrink-0">
                               (Lớp {st?.class?.name || st?.classId})
                             </span>
                           </div>
-                          <div className="text-xs text-emerald-700 flex gap-3">
-                            <span>Mã bán trú: <strong className="font-mono">{st?.boardingCode || "Chưa có"}</strong></span>
-                            {st?.studentCode && <span>Mã HS: <strong className="font-mono">{st.studentCode}</strong></span>}
+                          <div className="text-[11px] text-emerald-700 flex gap-2 sm:gap-3">
+                            <span>Mã BT: <strong className="font-mono font-bold text-emerald-900">{st?.boardingCode || "Chưa có"}</strong></span>
+                            {st?.studentCode && <span className="hidden sm:inline">Mã HS: <strong className="font-mono">{st.studentCode}</strong></span>}
                           </div>
                         </div>
-                        <Badge variant="outline" className="bg-white text-emerald-700 border-emerald-300">
+                        <Badge variant="outline" className="bg-white text-emerald-700 border-emerald-300 text-[10px] shrink-0 py-0">
                           Đã chọn
                         </Badge>
                       </div>
@@ -1462,12 +1465,12 @@ export default function BillingPage() {
                   })()
                 ) : (
                   /* Nếu chưa chọn -> Hiện ô tìm kiếm và danh sách lọc trực tiếp */
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     {/* Gợi ý tự động nếu phát hiện mã trong nội dung */}
                     {autoDetectedStudent && (
                       <div
                         onClick={() => handleStudentSelectForMatch(autoDetectedStudent.id)}
-                        className="p-2.5 rounded-lg border border-amber-300 bg-amber-50 cursor-pointer hover:bg-amber-100 transition-colors flex items-center justify-between"
+                        className="p-2 rounded-lg border border-amber-300 bg-amber-50 cursor-pointer hover:bg-amber-100 transition-colors flex items-center justify-between"
                       >
                         <div className="text-xs text-amber-900">
                           <div className="font-semibold flex items-center gap-1">
@@ -1477,27 +1480,27 @@ export default function BillingPage() {
                             {autoDetectedStudent.user?.fullName} (Lớp {autoDetectedStudent.class?.name || autoDetectedStudent.classId}) — Mã: <span className="font-mono font-bold text-amber-950">{autoDetectedStudent.boardingCode}</span>
                           </div>
                         </div>
-                        <Button size="sm" variant="outline" className="h-7 text-xs bg-white text-amber-800 border-amber-300 hover:bg-amber-200">
+                        <Button size="sm" variant="outline" className="h-6 text-xs bg-white text-amber-800 border-amber-300 hover:bg-amber-200 shrink-0">
                           Chọn ngay
                         </Button>
                       </div>
                     )}
 
                     <div className="relative">
-                      <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+                      <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
                       <Input
                         type="text"
                         placeholder="🔍 Gõ tên học sinh, lớp (VD: 10A1) hoặc mã BT..."
                         value={matchSearchTerm}
                         onChange={(e) => setMatchSearchTerm(e.target.value)}
-                        className="pl-9 pr-8 h-9 text-sm"
+                        className="pl-8 pr-7 h-8 text-xs sm:text-sm"
                         autoFocus
                       />
                       {matchSearchTerm && (
                         <button
                           type="button"
                           onClick={() => setMatchSearchTerm("")}
-                          className="absolute right-2.5 top-2.5 text-xs text-slate-400 hover:text-slate-600 font-bold"
+                          className="absolute right-2 top-2 text-xs text-slate-400 hover:text-slate-600 font-bold"
                         >
                           ✕
                         </button>
@@ -1505,29 +1508,29 @@ export default function BillingPage() {
                     </div>
 
                     {/* Danh sách cuộn kết quả tìm kiếm */}
-                    <div className="max-h-48 overflow-y-auto rounded-md border divide-y bg-white shadow-inner">
+                    <div className="max-h-40 sm:max-h-48 overflow-y-auto rounded-md border divide-y bg-white shadow-inner">
                       {filteredMatchStudents.length === 0 ? (
-                        <div className="p-4 text-center text-xs text-slate-400">
-                          Không tìm thấy học sinh nào phù hợp với "{matchSearchTerm}"
+                        <div className="p-3 text-center text-xs text-slate-400">
+                          Không tìm thấy học sinh phù hợp với &quot;{matchSearchTerm}&quot;
                         </div>
                       ) : (
                         filteredMatchStudents.slice(0, 50).map((st) => (
                           <div
                             key={st.id}
                             onClick={() => handleStudentSelectForMatch(st.id)}
-                            className="p-2.5 hover:bg-blue-50 cursor-pointer flex items-center justify-between text-xs transition-colors group"
+                            className="p-2 hover:bg-blue-50 cursor-pointer flex items-center justify-between text-xs transition-colors group"
                           >
-                            <div>
+                            <div className="truncate pr-2">
                               <span className="font-semibold text-slate-900 group-hover:text-blue-700">
                                 {st.user?.fullName}
                               </span>
-                              <span className="text-slate-500 ml-1.5 font-normal">
-                                (Lớp {st.class?.name || st.classId})
+                              <span className="text-slate-500 ml-1 font-normal text-[11px]">
+                                ({st.class?.name || st.classId})
                               </span>
                             </div>
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1 shrink-0">
                               {st.boardingCode && (
-                                <span className="font-mono font-bold text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded text-[11px]">
+                                <span className="font-mono font-bold text-blue-700 bg-blue-100 px-1.5 py-0.2 rounded text-[11px]">
                                   {st.boardingCode}
                                 </span>
                               )}
@@ -1536,7 +1539,7 @@ export default function BillingPage() {
                         ))
                       )}
                     </div>
-                    <div className="flex justify-between items-center text-[11px] text-slate-500 px-1">
+                    <div className="flex justify-between items-center text-[10px] text-slate-500 px-1">
                       <span>Hiển thị {Math.min(filteredMatchStudents.length, 50)} / {filteredMatchStudents.length} học sinh</span>
                       <span>💡 Gõ tên không dấu hoặc có dấu đều được</span>
                     </div>
@@ -1546,12 +1549,12 @@ export default function BillingPage() {
 
               {/* Chọn hóa đơn & Hiển thị công nợ chi tiết */}
               {selectedStudentId && (
-                <div className="space-y-3">
-                  <Label className="font-semibold text-slate-900">2. Chọn hóa đơn cần thanh toán:</Label>
+                <div className="space-y-2 pt-1 border-t">
+                  <Label className="font-semibold text-xs sm:text-sm text-slate-900">2. Chọn hóa đơn cần thanh toán:</Label>
                   {studentUnpaidBills.length > 0 ? (
                     <>
                       <Select value={selectedBillId} onValueChange={setSelectedBillId}>
-                        <SelectTrigger className="mt-1">
+                        <SelectTrigger className="mt-1 h-9 text-xs sm:text-sm">
                           <SelectValue placeholder="-- Chọn hóa đơn --" />
                         </SelectTrigger>
                         <SelectContent>
@@ -1560,7 +1563,7 @@ export default function BillingPage() {
                             const remaining = Math.max(0, Number(b.finalAmount) - paid);
                             const statusText = b.paymentStatus === "PAID" ? "Đã thanh toán" : b.paymentStatus === "PARTIAL" ? "Đã nộp 1 phần" : "Chưa thanh toán";
                             return (
-                              <SelectItem key={b.id} value={b.id}>
+                              <SelectItem key={b.id} value={b.id} className="text-xs sm:text-sm">
                                 Tháng {b.month}/{b.year} — Còn nợ: {formatVND(remaining)} (Tổng: {formatVND(b.finalAmount)}{paid > 0 ? ` | Đã nộp: ${formatVND(paid)}` : ""}) — {statusText}
                               </SelectItem>
                             );
@@ -1568,7 +1571,7 @@ export default function BillingPage() {
                         </SelectContent>
                       </Select>
 
-                      {/* Bảng tính chi tiết công nợ hóa đơn đang chọn */}
+                      {/* Bảng tính chi tiết công nợ hóa đơn đang chọn (Gọn gàng cho Mobile) */}
                       {(() => {
                         const activeBill = studentUnpaidBills.find((b) => b.id === selectedBillId);
                         if (!activeBill) return null;
@@ -1580,37 +1583,37 @@ export default function BillingPage() {
                         const willComplete = txAmount >= billRemaining;
 
                         return (
-                          <div className="rounded-lg border bg-slate-50/80 p-3.5 text-xs space-y-2 border-slate-200 shadow-sm">
-                            <div className="font-semibold text-slate-800 border-b pb-1.5 flex justify-between items-center">
-                              <span>Chi tiết công nợ Tháng {activeBill.month}/{activeBill.year}:</span>
+                          <div className="rounded-lg border bg-slate-50/90 p-2.5 text-xs space-y-2 border-slate-200">
+                            <div className="flex justify-between items-center border-b pb-1">
+                              <span className="font-semibold text-slate-800 text-[11px]">Công nợ Tháng {activeBill.month}/{activeBill.year}:</span>
                               {activeBill.paymentStatus === "PARTIAL" ? (
-                                <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-[10px]">Đã nộp 1 phần</Badge>
+                                <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-[10px] py-0">Đã nộp 1 phần</Badge>
                               ) : activeBill.paymentStatus === "PAID" ? (
-                                <Badge className="bg-green-100 text-green-800 border-green-300 text-[10px]">Đã thanh toán</Badge>
+                                <Badge className="bg-green-100 text-green-800 border-green-300 text-[10px] py-0">Đã thanh toán</Badge>
                               ) : (
-                                <Badge className="bg-red-100 text-red-800 border-red-300 text-[10px]">Chưa thanh toán</Badge>
+                                <Badge className="bg-red-100 text-red-800 border-red-300 text-[10px] py-0">Chưa thanh toán</Badge>
                               )}
                             </div>
 
-                            <div className="space-y-1.5">
-                              <div className="flex justify-between text-slate-600">
-                                <span>Tổng tiền hóa đơn:</span>
-                                <span className="font-semibold text-slate-900">{formatVND(billTotal)}</span>
+                            {/* Khối 3 cột trực quan */}
+                            <div className="grid grid-cols-3 gap-1 py-1 text-center bg-white rounded border border-slate-100 p-1.5 shadow-2xs">
+                              <div>
+                                <div className="text-[10px] text-slate-500">Tổng hóa đơn</div>
+                                <div className="font-semibold text-slate-800 text-xs sm:text-sm">{formatVND(billTotal)}</div>
                               </div>
-                              {billPaid > 0 && (
-                                <div className="flex justify-between text-emerald-700">
-                                  <span>Đã thanh toán trước đó:</span>
-                                  <span className="font-semibold">-{formatVND(billPaid)}</span>
-                                </div>
-                              )}
-                              <div className="flex justify-between text-amber-900 font-bold border-t pt-1.5 text-sm">
-                                <span>Công nợ còn lại hiện tại:</span>
-                                <span className="text-red-600">{formatVND(billRemaining)}</span>
+                              <div>
+                                <div className="text-[10px] text-emerald-600">Đã nộp</div>
+                                <div className="font-semibold text-emerald-700 text-xs sm:text-sm">{formatVND(billPaid)}</div>
+                              </div>
+                              <div>
+                                <div className="text-[10px] text-red-500 font-medium">Còn nợ</div>
+                                <div className="font-bold text-red-600 text-xs sm:text-sm">{formatVND(billRemaining)}</div>
                               </div>
                             </div>
 
-                            <div className={`p-2.5 rounded-md border mt-2 ${willComplete ? "bg-emerald-50 border-emerald-300 text-emerald-900" : "bg-blue-50 border-blue-300 text-blue-900"}`}>
-                              <div className="flex justify-between font-bold">
+                            {/* Kết quả giao dịch */}
+                            <div className={`p-2 rounded border ${willComplete ? "bg-emerald-50 border-emerald-300 text-emerald-900" : "bg-blue-50 border-blue-300 text-blue-900"}`}>
+                              <div className="flex justify-between items-center font-bold text-xs">
                                 <span>Giao dịch này gạch nợ:</span>
                                 <span className="text-sm font-extrabold">{formatVND(txAmount)}</span>
                               </div>
@@ -1618,12 +1621,12 @@ export default function BillingPage() {
                                 {willComplete ? (
                                   <>
                                     <CheckCircle className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                                    <span>🎉 Đủ tiền! Hóa đơn sẽ được cập nhật thành <strong>ĐÃ THANH TOÁN (PAID)</strong>.</span>
+                                    <span>🎉 <strong>Đủ tiền!</strong> Hóa đơn sẽ cập nhật sang <strong>ĐÃ THANH TOÁN (PAID)</strong>.</span>
                                   </>
                                 ) : (
                                   <>
                                     <AlertTriangle className="h-3.5 w-3.5 text-blue-600 shrink-0" />
-                                    <span>Vẫn còn nợ: <strong>{formatVND(billRemaining - txAmount)}</strong> (Tiếp tục trạng thái Thanh toán 1 phần).</span>
+                                    <span>Vẫn còn nợ: <strong>{formatVND(billRemaining - txAmount)}</strong> (Tiếp tục Thanh toán 1 phần).</span>
                                   </>
                                 )}
                               </div>
@@ -1642,16 +1645,17 @@ export default function BillingPage() {
             </div>
           )}
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setSelectedTxForMatch(null)}>
+          <DialogFooter className="pt-2 border-t mt-1 flex flex-row justify-end gap-2 shrink-0 bg-white">
+            <Button variant="outline" size="sm" onClick={() => setSelectedTxForMatch(null)} className="h-9 px-4">
               Hủy
             </Button>
             <Button
               onClick={executeManualMatch}
               disabled={matchingInProgress || !selectedBillId}
-              className="bg-green-600 hover:bg-green-700 text-white"
+              size="sm"
+              className="bg-green-600 hover:bg-green-700 text-white h-9 px-4 font-semibold"
             >
-              {matchingInProgress ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <UserCheck className="h-4 w-4 mr-2" />}
+              {matchingInProgress ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <UserCheck className="h-4 w-4 mr-1.5" />}
               Xác nhận Gạch nợ
             </Button>
           </DialogFooter>
