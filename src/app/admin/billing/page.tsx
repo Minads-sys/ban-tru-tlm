@@ -62,6 +62,7 @@ interface BillData {
   finalAmount: string;
   paymentStatus: string;
   qrCodeUrl: string | null;
+  transactions?: Array<{ id: string; amount: string | number; transDate: string }>;
   student: {
     id: string;
     studentCode: string;
@@ -963,9 +964,22 @@ export default function BillingPage() {
                       <TableCell>{bill.student.class.name}</TableCell>
                       <TableCell className="text-center">{bill.netPayableDays}</TableCell>
                       <TableCell className="text-center">{bill.canceledDays}</TableCell>
-                      <TableCell className="text-right">{formatVND(bill.previousDeduction)}</TableCell>
-                      <TableCell className="text-right font-semibold">{formatVND(bill.finalAmount)}</TableCell>
-                      <TableCell>{statusBadge(bill.paymentStatus)}</TableCell>
+                      <TableCell className="text-right font-semibold">
+                        <div>{formatVND(bill.finalAmount)}</div>
+                        {(() => {
+                          const paid = (bill.transactions || []).reduce((s: number, t: any) => s + Number(t.amount), 0);
+                          const remaining = Math.max(0, Number(bill.finalAmount) - paid);
+                          if (paid > 0 && bill.paymentStatus !== "PAID") {
+                            return (
+                              <div className="text-[11px] font-normal mt-0.5 space-y-0.5">
+                                <span className="text-emerald-700 bg-emerald-50 px-1 rounded block">Đã nộp: {formatVND(paid)}</span>
+                                <span className="text-amber-800 bg-amber-50 px-1 rounded font-bold block">Còn nợ: {formatVND(remaining)}</span>
+                              </div>
+                            );
+                          }
+                          return null;
+                        })()}
+                      </TableCell>
                       <TableCell className="text-center">
                         <div className="flex items-center justify-center gap-2">
                           <Button variant="outline" size="sm" onClick={() => printSingleBill(bill.id)}>
@@ -1530,23 +1544,94 @@ export default function BillingPage() {
                 )}
               </div>
 
-              {/* Chọn hóa đơn */}
+              {/* Chọn hóa đơn & Hiển thị công nợ chi tiết */}
               {selectedStudentId && (
-                <div>
-                  <Label className="font-medium">2. Chọn hóa đơn cần thanh toán:</Label>
+                <div className="space-y-3">
+                  <Label className="font-semibold text-slate-900">2. Chọn hóa đơn cần thanh toán:</Label>
                   {studentUnpaidBills.length > 0 ? (
-                    <Select value={selectedBillId} onValueChange={setSelectedBillId}>
-                      <SelectTrigger className="mt-1">
-                        <SelectValue placeholder="-- Chọn hóa đơn --" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {studentUnpaidBills.map((b) => (
-                          <SelectItem key={b.id} value={b.id}>
-                            Tháng {b.month}/{b.year} — Cần nộp: {formatVND(b.finalAmount)} ({b.paymentStatus === "PAID" ? "Đã thanh toán" : "Chưa thanh toán"})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <>
+                      <Select value={selectedBillId} onValueChange={setSelectedBillId}>
+                        <SelectTrigger className="mt-1">
+                          <SelectValue placeholder="-- Chọn hóa đơn --" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {studentUnpaidBills.map((b) => {
+                            const paid = (b.transactions || []).reduce((sum: number, t: any) => sum + Number(t.amount), 0);
+                            const remaining = Math.max(0, Number(b.finalAmount) - paid);
+                            const statusText = b.paymentStatus === "PAID" ? "Đã thanh toán" : b.paymentStatus === "PARTIAL" ? "Đã nộp 1 phần" : "Chưa thanh toán";
+                            return (
+                              <SelectItem key={b.id} value={b.id}>
+                                Tháng {b.month}/{b.year} — Còn nợ: {formatVND(remaining)} (Tổng: {formatVND(b.finalAmount)}{paid > 0 ? ` | Đã nộp: ${formatVND(paid)}` : ""}) — {statusText}
+                              </SelectItem>
+                            );
+                          })}
+                        </SelectContent>
+                      </Select>
+
+                      {/* Bảng tính chi tiết công nợ hóa đơn đang chọn */}
+                      {(() => {
+                        const activeBill = studentUnpaidBills.find((b) => b.id === selectedBillId);
+                        if (!activeBill) return null;
+
+                        const billTotal = Number(activeBill.finalAmount);
+                        const billPaid = (activeBill.transactions || []).reduce((sum: number, t: any) => sum + Number(t.amount), 0);
+                        const billRemaining = Math.max(0, billTotal - billPaid);
+                        const txAmount = Number(selectedTxForMatch.amount);
+                        const willComplete = txAmount >= billRemaining;
+
+                        return (
+                          <div className="rounded-lg border bg-slate-50/80 p-3.5 text-xs space-y-2 border-slate-200 shadow-sm">
+                            <div className="font-semibold text-slate-800 border-b pb-1.5 flex justify-between items-center">
+                              <span>Chi tiết công nợ Tháng {activeBill.month}/{activeBill.year}:</span>
+                              {activeBill.paymentStatus === "PARTIAL" ? (
+                                <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-[10px]">Đã nộp 1 phần</Badge>
+                              ) : activeBill.paymentStatus === "PAID" ? (
+                                <Badge className="bg-green-100 text-green-800 border-green-300 text-[10px]">Đã thanh toán</Badge>
+                              ) : (
+                                <Badge className="bg-red-100 text-red-800 border-red-300 text-[10px]">Chưa thanh toán</Badge>
+                              )}
+                            </div>
+
+                            <div className="space-y-1.5">
+                              <div className="flex justify-between text-slate-600">
+                                <span>Tổng tiền hóa đơn:</span>
+                                <span className="font-semibold text-slate-900">{formatVND(billTotal)}</span>
+                              </div>
+                              {billPaid > 0 && (
+                                <div className="flex justify-between text-emerald-700">
+                                  <span>Đã thanh toán trước đó:</span>
+                                  <span className="font-semibold">-{formatVND(billPaid)}</span>
+                                </div>
+                              )}
+                              <div className="flex justify-between text-amber-900 font-bold border-t pt-1.5 text-sm">
+                                <span>Công nợ còn lại hiện tại:</span>
+                                <span className="text-red-600">{formatVND(billRemaining)}</span>
+                              </div>
+                            </div>
+
+                            <div className={`p-2.5 rounded-md border mt-2 ${willComplete ? "bg-emerald-50 border-emerald-300 text-emerald-900" : "bg-blue-50 border-blue-300 text-blue-900"}`}>
+                              <div className="flex justify-between font-bold">
+                                <span>Giao dịch này gạch nợ:</span>
+                                <span className="text-sm font-extrabold">{formatVND(txAmount)}</span>
+                              </div>
+                              <div className="text-[11px] mt-1 pt-1 border-t border-emerald-200/60 flex items-center gap-1">
+                                {willComplete ? (
+                                  <>
+                                    <CheckCircle className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                                    <span>🎉 Đủ tiền! Hóa đơn sẽ được cập nhật thành <strong>ĐÃ THANH TOÁN (PAID)</strong>.</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <AlertTriangle className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                                    <span>Vẫn còn nợ: <strong>{formatVND(billRemaining - txAmount)}</strong> (Tiếp tục trạng thái Thanh toán 1 phần).</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </>
                   ) : (
                     <p className="text-xs text-gray-500 mt-1 italic">
                       Học sinh này chưa có hóa đơn nào. Vui lòng tạo hóa đơn trước.
