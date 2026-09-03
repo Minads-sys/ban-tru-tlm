@@ -112,6 +112,7 @@ model Student {
   mealCancellations MealCancellation[]
   monthlyBills      MonthlyBill[]
   settlementRecords SettlementRecord[]
+  paymentTransactions PaymentTransaction[]
 
   @@index([classId])
   @@index([boardingStatus])
@@ -257,19 +258,35 @@ model MonthlyBill {
 
 // ==================== GIAO DỊCH THANH TOÁN ====================
 
+enum PaymentTransactionStatus {
+  MATCHED
+  UNMATCHED
+  MANUAL
+  IGNORED
+}
+
 model PaymentTransaction {
-  id          String   @id @default(cuid())
-  billId      String   @map("bill_id")
-  sepayTransId String? @map("sepay_trans_id")
-  amount      Decimal  @db.Decimal(10, 0)
-  content     String
-  transDate   DateTime @default(now()) @map("trans_date")
+  id              String                   @id @default(cuid())
+  billId          String?                  @map("bill_id")
+  studentId       String?                  @map("student_id")
+  sepayTransId    String?                  @unique @map("sepay_trans_id")
+  amount          Decimal                  @db.Decimal(10, 0)
+  content         String
+  transDate       DateTime                 @default(now()) @map("trans_date")
+  gateway         String?                  @map("gateway")
+  accountNumber   String?                  @map("account_number")
+  status          PaymentTransactionStatus @default(MATCHED) @map("status")
+  unmatchedReason String?                  @map("unmatched_reason")
+  rawPayload      String?                  @map("raw_payload")
 
   // Quan hệ
-  bill MonthlyBill @relation(fields: [billId], references: [id])
+  bill    MonthlyBill? @relation(fields: [billId], references: [id])
+  student Student?     @relation(fields: [studentId], references: [id])
 
   @@index([billId])
+  @@index([studentId])
   @@index([sepayTransId])
+  @@index([status])
   @@map("payment_transactions")
 }
 

@@ -79,14 +79,17 @@ export function generateMealPaymentQR(
   amount: number,
   customBankInfo?: { bankBin?: string; bankName?: string; accountNo?: string; accountName?: string }
 ): string {
-  let bankBin = customBankInfo?.bankBin || process.env.VIETQR_BANK_BIN || '970422';
+  let bankBin = customBankInfo?.bankBin || process.env.VIETQR_BANK_BIN || '970418';
   if (customBankInfo?.bankName && BANK_BINS[customBankInfo.bankName]) {
     bankBin = BANK_BINS[customBankInfo.bankName];
   }
   
-  const accountNo = customBankInfo?.accountNo || process.env.VIETQR_ACCOUNT_NO || '';
-  const accountName = customBankInfo?.accountName || process.env.VIETQR_ACCOUNT_NAME || 'TRUONG TH TLM';
-  const description = `BSTLM ${studentId} T${month}`;
+  const accountNo = customBankInfo?.accountNo || process.env.VIETQR_ACCOUNT_NO || '96247BANTRUTLM08';
+  const accountName = customBankInfo?.accountName || process.env.VIETQR_ACCOUNT_NAME || 'HOANG KIM';
+  
+  const mm = String(month).padStart(2, '0');
+  const yy = String(year).slice(-2);
+  const description = `BSTLM ${studentId} T${mm}${yy}`;
 
   return generateVietQR({
     bankBin,
