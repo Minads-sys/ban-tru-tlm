@@ -58,6 +58,7 @@ import {
 import { StudentPortal } from '@/components/student-portal';
 import { useRealtime } from '@/hooks/use-realtime';
 import { SearchableClassSelect } from '@/components/searchable-class-select';
+import Swal from 'sweetalert2';
 
 interface StudentItem {
   id: string;
@@ -147,6 +148,7 @@ export default function AdminStudentsPage() {
     generateBill: true,
   });
   const [isSubmittingCreate, setIsSubmittingCreate] = useState<boolean>(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   // Delete dialog states
   const [deletingStudent, setDeletingStudent] = useState<StudentItem | null>(null);
@@ -233,17 +235,29 @@ export default function AdminStudentsPage() {
 
   // Tổng hợp danh sách lớp từ bảng classes + students, sắp xếp tự nhiên (10A1, 10A2... TEST 1)
   const classOptions = useMemo(() => {
-    const classSet = new Set<string>();
+    const list: { id: string; name: string }[] = [];
+    const seenIds = new Set<string>();
+
     classes.forEach((c) => {
-      if (c.name) classSet.add(c.name);
-      else if (c.id) classSet.add(c.id);
+      const id = c.id;
+      const name = c.name || c.id;
+      if (!seenIds.has(id)) {
+        seenIds.add(id);
+        list.push({ id, name });
+      }
     });
+
     students.forEach((s) => {
-      if (s.class?.name) classSet.add(s.class.name);
-      else if (s.classId) classSet.add(s.classId);
+      const id = s.classId;
+      const name = s.class?.name || s.classId;
+      if (id && !seenIds.has(id)) {
+        seenIds.add(id);
+        list.push({ id, name });
+      }
     });
-    return Array.from(classSet).sort((a, b) =>
-      a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
+
+    return list.sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
     );
   }, [classes, students]);
 
@@ -430,6 +444,7 @@ export default function AdminStudentsPage() {
   const handleConfirmCreate = async () => {
     setIsSubmittingCreate(true);
     setStatusMessage(null);
+    setCreateError(null);
 
     try {
       const res = await fetch('/api/students', {
@@ -459,12 +474,27 @@ export default function AdminStudentsPage() {
         generateBill: true,
       });
       setStatusMessage({ type: 'success', text: data.message || 'Đăng ký học sinh mới thành công' });
+      Swal.fire({
+        title: 'Đăng ký thành công!',
+        html: `<div class="text-left text-sm space-y-1">
+          <p><b>Học sinh:</b> ${createFormData.fullName}</p>
+          <p class="text-emerald-700">${data.message || 'Đã thêm học sinh vào hệ thống bán trú thành công.'}</p>
+        </div>`,
+        icon: 'success',
+      });
       await fetchStudents(selectedClass, selectedStatus);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Create student error:', err);
+      const errMsg = err instanceof Error ? err.message : 'Có lỗi xảy ra khi tạo';
+      setCreateError(errMsg);
       setStatusMessage({
         type: 'error',
-        text: err instanceof Error ? err.message : 'Có lỗi xảy ra khi tạo',
+        text: errMsg,
+      });
+      Swal.fire({
+        title: 'Không thể đăng ký học sinh',
+        text: errMsg,
+        icon: 'error',
       });
     } finally {
       setIsSubmittingCreate(false);
@@ -752,8 +782,8 @@ export default function AdminStudentsPage() {
                 <SelectContent>
                   <SelectItem value="ALL">Tất cả các lớp</SelectItem>
                   {classOptions.map((cls) => (
-                    <SelectItem key={cls} value={cls}>
-                      Lớp {cls}
+                    <SelectItem key={cls.id} value={cls.id}>
+                      Lớp {cls.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1436,6 +1466,12 @@ export default function AdminStudentsPage() {
           </DialogHeader>
 
           <div className="space-y-4 py-2">
+            {createError && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded text-xs text-red-700 flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 shrink-0 text-red-600" />
+                <span>{createError}</span>
+              </div>
+            )}
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-slate-700">Họ và Tên (*)</label>
               <Input

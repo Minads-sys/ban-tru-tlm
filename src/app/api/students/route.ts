@@ -49,6 +49,20 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Thiếu các thông tin bắt buộc" }, { status: 400 });
       }
 
+      // Tìm lớp học theo id hoặc name (đảm bảo đúng Foreign Key)
+      const classObj = await prisma.class.findFirst({
+        where: {
+          OR: [
+            { id: classId },
+            { name: classId },
+          ],
+        },
+      });
+      if (!classObj) {
+        return NextResponse.json({ error: `Không tìm thấy lớp học: ${classId}` }, { status: 400 });
+      }
+      const finalClassId = classObj.id;
+
       // Check existing studentCode
       const existing = await prisma.student.findUnique({
         where: { studentCode },
@@ -114,7 +128,7 @@ export async function POST(request: NextRequest) {
           studentCode: studentCode.trim(),
           boardingCode: finalBoardingCode,
           userId: user.id,
-          classId: classId,
+          classId: finalClassId,
           gender: gender === "NU" ? "FEMALE" : "MALE",
           mealType: mealType || "MAN",
           boardingStatus: "ACTIVE",
@@ -168,6 +182,7 @@ export async function POST(request: NextRequest) {
               canceledDays: 0,
               netPayableDays: workdays,
               unitPrice,
+              totalAmount: finalAmount,
               previousDeduction: 0,
               finalAmount,
               paymentStatus: "UNPAID",
@@ -177,7 +192,13 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      return NextResponse.json({ message: "Đăng ký học sinh thành công" });
+      return NextResponse.json({
+        success: true,
+        message: generateBill
+          ? `Đăng ký học sinh thành công và đã tạo hóa đơn tháng ${new Date().getMonth() + 1}/${new Date().getFullYear()}`
+          : "Đăng ký học sinh thành công",
+        student: newStudent,
+      });
     }
 
     if (!studentId) {
@@ -399,12 +420,22 @@ export async function PUT(request: NextRequest) {
     }
 
     // Cập nhật Student
+    let updateClassId = student.classId;
+    if (classId) {
+      const classObj = await prisma.class.findFirst({
+        where: {
+          OR: [{ id: classId }, { name: classId }],
+        },
+      });
+      if (classObj) updateClassId = classObj.id;
+    }
+
     await prisma.student.update({
       where: { id: studentId },
       data: {
         studentCode: trimmedNewCode || student.studentCode,
         boardingCode: trimmedBoardingCode || student.boardingCode,
-        classId: classId || student.classId,
+        classId: updateClassId,
         mealType: mealType || student.mealType,
         parentPhone: parentPhone !== undefined ? parentPhone : student.parentPhone,
       },

@@ -3,10 +3,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Search, ChevronDown, Check, X } from 'lucide-react';
 
+export type ClassOptionItem = string | { id: string; name: string };
+
 interface SearchableClassSelectProps {
   value: string;
   onChange: (value: string) => void;
-  options: string[];
+  options: ClassOptionItem[];
   placeholder?: string;
   className?: string;
   disabled?: boolean;
@@ -45,10 +47,26 @@ export function SearchableClassSelect({
     }
   }, [isOpen]);
 
-  const filteredOptions = options.filter((cls) => {
+  // Chuẩn hóa danh sách options thành { id, name }
+  const normalizedOptions = options.map((opt) => {
+    if (typeof opt === 'string') {
+      return { id: opt, name: opt };
+    }
+    return { id: opt.id, name: opt.name || opt.id };
+  });
+
+  // Tìm label hiển thị cho giá trị đang chọn
+  const selectedOption = normalizedOptions.find((opt) => opt.id === value || opt.name === value);
+  const displayLabel = selectedOption ? `Lớp ${selectedOption.name}` : value ? `Lớp ${value}` : placeholder;
+
+  const filteredOptions = normalizedOptions.filter((opt) => {
     const q = search.toLowerCase().trim();
     if (!q) return true;
-    return cls.toLowerCase().includes(q) || `lớp ${cls}`.toLowerCase().includes(q);
+    return (
+      opt.name.toLowerCase().includes(q) ||
+      opt.id.toLowerCase().includes(q) ||
+      `lớp ${opt.name}`.toLowerCase().includes(q)
+    );
   });
 
   return (
@@ -61,8 +79,8 @@ export function SearchableClassSelect({
           isOpen ? 'ring-2 ring-ring ring-offset-2' : ''
         }`}
       >
-        <span className={`truncate ${value ? 'font-medium text-slate-900' : 'text-slate-500'}`}>
-          {value ? `Lớp ${value}` : placeholder}
+        <span className={`truncate ${selectedOption || value ? 'font-medium text-slate-900' : 'text-slate-500'}`}>
+          {displayLabel}
         </span>
         <ChevronDown className="h-4 w-4 opacity-50 shrink-0 ml-2" />
       </button>
@@ -94,14 +112,14 @@ export function SearchableClassSelect({
           {/* Danh sách lớp cuộn mượt */}
           <div className="max-h-60 overflow-y-auto p-1 text-sm">
             {filteredOptions.length > 0 ? (
-              filteredOptions.map((cls) => {
-                const isSelected = value === cls;
+              filteredOptions.map((opt) => {
+                const isSelected = value === opt.id || value === opt.name;
                 return (
                   <button
-                    key={cls}
+                    key={opt.id}
                     type="button"
                     onClick={() => {
-                      onChange(cls);
+                      onChange(opt.id);
                       setIsOpen(false);
                     }}
                     className={`flex w-full items-center justify-between px-2.5 py-1.5 text-xs rounded transition-colors text-left ${
@@ -110,7 +128,7 @@ export function SearchableClassSelect({
                         : 'text-slate-700 hover:bg-slate-100'
                     }`}
                   >
-                    <span>Lớp {cls}</span>
+                    <span>Lớp {opt.name}</span>
                     {isSelected && <Check className="h-3.5 w-3.5 text-blue-600 shrink-0" />}
                   </button>
                 );
