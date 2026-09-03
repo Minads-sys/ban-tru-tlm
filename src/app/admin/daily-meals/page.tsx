@@ -140,9 +140,11 @@ export default function DailyMealsPage() {
 
   // Fetch daily meals data
   const fetchData = useCallback(
-    async (dateToFetch: string) => {
-      setIsLoading(true);
-      setAlertMessage(null);
+    async (dateToFetch: string, showLoading = true) => {
+      if (showLoading) {
+        setIsLoading(true);
+        setAlertMessage(null);
+      }
       try {
         const res = await fetch(`/api/daily-meals?date=${dateToFetch}`);
         const result: DailyMealsResponse = await res.json();
@@ -160,13 +162,15 @@ export default function DailyMealsPage() {
         }
       } catch (error) {
         console.error('Fetch daily meals error:', error);
-        setAlertMessage({
-          type: 'error',
-          text: error instanceof Error ? error.message : 'Có lỗi xảy ra khi tải dữ liệu',
-        });
-        setData(null);
+        if (showLoading) {
+          setAlertMessage({
+            type: 'error',
+            text: error instanceof Error ? error.message : 'Có lỗi xảy ra khi tải dữ liệu',
+          });
+          setData(null);
+        }
       } finally {
-        setIsLoading(false);
+        if (showLoading) setIsLoading(false);
       }
     },
     []
@@ -177,10 +181,10 @@ export default function DailyMealsPage() {
     fetchData(selectedDate);
   }, [selectedDate, fetchData]);
 
-  // Lắng nghe thay đổi Realtime từ máy chủ VPS (khi cắt suất, đổi món, đổi loại suất ăn...)
+  // Lắng nghe thay đổi Realtime từ máy chủ VPS ngầm (không làm chớp màn hình)
   useRealtime({
     table: 'daily_meals',
-    onChanged: () => fetchData(selectedDate),
+    onChanged: () => fetchData(selectedDate, false),
   });
 
   // Helper check if report is past lock time 2 (chốt chính thức)

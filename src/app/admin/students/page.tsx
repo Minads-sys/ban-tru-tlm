@@ -163,8 +163,8 @@ export default function AdminStudentsPage() {
   } | null>(null);
 
   // Fetch students from API
-  const fetchStudents = useCallback(async (classIdParam: string, statusParam: string) => {
-    setIsLoading(true);
+  const fetchStudents = useCallback(async (classIdParam: string, statusParam: string, showLoading = true) => {
+    if (showLoading) setIsLoading(true);
     try {
       const params = new URLSearchParams();
       if (classIdParam && classIdParam !== 'ALL') {
@@ -191,7 +191,7 @@ export default function AdminStudentsPage() {
         text: err instanceof Error ? err.message : 'Lỗi khi tải danh sách học sinh',
       });
     } finally {
-      setIsLoading(false);
+      if (showLoading) setIsLoading(false);
     }
   }, []);
 
@@ -200,11 +200,11 @@ export default function AdminStudentsPage() {
     fetchStudents(selectedClass, selectedStatus);
   }, [selectedClass, selectedStatus, fetchStudents]);
 
-  // Realtime: tự cập nhật khi có thay đổi trên bảng students
+  // Realtime: tự cập nhật ngầm khi có thay đổi trên bảng students (không làm chớp màn hình)
   useRealtime({
     table: 'students',
     event: '*',
-    onChanged: () => fetchStudents(selectedClass, selectedStatus),
+    onChanged: () => fetchStudents(selectedClass, selectedStatus, false),
   });
 
   // Danh sách toàn bộ lớp học từ CSDL
