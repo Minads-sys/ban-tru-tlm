@@ -22,7 +22,9 @@ import {
   Copy,
   Check,
   CreditCard,
+  History,
 } from "lucide-react";
+import { generateMealPaymentQR } from "@/lib/vietqr";
 import {
   Card,
   CardHeader,
@@ -98,6 +100,14 @@ interface StudentBill {
   finalAmount: string | number;
   paymentStatus: "UNPAID" | "PAID" | "PARTIAL" | "SETTLED";
   qrCodeUrl: string | null;
+  transactions?: Array<{
+    id: string;
+    amount: string | number;
+    transDate: string;
+    content?: string;
+    gateway?: string | null;
+    status: string;
+  }>;
 }
 
 export function StudentPortal({ forceStudentId, readOnly = false }: { forceStudentId?: string, readOnly?: boolean }) {
@@ -117,6 +127,26 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
   const [bills, setBills] = useState<StudentBill[]>([]);
   const [loadingBills, setLoadingBills] = useState<boolean>(true);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  // Tab và Lịch sử thanh toán
+  const [activeTab, setActiveTab] = useState<string>("cancel");
+  const [selectedHistoryYear, setSelectedHistoryYear] = useState<number>(new Date().getFullYear());
+
+  const formatMoney = (val: number | string) =>
+    new Intl.NumberFormat("vi-VN").format(Math.max(0, Math.round(Number(val || 0)))) + "đ";
+
+  // Danh sách các phiếu còn nợ (UNPAID hoặc PARTIAL)
+  const debtBills = bills.filter(
+    (b) => b.paymentStatus === "UNPAID" || b.paymentStatus === "PARTIAL"
+  );
+
+  // Danh sách các năm có hóa đơn
+  const availableYears = Array.from(
+    new Set([new Date().getFullYear(), ...bills.map((b) => b.year)])
+  ).sort((a, b) => b - a);
+
+  // Hóa đơn lịch sử theo năm đã chọn
+  const historyBills = bills.filter((b) => b.year === selectedHistoryYear);
 
   // States for Cancel Form
   const [cancelDate, setCancelDate] = useState<string>("");
@@ -531,19 +561,28 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
         )}
       </Card>
 
-      <Tabs defaultValue="cancel" className="w-full">
-        <TabsList className="grid w-full grid-cols-3 mb-6 p-1 bg-slate-200">
-          <TabsTrigger value="cancel" className="data-[state=active]:bg-red-600 data-[state=active]:text-white text-slate-600 font-medium data-[state=active]:shadow-sm">
-            <Calendar className="h-4 w-4 mr-2" />
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 mb-6 p-1 bg-slate-200 gap-1 h-auto">
+          <TabsTrigger value="cancel" className="data-[state=active]:bg-red-600 data-[state=active]:text-white text-slate-600 font-medium data-[state=active]:shadow-sm py-2 text-xs sm:text-sm">
+            <Calendar className="h-4 w-4 mr-1.5 shrink-0" />
             {readOnly ? 'Lịch sử Cắt suất' : 'Cắt suất ăn'}
           </TabsTrigger>
-          <TabsTrigger value="override" className="data-[state=active]:bg-green-600 data-[state=active]:text-white text-slate-600 font-medium data-[state=active]:shadow-sm">
-            <RefreshCw className="h-4 w-4 mr-2" />
-            {readOnly ? 'Lịch sử Đổi món' : 'Thay đổi món ăn'}
+          <TabsTrigger value="override" className="data-[state=active]:bg-green-600 data-[state=active]:text-white text-slate-600 font-medium data-[state=active]:shadow-sm py-2 text-xs sm:text-sm">
+            <RefreshCw className="h-4 w-4 mr-1.5 shrink-0" />
+            {readOnly ? 'Lịch sử Đổi món' : 'Đổi món ăn'}
           </TabsTrigger>
-          <TabsTrigger value="billing" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white text-slate-600 font-medium data-[state=active]:shadow-sm">
-            <Receipt className="h-4 w-4 mr-2" />
-            Tiền ăn & Thanh toán
+          <TabsTrigger value="debt" className="data-[state=active]:bg-amber-600 data-[state=active]:text-white text-slate-600 font-medium data-[state=active]:shadow-sm py-2 text-xs sm:text-sm flex items-center justify-center gap-1">
+            <AlertCircle className="h-4 w-4 mr-1 shrink-0" />
+            <span>DS công nợ</span>
+            {debtBills.length > 0 && (
+              <Badge className="bg-rose-600 text-white text-[10px] px-1.5 py-0 h-4 min-w-4 flex items-center justify-center rounded-full ml-1 font-bold">
+                {debtBills.length}
+              </Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="history" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white text-slate-600 font-medium data-[state=active]:shadow-sm py-2 text-xs sm:text-sm">
+            <History className="h-4 w-4 mr-1.5 shrink-0" />
+            Lịch sử thanh toán
           </TabsTrigger>
         </TabsList>
 
@@ -826,45 +865,64 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
             </div>
           </TabsContent>
 
-          {/* TAB 3: TIỀN ĂN & THANH TOÁN */}
-          <TabsContent value="billing">
+          {/* TAB 3: DANH SÁCH CÔNG NỢ (CHỈ HIỆN CÁC PHIẾU CÒN NỢ) */}
+          <TabsContent value="debt">
             <div className="space-y-6">
               {loadingBills ? (
                 <Card className="p-8 text-center text-slate-500">
                   <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-blue-600" />
-                  Đang tải thông tin tiền ăn...
+                  Đang tải thông tin công nợ...
                 </Card>
-              ) : bills.length === 0 ? (
-                <Card className="p-8 text-center text-slate-400">
-                  <Receipt className="h-10 w-10 mx-auto mb-2 opacity-50 text-slate-400" />
-                  <p className="font-medium text-slate-600">Chưa có thông báo tiền ăn nào</p>
-                  <p className="text-xs text-slate-400 mt-1">
-                    Nhà trường chưa phát hành hóa đơn tiền ăn cho học sinh.
+              ) : debtBills.length === 0 ? (
+                <Card className="p-8 text-center bg-emerald-50/40 border border-emerald-200 shadow-xs">
+                  <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <CheckCircle className="h-6 w-6" />
+                  </div>
+                  <h3 className="text-base font-bold text-slate-800">Không có công nợ tiền ăn</h3>
+                  <p className="text-xs text-slate-600 mt-1 max-w-md mx-auto">
+                    Học sinh {studentInfo?.user?.fullName} hiện không có phiếu báo tiền ăn nào còn nợ. Cảm ơn quý phụ huynh đã hoàn thành đầy đủ các khoản tiền ăn bán trú!
                   </p>
+                  <div className="mt-4">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setActiveTab("history")}
+                      className="text-xs text-blue-700 border-blue-200 bg-white hover:bg-blue-50"
+                    >
+                      <History className="h-3.5 w-3.5 mr-1.5" />
+                      Xem lại Lịch sử thanh toán trong năm
+                    </Button>
+                  </div>
                 </Card>
               ) : (
                 <div className="space-y-6">
-                  {bills.map((bill, index) => {
+                  {debtBills.map((bill, index) => {
                     const isLatest = index === 0;
-                    const isPaid = bill.paymentStatus === "PAID";
                     const isPartial = bill.paymentStatus === "PARTIAL";
+                    const billTotal = Number(bill.finalAmount);
+                    const paidAmount = (bill.transactions || []).reduce((sum, t) => sum + Number(t.amount), 0);
+                    const remainingAmount = Math.max(0, billTotal - paidAmount);
+
+                    // Sinh QR Code động với số tiền CÒN NỢ thực tế
+                    const qrUrl = generateMealPaymentQR(
+                      studentInfo?.boardingCode || studentInfo?.studentCode || "",
+                      bill.month,
+                      bill.year,
+                      remainingAmount
+                    );
 
                     return (
                       <Card
                         key={bill.id}
                         className={`overflow-hidden border-2 transition-all ${
-                          isLatest
-                            ? isPaid
-                              ? "border-green-200 bg-green-50/10 shadow-sm"
-                              : "border-blue-200 bg-white shadow-md"
-                            : "border-slate-200 bg-white"
+                          isPartial ? "border-amber-300 bg-white shadow-md" : "border-rose-300 bg-white shadow-md"
                         }`}
                       >
-                        <CardHeader className={`border-b pb-4 ${isLatest && !isPaid ? "bg-blue-50/60" : "bg-slate-50"}`}>
+                        <CardHeader className={`border-b pb-3 ${isPartial ? "bg-amber-50/70" : "bg-rose-50/50"}`}>
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                             <div>
                               <div className="flex items-center gap-2">
-                                <CardTitle className="text-lg font-bold text-slate-900">
+                                <CardTitle className="text-base sm:text-lg font-bold text-slate-900">
                                   Hóa đơn tiền ăn Tháng {bill.month}/{bill.year}
                                 </CardTitle>
                                 {isLatest && (
@@ -876,146 +934,346 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                               </CardDescription>
                             </div>
                             <div>
-                              {isPaid ? (
-                                <Badge className="bg-green-100 text-green-700 border-green-300 font-semibold px-3 py-1 flex items-center gap-1">
-                                  <CheckCircle className="h-3.5 w-3.5" /> Đã thanh toán
-                                </Badge>
-                              ) : isPartial ? (
-                                <Badge className="bg-yellow-100 text-yellow-800 border-yellow-300 font-semibold px-3 py-1 flex items-center gap-1">
-                                  <AlertCircle className="h-3.5 w-3.5" /> Đã thanh toán một phần
+                              {isPartial ? (
+                                <Badge className="bg-amber-100 text-amber-900 border-amber-300 font-semibold px-2.5 py-1 text-xs flex items-center gap-1">
+                                  <AlertCircle className="h-3.5 w-3.5 text-amber-600" />
+                                  Đã thanh toán một phần
                                 </Badge>
                               ) : (
-                                <Badge className="bg-rose-100 text-rose-700 border-rose-300 font-semibold px-3 py-1 flex items-center gap-1">
-                                  <Clock className="h-3.5 w-3.5" /> Chưa thanh toán
+                                <Badge className="bg-rose-100 text-rose-700 border-rose-300 font-semibold px-2.5 py-1 text-xs flex items-center gap-1">
+                                  <Clock className="h-3.5 w-3.5" />
+                                  Chưa thanh toán
                                 </Badge>
                               )}
                             </div>
                           </div>
                         </CardHeader>
 
-                        <CardContent className="pt-5 space-y-6">
-                          {/* Bảng chi tiết tính tiền */}
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                            <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
-                              <span className="text-slate-500 block">Số ngày ăn dự kiến:</span>
-                              <span className="text-base font-bold text-slate-800">{bill.scheduleMealDays} ngày</span>
+                        <CardContent className="pt-4 space-y-4 text-xs">
+                          {/* Bảng tóm tắt thông số */}
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                            <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-100">
+                              <span className="text-slate-500 block text-[11px]">Số ngày ăn dự kiến:</span>
+                              <span className="text-sm font-bold text-slate-800">{bill.scheduleMealDays} ngày</span>
                             </div>
-                            <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
-                              <span className="text-slate-500 block">Đã duyệt cắt suất:</span>
-                              <span className="text-base font-bold text-rose-600">{bill.canceledDays} ngày</span>
+                            <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-100">
+                              <span className="text-slate-500 block text-[11px]">Đã duyệt cắt suất:</span>
+                              <span className="text-sm font-bold text-rose-600">{bill.canceledDays} ngày</span>
                             </div>
-                            <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
-                              <span className="text-slate-500 block">Trừ tiền tháng trước:</span>
-                              <span className="text-base font-bold text-amber-600">
-                                -{new Intl.NumberFormat("vi-VN").format(Number(bill.previousDeduction))}đ
+                            <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-100">
+                              <span className="text-slate-500 block text-[11px]">Tổng tiền hóa đơn:</span>
+                              <span className="text-sm font-bold text-slate-800">{formatMoney(billTotal)}</span>
+                            </div>
+                            <div className={`p-2.5 rounded-lg border ${isPartial ? "bg-amber-50/80 border-amber-200" : "bg-rose-50/80 border-rose-200"}`}>
+                              <span className={`block text-[11px] font-medium ${isPartial ? "text-amber-800" : "text-rose-700"}`}>
+                                Số tiền CÒN NỢ:
                               </span>
-                            </div>
-                            <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
-                              <span className="text-blue-700 font-medium block">Số tiền cần nộp:</span>
-                              <span className="text-base font-extrabold text-blue-900">
-                                {new Intl.NumberFormat("vi-VN").format(Number(bill.finalAmount))}đ
+                              <span className={`text-base font-extrabold ${isPartial ? "text-amber-900" : "text-rose-700"}`}>
+                                {formatMoney(remainingAmount)}
                               </span>
                             </div>
                           </div>
 
-                          {/* Khung quét mã VietQR nếu chưa thanh toán */}
-                          {!isPaid && Number(bill.finalAmount) > 0 && (
-                            <div className="border-2 border-dashed border-blue-200 bg-blue-50/40 rounded-xl p-4 sm:p-5 flex flex-col md:flex-row items-center gap-6">
-                              {/* QR Code */}
-                              {bill.qrCodeUrl && (
-                                <div className="shrink-0 flex flex-col items-center bg-white p-3 rounded-lg border border-blue-100 shadow-xs">
-                                  <img
-                                    src={bill.qrCodeUrl}
-                                    alt="QR Thanh toán Tiền ăn"
-                                    className="w-44 h-44 object-contain"
-                                    loading="eager"
-                                  />
-                                  <span className="text-[11px] text-blue-600 font-medium mt-1">
-                                    Quét bằng app ngân hàng
+                          {/* Nếu là thanh toán 1 phần: Hiển thị phân tích công nợ & lịch sử đã nộp */}
+                          {isPartial && (
+                            <div className="rounded-lg border border-amber-200 bg-amber-50/40 p-3 space-y-2">
+                              <div className="font-semibold text-amber-950 flex items-center justify-between text-xs border-b border-amber-200/60 pb-1.5">
+                                <span className="flex items-center gap-1.5">
+                                  <AlertCircle className="h-4 w-4 text-amber-600" />
+                                  Chi tiết công nợ đã trả & còn lại:
+                                </span>
+                                <span className="text-amber-800 font-normal">
+                                  Đã nộp: <strong className="text-emerald-700 font-bold">{formatMoney(paidAmount)}</strong> / {formatMoney(billTotal)}
+                                </span>
+                              </div>
+
+                              {/* Danh sách các lần chuyển khoản đã ghi nhận của phiếu này */}
+                              {bill.transactions && bill.transactions.length > 0 && (
+                                <div className="space-y-1.5 pt-1">
+                                  <span className="text-[11px] text-slate-500 font-medium block">
+                                    Lịch sử các lần đã chuyển khoản cho phiếu Tháng {bill.month}/{bill.year}:
                                   </span>
+                                  <div className="space-y-1">
+                                    {bill.transactions.map((tx, txIdx) => (
+                                      <div
+                                        key={tx.id || txIdx}
+                                        className="flex items-center justify-between p-2 rounded bg-white border border-amber-100 text-[11px]"
+                                      >
+                                        <div>
+                                          <div className="font-medium text-slate-800">
+                                            Lần {bill.transactions!.length - txIdx}:{" "}
+                                            <span className="font-bold text-emerald-700">+{formatMoney(tx.amount)}</span>
+                                          </div>
+                                          <div className="text-[10px] text-slate-500 font-mono">
+                                            {new Date(tx.transDate).toLocaleString("vi-VN")}
+                                            {tx.content && ` — ${tx.content}`}
+                                          </div>
+                                        </div>
+                                        <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 text-[10px] shrink-0">
+                                          Đã ghi nhận
+                                        </Badge>
+                                      </div>
+                                    ))}
+                                  </div>
                                 </div>
                               )}
+                            </div>
+                          )}
 
-                              {/* Hướng dẫn và thông tin chuyển khoản */}
-                              <div className="flex-1 space-y-3 w-full text-xs">
-                                <div className="space-y-1">
-                                  <h4 className="font-bold text-sm text-slate-800 uppercase flex items-center gap-1.5">
-                                    <CreditCard className="h-4 w-4 text-blue-600" />
-                                    Hướng dẫn Chuyển khoản Tự động gạch nợ
-                                  </h4>
-                                  <p className="text-slate-600 text-[11px]">
-                                    Quý phụ huynh mở app Ngân hàng (MB, Vietcombank, Techcombank, BIDV...) quét mã QR trên để hệ thống tự động gạch nợ trong vòng <b>1-3 giây</b>.
-                                  </p>
+                          {/* Khung quét mã VietQR để nộp phần tiền CÒN LẠI */}
+                          <div className="border-2 border-dashed border-blue-200 bg-blue-50/40 rounded-xl p-3 sm:p-4 flex flex-col md:flex-row items-center gap-4 sm:gap-6">
+                            {/* QR Code */}
+                            <div className="shrink-0 flex flex-col items-center bg-white p-2.5 rounded-lg border border-blue-100 shadow-xs">
+                              <img
+                                src={qrUrl}
+                                alt="QR Thanh toán Tiền ăn"
+                                className="w-40 h-40 object-contain"
+                                loading="eager"
+                              />
+                              <span className="text-[11px] text-blue-600 font-bold mt-1">
+                                Quét để nộp: {formatMoney(remainingAmount)}
+                              </span>
+                            </div>
+
+                            {/* Hướng dẫn và thông tin chuyển khoản */}
+                            <div className="flex-1 space-y-2.5 w-full text-xs">
+                              <div className="space-y-0.5">
+                                <h4 className="font-bold text-xs sm:text-sm text-slate-800 uppercase flex items-center gap-1.5">
+                                  <CreditCard className="h-4 w-4 text-blue-600" />
+                                  {isPartial ? "Quét mã để nộp tiếp phần nợ còn lại" : "Hướng dẫn Chuyển khoản Tự động gạch nợ"}
+                                </h4>
+                                <p className="text-slate-600 text-[11px]">
+                                  Mở app ngân hàng quét mã QR trên (đã kèm sẵn số tiền <b>{formatMoney(remainingAmount)}</b>) để hệ thống tự động gạch nợ trong vòng <b>1-3 giây</b>.
+                                </p>
+                              </div>
+
+                              <div className="space-y-1.5">
+                                <div className="flex items-center justify-between p-2 bg-white rounded border border-slate-200">
+                                  <div>
+                                    <span className="text-slate-400 block text-[10px]">Ngân hàng nhận:</span>
+                                    <span className="font-semibold text-slate-800">BIDV</span>
+                                  </div>
+                                  <span className="text-slate-400 text-[10px]">Chủ TK: <strong>HOANG KIM</strong></span>
                                 </div>
 
-                                <div className="space-y-2 pt-1">
-                                  <div className="flex items-center justify-between p-2 bg-white rounded border border-slate-200">
-                                    <div>
-                                      <span className="text-slate-400 block text-[10px]">Ngân hàng nhận:</span>
-                                      <span className="font-semibold text-slate-800">BIDV</span>
-                                    </div>
+                                <div className="flex items-center justify-between p-2 bg-white rounded border border-slate-200">
+                                  <div>
+                                    <span className="text-slate-400 block text-[10px]">Số tài khoản:</span>
+                                    <span className="font-mono font-bold text-slate-900 text-sm">96247BANTRUTLM08</span>
                                   </div>
-
-                                  <div className="flex items-center justify-between p-2 bg-white rounded border border-slate-200">
-                                    <div>
-                                      <span className="text-slate-400 block text-[10px]">Số tài khoản:</span>
-                                      <span className="font-mono font-bold text-slate-900 text-sm">96247BANTRUTLM08</span>
-                                    </div>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-7 text-xs"
-                                      onClick={() => {
-                                        navigator.clipboard.writeText("96247BANTRUTLM08");
-                                        setCopiedField(`stk-${bill.id}`);
-                                        setTimeout(() => setCopiedField(null), 2000);
-                                      }}
-                                    >
-                                      {copiedField === `stk-${bill.id}` ? (
-                                        <Check className="h-3.5 w-3.5 text-green-600" />
-                                      ) : (
-                                        <Copy className="h-3.5 w-3.5 text-slate-500" />
-                                      )}
-                                      <span className="ml-1 text-[11px]">Sao chép</span>
-                                    </Button>
-                                  </div>
-
-                                  <div className="flex items-center justify-between p-2 bg-white rounded border border-slate-200">
-                                    <div>
-                                      <span className="text-slate-400 block text-[10px]">Chủ tài khoản:</span>
-                                      <span className="font-semibold text-slate-800">HOANG KIM</span>
-                                    </div>
-                                  </div>
-
-                                  <div className="flex items-center justify-between p-2 bg-amber-50 rounded border border-amber-200">
-                                    <div>
-                                      <span className="text-amber-700 block text-[10px] font-bold">
-                                        NỘI DUNG CHUYỂN KHOẢN BẮT BUỘC:
-                                      </span>
-                                      <span className="font-mono font-extrabold text-blue-700 text-sm">
-                                        BSTLM {studentInfo?.boardingCode || studentInfo?.studentCode} T{String(bill.month).padStart(2, '0')}{String(bill.year).slice(-2)}
-                                      </span>
-                                    </div>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-7 text-xs text-blue-700 hover:bg-blue-100"
-                                      onClick={() => {
-                                        const codeStr = `BSTLM ${studentInfo?.boardingCode || studentInfo?.studentCode} T${String(bill.month).padStart(2, '0')}{String(bill.year).slice(-2)}`;
-                                        navigator.clipboard.writeText(codeStr);
-                                        setCopiedField(`content-${bill.id}`);
-                                        setTimeout(() => setCopiedField(null), 2000);
-                                      }}
-                                    >
-                                      {copiedField === `content-${bill.id}` ? (
-                                        <Check className="h-3.5 w-3.5 text-green-600" />
-                                      ) : (
-                                        <Copy className="h-3.5 w-3.5 text-blue-600" />
-                                      )}
-                                      <span className="ml-1 text-[11px]">Sao chép</span>
-                                    </Button>
-                                  </div>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 text-xs"
+                                    onClick={() => {
+                                      navigator.clipboard.writeText("96247BANTRUTLM08");
+                                      setCopiedField(`stk-${bill.id}`);
+                                      setTimeout(() => setCopiedField(null), 2000);
+                                    }}
+                                  >
+                                    {copiedField === `stk-${bill.id}` ? (
+                                      <Check className="h-3.5 w-3.5 text-green-600" />
+                                    ) : (
+                                      <Copy className="h-3.5 w-3.5 text-slate-500" />
+                                    )}
+                                    <span className="ml-1 text-[11px]">Sao chép</span>
+                                  </Button>
                                 </div>
+
+                                <div className="flex items-center justify-between p-2 bg-amber-50 rounded border border-amber-200">
+                                  <div>
+                                    <span className="text-amber-800 block text-[10px] font-bold">
+                                      NỘI DUNG CHUYỂN KHOẢN BẮT BUỘC:
+                                    </span>
+                                    <span className="font-mono font-extrabold text-blue-700 text-xs sm:text-sm">
+                                      BSTLM {studentInfo?.boardingCode || studentInfo?.studentCode} T{String(bill.month).padStart(2, '0')}{String(bill.year).slice(-2)}
+                                    </span>
+                                  </div>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 text-xs text-blue-700 hover:bg-blue-100"
+                                    onClick={() => {
+                                      const codeStr = `BSTLM ${studentInfo?.boardingCode || studentInfo?.studentCode} T${String(bill.month).padStart(2, '0')}{String(bill.year).slice(-2)}`;
+                                      navigator.clipboard.writeText(codeStr);
+                                      setCopiedField(`content-${bill.id}`);
+                                      setTimeout(() => setCopiedField(null), 2000);
+                                    }}
+                                  >
+                                    {copiedField === `content-${bill.id}` ? (
+                                      <Check className="h-3.5 w-3.5 text-green-600" />
+                                    ) : (
+                                      <Copy className="h-3.5 w-3.5 text-blue-600" />
+                                    )}
+                                    <span className="ml-1 text-[11px]">Sao chép</span>
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </TabsContent>
+
+          {/* TAB 4: LỊCH SỬ THANH TOÁN (TOÀN BỘ TRONG NĂM) */}
+          <TabsContent value="history">
+            <div className="space-y-4">
+              {/* Header Lọc năm & Tóm tắt */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3.5 rounded-lg border border-slate-200">
+                <div>
+                  <h3 className="font-bold text-sm sm:text-base text-slate-900 flex items-center gap-1.5">
+                    <History className="h-4 w-4 text-blue-600" />
+                    Lịch sử thanh toán tiền ăn
+                  </h3>
+                  <p className="text-xs text-slate-500">Xem lại các hóa đơn và giao dịch đã đóng trong năm</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs text-slate-600 shrink-0">Chọn năm:</Label>
+                  <Select
+                    value={String(selectedHistoryYear)}
+                    onValueChange={(val) => setSelectedHistoryYear(Number(val))}
+                  >
+                    <SelectTrigger className="w-28 h-8 text-xs bg-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableYears.map((yr) => (
+                        <SelectItem key={yr} value={String(yr)} className="text-xs">
+                          Năm {yr}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Thống kê nhanh */}
+              {(() => {
+                const totalPaidInSelectedYear = historyBills.reduce((acc, b) => {
+                  const billPaid = (b.transactions || []).reduce((sum, t) => sum + Number(t.amount), 0);
+                  return acc + (b.paymentStatus === "PAID" ? Number(b.finalAmount) : billPaid);
+                }, 0);
+                const paidBillsCount = historyBills.filter((b) => b.paymentStatus === "PAID").length;
+
+                return (
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200">
+                      <span className="text-emerald-700 block text-[11px]">Đã thanh toán năm {selectedHistoryYear}:</span>
+                      <span className="text-base font-extrabold text-emerald-900">{formatMoney(totalPaidInSelectedYear)}</span>
+                    </div>
+                    <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                      <span className="text-blue-700 block text-[11px]">Hóa đơn hoàn tất:</span>
+                      <span className="text-base font-extrabold text-blue-900">{paidBillsCount} / {historyBills.length} tháng</span>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Danh sách phiếu theo năm */}
+              {loadingBills ? (
+                <Card className="p-8 text-center text-slate-500">
+                  <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-blue-600" />
+                  Đang tải lịch sử thanh toán...
+                </Card>
+              ) : historyBills.length === 0 ? (
+                <Card className="p-8 text-center text-slate-400">
+                  <Receipt className="h-10 w-10 mx-auto mb-2 opacity-50 text-slate-400" />
+                  <p className="font-medium text-slate-600">Không có hóa đơn nào trong năm {selectedHistoryYear}</p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Vui lòng chọn năm khác từ danh sách phía trên.
+                  </p>
+                </Card>
+              ) : (
+                <div className="space-y-3">
+                  {historyBills.map((bill) => {
+                    const billTotal = Number(bill.finalAmount);
+                    const paidAmount = (bill.transactions || []).reduce((sum, t) => sum + Number(t.amount), 0);
+                    const isPaid = bill.paymentStatus === "PAID";
+                    const isPartial = bill.paymentStatus === "PARTIAL";
+
+                    return (
+                      <Card key={bill.id} className="border border-slate-200 shadow-xs overflow-hidden">
+                        <CardHeader className="py-2.5 px-3.5 bg-slate-50 border-b">
+                          <div className="flex items-center justify-between">
+                            <div className="font-bold text-sm text-slate-900">
+                              Hóa đơn Tháng {bill.month}/{bill.year}
+                            </div>
+                            <div>
+                              {isPaid ? (
+                                <Badge className="bg-green-100 text-green-700 border-green-300 text-[11px] flex items-center gap-1">
+                                  <CheckCircle className="h-3 w-3" /> Đã thanh toán đủ
+                                </Badge>
+                              ) : isPartial ? (
+                                <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-[11px] flex items-center gap-1">
+                                  <AlertCircle className="h-3 w-3" /> Đã nộp 1 phần
+                                </Badge>
+                              ) : (
+                                <Badge className="bg-rose-100 text-rose-700 border-rose-300 text-[11px] flex items-center gap-1">
+                                  <Clock className="h-3 w-3" /> Chưa thanh toán
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="p-3 sm:p-4 space-y-2.5 text-xs">
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+                            <div>
+                              <span className="text-slate-400 block">Số ngày ăn:</span>
+                              <span className="font-semibold text-slate-800">
+                                {bill.scheduleMealDays} ngày (Cắt {bill.canceledDays} ngày)
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-slate-400 block">Tổng tiền:</span>
+                              <span className="font-semibold text-slate-800">{formatMoney(billTotal)}</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-400 block">Đã thanh toán:</span>
+                              <span className="font-bold text-emerald-700">
+                                {formatMoney(isPaid ? billTotal : paidAmount)}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-slate-400 block">Còn nợ:</span>
+                              <span className={`font-bold ${isPaid ? "text-slate-400" : "text-rose-600"}`}>
+                                {formatMoney(isPaid ? 0 : Math.max(0, billTotal - paidAmount))}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Lịch sử các giao dịch SePay nếu có */}
+                          {bill.transactions && bill.transactions.length > 0 && (
+                            <div className="mt-2 pt-2 border-t border-slate-100 space-y-1">
+                              <span className="text-[11px] font-medium text-slate-500 block">
+                                Giao dịch thanh toán được ghi nhận:
+                              </span>
+                              <div className="space-y-1">
+                                {bill.transactions.map((tx, idx) => (
+                                  <div
+                                    key={tx.id || idx}
+                                    className="flex items-center justify-between p-2 rounded bg-slate-50 border border-slate-200 text-[11px]"
+                                  >
+                                    <div>
+                                      <span className="font-bold text-emerald-700">+{formatMoney(tx.amount)}</span>
+                                      <span className="text-slate-500 ml-2 font-mono text-[10px]">
+                                        {new Date(tx.transDate).toLocaleString("vi-VN")}
+                                      </span>
+                                      {tx.content && (
+                                        <p className="text-[10px] text-slate-600 font-mono truncate max-w-xs sm:max-w-md mt-0.5">
+                                          {tx.content}
+                                        </p>
+                                      )}
+                                    </div>
+                                    <Badge variant="outline" className="bg-white text-emerald-700 border-emerald-300 text-[10px] shrink-0">
+                                      Gạch nợ thành công
+                                    </Badge>
+                                  </div>
+                                ))}
                               </div>
                             </div>
                           )}
