@@ -427,9 +427,11 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
-      <div className="sticky top-16 z-30 bg-white/95 backdrop-blur-md py-3 -mt-3 mb-2 -mx-4 px-4 sm:mx-0 sm:px-4 sm:py-4 sm:-mt-4 sm:mb-4 sm:rounded-lg border-b sm:border border-slate-200 shadow-sm">
-        <h1 className="text-2xl font-bold text-slate-900 tracking-tight">TRANG THÔNG TIN SUẤT ĂN BÁN TRÚ</h1>
-        <p className="text-sm text-slate-500 mt-1">
+      <div className="sticky top-16 z-30 bg-white/95 backdrop-blur-md py-2.5 px-3.5 -mt-3 mb-2 -mx-4 sm:mx-0 sm:px-4 sm:py-3.5 sm:-mt-4 sm:mb-4 sm:rounded-lg border-b sm:border border-slate-200 shadow-xs">
+        <h1 className="text-[15px] sm:text-xl md:text-2xl font-bold text-slate-900 tracking-tight whitespace-nowrap overflow-hidden text-ellipsis">
+          TRANG THÔNG TIN SUẤT ĂN BÁN TRÚ
+        </h1>
+        <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
           <span className="font-semibold text-blue-600">{studentInfo?.user?.fullName || session?.user?.name}</span> {studentInfo?.class?.name ? `- Lớp: ${studentInfo.class.name}` : studentInfo?.classId ? `- Lớp: ${studentInfo.classId}` : ''}
         </p>
       </div>
