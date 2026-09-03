@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 import { BoardingStatus, CancellationStatus, PaymentStatus } from '@prisma/client';
 import { generateMealPaymentQR } from '@/lib/vietqr';
+import { broadcastChange } from '@/lib/realtime-hub';
 
 // GET: Lấy danh sách hóa đơn theo bộ lọc (month, year, classId, paymentStatus)
 // Hỗ trợ phân trang server-side: page, limit
@@ -247,11 +248,68 @@ export async function POST(request: NextRequest) {
       6: 'saturday',
     };
 
-    // Hàm tính số ngày ăn theo TKB của 1 lớp trong tháng mục tiêu
-    const calculateScheduleMealDays = (cId: string): number => {
-      const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
-      let count = 0;
+    const startOfYear = new Date(Date.UTC(year, 0, 1));
+    const getWeekNumber = (d: Date): number => {
+      return Math.ceil(
+        ((d.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getUTCDay() + 1) / 7
+      );
+    };
 
+    // Tìm tất cả các tuần giao với tháng mục tiêu
+    const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    const monthWeekNumbers = new Set<number>();
+    for (let day = 1; day <= daysInMonth; day++) {
+      const date = new Date(Date.UTC(year, month - 1, day));
+      if (date.getUTCDay() !== 0) { // Không tính Chủ nhật
+        monthWeekNumbers.add(getWeekNumber(date));
+      }
+    }
+    const monthWeeksList = Array.from(monthWeekNumbers).sort((a, b) => a - b);
+
+    // Kiểm tra từng lớp xem có tuần nào trong tháng bị thiếu TKB không
+    const classMissingWeeks = new Map<string, number[]>();
+    const classIdToName = new Map<string, string>();
+    activeStudents.forEach((s) => {
+      if (s.class) classIdToName.set(s.classId, s.class.name || s.classId);
+    });
+
+    const uniqueClassIds = Array.from(new Set(activeStudents.map((s) => s.classId)));
+    uniqueClassIds.forEach((cId) => {
+      const missing = monthWeeksList.filter((w) => !scheduleMap.has(`${cId}_${w}`));
+      if (missing.length > 0) {
+        classMissingWeeks.set(cId, missing);
+      }
+    });
+
+    // QUY TẮC NGHIÊM NGẶT: NẾU TẠO CHO 1 LỚP CỤ THỂ VÀ LỚP ĐÓ THIẾU TKB BẤT KỲ TUẦN NÀO:
+    // Tuyệt đối không tạo hóa đơn, báo lỗi rõ ràng các tuần còn thiếu!
+    if (classId && classMissingWeeks.has(classId)) {
+      const missing = classMissingWeeks.get(classId)!;
+      const cName = classIdToName.get(classId) || classId;
+      return NextResponse.json(
+        {
+          error: `Lớp ${cName} chưa có Thời khóa biểu đầy đủ cho tháng ${month}/${year} (Đang thiếu: ${missing.map((w) => `Tuần ${w}`).join(', ')}). Vui lòng vào mục Thời khóa biểu để thiết lập lịch học trước khi tạo hóa đơn!`,
+        },
+        { status: 400 }
+      );
+    }
+
+    // NẾU TẠO TOÀN TRƯỜNG VÀ TẤT CẢ CÁC LỚP ĐỀU CHƯA CÓ TKB ĐẦY ĐỦ: BÁO LỖI
+    if (!classId && classMissingWeeks.size === uniqueClassIds.length) {
+      return NextResponse.json(
+        {
+          error: `Chưa có lớp nào có Thời khóa biểu đầy đủ cho tháng ${month}/${year}. Vui lòng thiết lập Thời khóa biểu cho các lớp trước khi tạo hóa đơn!`,
+        },
+        { status: 400 }
+      );
+    }
+
+    // Lọc ra các học sinh thuộc các lớp CÓ ĐỦ TKB 100% trong tháng
+    const studentsWithFullSchedule = activeStudents.filter((s) => !classMissingWeeks.has(s.classId));
+
+    // Hàm tính số ngày ăn theo TKB của 1 lớp trong tháng mục tiêu (Chỉ tính khi lớp có TKB, không đoán mò)
+    const calculateScheduleMealDays = (cId: string): number => {
+      let count = 0;
       for (let day = 1; day <= daysInMonth; day++) {
         const date = new Date(Date.UTC(year, month - 1, day));
         const dayOfWeek = date.getUTCDay(); // 0=CN, 1=T2..6=T7
@@ -260,22 +318,14 @@ export async function POST(request: NextRequest) {
         const dayField = dayFieldMap[dayOfWeek];
         if (!dayField) continue;
 
-        const startOfYear = new Date(Date.UTC(year, 0, 1));
-        const weekNumber = Math.ceil(
-          ((date.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getUTCDay() + 1) / 7
-        );
-
-        const scheduleKey = `${cId}_${weekNumber}`;
+        const weekNum = getWeekNumber(date);
+        const scheduleKey = `${cId}_${weekNum}`;
         const schedule = scheduleMap.get(scheduleKey);
 
-        if (schedule) {
-          if (schedule[dayField]) count++;
-        } else {
-          // Mặc định từ Thứ 2 đến Thứ 6 có ăn bán trú nếu chưa tạo TKB chi tiết
-          if (dayOfWeek >= 1 && dayOfWeek <= 5) count++;
+        if (schedule && schedule[dayField] && schedule[dayField] !== 'NONE') {
+          count++;
         }
       }
-
       return count;
     };
 
@@ -293,7 +343,6 @@ export async function POST(request: NextRequest) {
       },
     };
 
-    // Nếu lọc theo lớp, chỉ lấy cancellations của học sinh trong lớp đó
     if (classId) {
       cancellationWhere.student = { classId };
     }
@@ -311,10 +360,9 @@ export async function POST(request: NextRequest) {
     });
 
     // 5. Kiểm tra và bảo vệ hóa đơn đã thanh toán (PAID hoặc PARTIAL)
-    // Tuyệt đối không ghi đè số tiền của học sinh đã nộp tiền (ví dụ học sinh vào giữa tháng đã đóng tiền)
     const existingBills = await prisma.monthlyBill.findMany({
       where: {
-        studentId: { in: activeStudents.map((s) => s.id) },
+        studentId: { in: studentsWithFullSchedule.map((s) => s.id) },
         month,
         year,
       },
@@ -330,12 +378,12 @@ export async function POST(request: NextRequest) {
         .map((b) => b.studentId)
     );
 
-    const studentsToProcess = activeStudents.filter((s) => !paidOrPartialStudentIds.has(s.id));
+    const studentsToProcess = studentsWithFullSchedule.filter((s) => !paidOrPartialStudentIds.has(s.id));
 
-    if (studentsToProcess.length === 0) {
+    if (studentsToProcess.length === 0 && studentsWithFullSchedule.length > 0) {
       return NextResponse.json({
         success: true,
-        message: `Tất cả ${activeStudents.length} học sinh đều đã có hóa đơn đã thanh toán (PAID). Hệ thống giữ nguyên dữ liệu gốc, không ghi đè.`,
+        message: `Tất cả ${studentsWithFullSchedule.length} học sinh đều đã có hóa đơn đã thanh toán (PAID). Hệ thống giữ nguyên dữ liệu gốc, không ghi đè.`,
         count: 0,
         preservedCount: paidOrPartialStudentIds.size,
         month,
@@ -406,16 +454,29 @@ export async function POST(request: NextRequest) {
       generatedCount += batch.length;
     }
 
+    // Phát tín hiệu Realtime cho màn hình Hóa đơn
+    broadcastChange('monthly_bills', 'UPDATE');
+
     const preservedCount = paidOrPartialStudentIds.size;
     const preservedText = preservedCount > 0 ? ` (Giữ nguyên ${preservedCount} hóa đơn đã thanh toán)` : '';
 
+    let summaryMessage = classId
+      ? `Đã tạo/cập nhật ${generatedCount} hóa đơn lớp ${classIdToName.get(classId) || classId} tháng ${month}/${year}${preservedText}`
+      : `Đã tạo/cập nhật thành công ${generatedCount} hóa đơn cho tháng ${month}/${year}${preservedText}`;
+
+    if (classMissingWeeks.size > 0) {
+      const missingDetails = Array.from(classMissingWeeks.entries())
+        .map(([cId, weeks]) => `${classIdToName.get(cId) || cId} (thiếu Tuần ${weeks.join(', ')})`)
+        .join('; ');
+      summaryMessage += `. ⚠️ Đã bỏ qua ${classMissingWeeks.size} lớp do chưa có đủ TKB: ${missingDetails}.`;
+    }
+
     return NextResponse.json({
       success: true,
-      message: classId
-        ? `Đã tạo/cập nhật ${generatedCount} hóa đơn lớp ${classId} tháng ${month}/${year}${preservedText}`
-        : `Đã tạo/cập nhật thành công ${generatedCount} hóa đơn cho tháng ${month}/${year}${preservedText}`,
+      message: summaryMessage,
       count: generatedCount,
       preservedCount,
+      skippedClassesCount: classMissingWeeks.size,
       month,
       year,
       classId: classId || null,
@@ -478,6 +539,8 @@ export async function PUT(request: NextRequest) {
         qrCodeUrl,
       }
     });
+
+    broadcastChange('monthly_bills', 'UPDATE');
 
     return NextResponse.json({ success: true, message: 'Cập nhật hóa đơn thành công', data: updatedBill });
   } catch (error) {

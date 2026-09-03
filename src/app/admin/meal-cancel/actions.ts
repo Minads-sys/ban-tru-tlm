@@ -3,13 +3,14 @@
 import prisma from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
+import { broadcastChange } from '@/lib/realtime-hub';
 
 export async function approveCancellation(id: string) {
   try {
     const session = await auth();
     const approverId = session?.user?.id;
 
-    await prisma.mealCancellation.update({
+    const updated = await prisma.mealCancellation.update({
       where: { id },
       data: {
         status: 'APPROVED',
@@ -17,6 +18,9 @@ export async function approveCancellation(id: string) {
         approvedAt: new Date(),
       },
     });
+
+    broadcastChange('meal_cancellations', 'UPDATE', updated);
+    broadcastChange('daily_meals', 'UPDATE');
 
     revalidatePath('/admin/meal-cancel');
     return { success: true, message: 'Đã duyệt yêu cầu cắt suất thành công' };
@@ -31,7 +35,7 @@ export async function rejectCancellation(id: string) {
     const session = await auth();
     const approverId = session?.user?.id;
 
-    await prisma.mealCancellation.update({
+    const updated = await prisma.mealCancellation.update({
       where: { id },
       data: {
         status: 'REJECTED',
@@ -39,6 +43,9 @@ export async function rejectCancellation(id: string) {
         approvedAt: new Date(),
       },
     });
+
+    broadcastChange('meal_cancellations', 'UPDATE', updated);
+    broadcastChange('daily_meals', 'UPDATE');
 
     revalidatePath('/admin/meal-cancel');
     return { success: true, message: 'Đã từ chối yêu cầu cắt suất' };

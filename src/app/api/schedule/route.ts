@@ -1,6 +1,6 @@
-// API Route: Quản lý Thời khóa biểu theo tuần
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db";
+import { broadcastChange } from "@/lib/realtime-hub";
 
 // GET: Lấy TKB tuần
 export async function GET(request: NextRequest) {
@@ -106,6 +106,8 @@ export async function POST(request: NextRequest) {
       updated++;
     }
 
+    broadcastChange('schedules', 'UPDATE', { year, weekNumber });
+
     return NextResponse.json({
       message: `Đã lưu TKB tuần ${weekNumber}/${year} cho ${updated} lớp`,
       count: updated,
@@ -139,6 +141,8 @@ export async function DELETE(request: NextRequest) {
         weekNumber,
       },
     });
+
+    broadcastChange('schedules', 'DELETE', { year, weekNumber });
 
     return NextResponse.json({
       message: `Đã xóa thành công ${result.count} bản ghi TKB của tuần ${weekNumber}/${year}`,

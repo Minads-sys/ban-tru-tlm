@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db";
 import { CancellationStatus, BoardingStatus } from "@prisma/client";
+import { broadcastChange } from "@/lib/realtime-hub";
 
 // GET: Lấy tổng hợp suất ăn cho 1 ngày
 export async function GET(request: NextRequest) {
@@ -301,6 +302,8 @@ export async function POST(request: NextRequest) {
       }
       totalLocked++;
     }
+
+    broadcastChange('daily_meals', 'UPDATE', { date: dateStr, type });
 
     return NextResponse.json({
       message: type === "EXPECTED" 

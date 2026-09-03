@@ -1,8 +1,6 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { supabase } from '@/lib/supabase';
-import type { RealtimeChannel } from '@supabase/supabase-js';
 
 type PostgresChangeEvent = 'INSERT' | 'UPDATE' | 'DELETE' | '*';
 
@@ -15,60 +13,92 @@ interface UseRealtimeOptions {
 }
 
 /**
- * Hook để lắng nghe thay đổi realtime từ Supabase.
- * Khi có INSERT/UPDATE/DELETE trên bảng chỉ định, callback `onChanged` sẽ được gọi.
+ * Hook lắng nghe thay đổi Realtime từ máy chủ VPS (qua Server-Sent Events - SSE).
+ * Tích hợp cơ chế tự phục hồi: Tự kết nối lại, tự làm mới khi chuyển tab, và polling dự phòng nhẹ.
  * 
  * @example
  * useRealtime({
- *   table: 'meal_cancellations',
- *   event: '*',
- *   onChanged: () => fetchCancellations(),
+ *   table: 'monthly_bills',
+ *   onChanged: () => fetchBills(),
  * });
  */
-export function useRealtime({ table, event = '*', schema = 'public', filter, onChanged }: UseRealtimeOptions) {
-  const channelRef = useRef<RealtimeChannel | null>(null);
+export function useRealtime({ table, onChanged }: UseRealtimeOptions) {
   const onChangedRef = useRef(onChanged);
 
-  // Keep callback ref fresh without re-subscribing
+  // Giữ callback luôn mới nhất mà không gây re-subscribe
   useEffect(() => {
     onChangedRef.current = onChanged;
   }, [onChanged]);
 
   useEffect(() => {
-    // Nếu chưa cấu hình Supabase URL thì bỏ qua (chạy local không có realtime)
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-      return;
-    }
+    if (typeof window === 'undefined') return;
 
-    const channelName = `realtime-${table}-${event}-${filter || 'all'}`;
+    let eventSource: EventSource | null = null;
+    let pollTimer: NodeJS.Timeout | null = null;
+    let isSubscribed = true;
 
-    const filterConfig: Record<string, unknown> = {
-      event,
-      schema,
-      table,
-    };
-    if (filter) {
-      filterConfig.filter = filter;
-    }
+    // 1. Khởi tạo kết nối SSE tới máy chủ VPS
+    try {
+      const sseUrl = `/api/realtime?table=${encodeURIComponent(table)}`;
+      eventSource = new EventSource(sseUrl);
 
-    const channel = supabase
-      .channel(channelName)
-      .on(
-        'postgres_changes' as never,
-        filterConfig as never,
-        () => {
+      eventSource.onmessage = (event) => {
+        if (!isSubscribed) return;
+        try {
+          const payload = JSON.parse(event.data);
+          // Bỏ qua tin nhắn heartbeat hoặc kết nối ban đầu
+          if (payload?.type === 'CONNECTED' || payload?.type === 'HEARTBEAT') {
+            return;
+          }
+          // Gọi callback cập nhật dữ liệu
           onChangedRef.current();
+        } catch {
+          // Tin nhắn raw hoặc không phải JSON
         }
-      )
-      .subscribe();
+      };
 
-    channelRef.current = channel;
+      eventSource.onerror = () => {
+        // Trình duyệt sẽ tự động kết nối lại SSE theo chuẩn HTTP EventSource
+      };
+    } catch (err) {
+      console.warn('[useRealtime] Failed to initialize EventSource:', err);
+    }
 
-    return () => {
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
-        channelRef.current = null;
+    // 2. Tự động làm mới khi người dùng quay lại tab (Focus / Visibility)
+    const handleVisibilityOrFocus = () => {
+      if (document.visibilityState === 'visible' && isSubscribed) {
+        onChangedRef.current();
       }
     };
-  }, [table, event, schema, filter]);
+
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+    window.addEventListener('focus', handleVisibilityOrFocus);
+
+    // 3. Smart Resilient Polling dự phòng (đảm bảo 100% không sót trạng thái kể cả khi mạng lag)
+    // Đối với hóa đơn thanh toán: thăm dò mỗi 3.5 giây khi tab đang mở
+    // Đối với các bảng khác: thăm dò mỗi 12 giây
+    const isPaymentChannel = table === 'monthly_bills' || table === 'payment_transactions';
+    const pollInterval = isPaymentChannel ? 3500 : 12000;
+
+    pollTimer = setInterval(() => {
+      if (document.visibilityState === 'visible' && isSubscribed) {
+        onChangedRef.current();
+      }
+    }, pollInterval);
+
+    // Cleanup khi component unmount
+    return () => {
+      isSubscribed = false;
+      if (eventSource) {
+        eventSource.close();
+        eventSource = null;
+      }
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+    };
+  }, [table]);
 }

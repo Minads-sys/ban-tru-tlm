@@ -5,6 +5,7 @@
 
 import prisma from '@/lib/db';
 import { PaymentStatus, PaymentTransactionStatus } from '@prisma/client';
+import { broadcastChange } from '@/lib/realtime-hub';
 
 export interface SePayWebhookPayload {
   id?: number | string;
@@ -276,6 +277,8 @@ export async function processSepayTransaction(payload: SePayWebhookPayload) {
       },
     });
 
+    broadcastChange('payment_transactions', 'INSERT', { transactionId: unmatchedTx.id });
+
     return {
       success: true,
       matched: false,
@@ -328,6 +331,10 @@ export async function processSepayTransaction(payload: SePayWebhookPayload) {
       paymentStatus: updatedStatus,
     };
   });
+
+  // Phát tín hiệu Realtime tức thì xuống VPS Client
+  broadcastChange('monthly_bills', 'UPDATE', { billId: bill.id, studentId: student.id, paymentStatus: result.paymentStatus });
+  broadcastChange('payment_transactions', 'INSERT', { transactionId: result.transaction.id });
 
   return {
     success: true,

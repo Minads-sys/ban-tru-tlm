@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 import { PaymentStatus, PaymentTransactionStatus } from '@prisma/client';
+import { broadcastChange } from '@/lib/realtime-hub';
 
 export const dynamic = 'force-dynamic';
 
@@ -191,6 +192,10 @@ export async function POST(request: NextRequest) {
 
       return { updatedTx, updatedBill, totalPaid, newStatus };
     });
+
+    // Phát tín hiệu Realtime tức thì xuống VPS Client
+    broadcastChange('monthly_bills', 'UPDATE', { billId: bill.id, studentId: bill.studentId, paymentStatus: result.newStatus });
+    broadcastChange('payment_transactions', 'UPDATE', { transactionId });
 
     return NextResponse.json({
       success: true,

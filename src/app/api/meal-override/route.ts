@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db";
 import { getVietnamTodayUTC, isPastCutoffTime } from "@/lib/utils";
 import { BoardingStatus } from "@prisma/client";
+import { broadcastChange } from "@/lib/realtime-hub";
 
 // GET: Lấy danh sách đổi món của 1 học sinh
 export async function GET(request: NextRequest) {
@@ -184,6 +185,9 @@ export async function POST(request: NextRequest) {
         mealType,
       },
     });
+
+    broadcastChange('daily_meals', 'UPDATE', override);
+    broadcastChange('students', 'UPDATE');
 
     return NextResponse.json({
       message: "Đã đổi món thành công cho ngày " + new Date(date).toLocaleDateString(),

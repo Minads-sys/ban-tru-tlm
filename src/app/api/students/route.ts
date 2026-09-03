@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db";
 import { BoardingStatus, CancellationStatus } from "@prisma/client";
 import { auth } from "@/lib/auth";
+import { broadcastChange } from "@/lib/realtime-hub";
 
 // GET: Lấy danh sách học sinh
 export async function GET(request: NextRequest) {
@@ -138,65 +139,138 @@ export async function POST(request: NextRequest) {
         }
       });
 
-      // Generate Bill if requested
+      // Generate Bill if requested (Căn cứ nghiêm ngặt vào Thời khóa biểu tuần của lớp)
+      let billCreated = false;
+      let billWarningMessage = "";
+      let scheduledDays = 0;
+
       if (generateBill) {
         const now = new Date();
         const month = now.getMonth() + 1;
         const year = now.getFullYear();
 
-        // Calculate remaining working days in month
-        let workdays = 0;
-        const endOfMonth = new Date(year, month, 0); // Last day of month
-        const tempDate = new Date(now);
-        while (tempDate <= endOfMonth) {
-          const day = tempDate.getDay();
-          if (day !== 0 && day !== 6) workdays++;
-          tempDate.setDate(tempDate.getDate() + 1);
+        const dayFieldMap: Record<number, 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday'> = {
+          1: 'monday',
+          2: 'tuesday',
+          3: 'wednesday',
+          4: 'thursday',
+          5: 'friday',
+          6: 'saturday',
+        };
+
+        const startOfYear = new Date(Date.UTC(year, 0, 1));
+        const getWeekNumber = (d: Date) => {
+          return Math.ceil(
+            ((d.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getUTCDay() + 1) / 7
+          );
+        };
+
+        // Tìm tất cả các tuần từ hôm nay đến hết tháng
+        const endOfMonth = new Date(Date.UTC(year, month, 0));
+        const requiredWeekNumbers = new Set<number>();
+        const tempCheckDate = new Date(Date.UTC(year, month - 1, now.getDate()));
+
+        while (tempCheckDate <= endOfMonth) {
+          const dayOfWeek = tempCheckDate.getUTCDay();
+          if (dayOfWeek !== 0) { // Bỏ qua Chủ nhật
+            requiredWeekNumbers.add(getWeekNumber(tempCheckDate));
+          }
+          tempCheckDate.setUTCDate(tempCheckDate.getUTCDate() + 1);
         }
 
-        const priceSetting = await prisma.systemSetting.findUnique({ where: { key: "MEAL_UNIT_PRICE" } });
-        const unitPrice = parseInt(priceSetting?.value || "30000");
-        
-        const finalAmount = workdays * unitPrice;
+        const requiredWeeksList = Array.from(requiredWeekNumbers).sort((a, b) => a - b);
 
-        if (finalAmount > 0) {
-          const { generateMealPaymentQR } = require("@/lib/vietqr");
-          
-          const systemSettings = await prisma.systemSetting.findMany({
-            where: { key: { in: ['BANK_NAME', 'BANK_ACCOUNT_NO', 'BANK_ACCOUNT_NAME'] } },
-          });
-          const customBankInfo = {
-            bankName: systemSettings.find(s => s.key === 'BANK_NAME')?.value,
-            accountNo: systemSettings.find(s => s.key === 'BANK_ACCOUNT_NO')?.value,
-            accountName: systemSettings.find(s => s.key === 'BANK_ACCOUNT_NAME')?.value,
-          };
+        // Lấy TKB tuần của lớp trong các tuần này
+        const schedules = await prisma.classWeeklySchedule.findMany({
+          where: {
+            classId: finalClassId,
+            year,
+            weekNumber: { in: requiredWeeksList },
+          },
+        });
 
-          const qrCodeUrl = generateMealPaymentQR(finalBoardingCode, month, year, finalAmount, customBankInfo);
+        const scheduleMap = new Map<number, (typeof schedules)[0]>();
+        schedules.forEach((s) => scheduleMap.set(s.weekNumber, s));
 
-          await prisma.monthlyBill.create({
-            data: {
-              studentId: newStudent.id,
-              month,
-              year,
-              scheduleMealDays: workdays,
-              canceledDays: 0,
-              netPayableDays: workdays,
-              unitPrice,
-              totalAmount: finalAmount,
-              previousDeduction: 0,
-              finalAmount,
-              paymentStatus: "UNPAID",
-              qrCodeUrl
+        // Kiểm tra xem có tuần nào trong tháng chưa có TKB không
+        const missingWeeks = requiredWeeksList.filter((w) => !scheduleMap.has(w));
+
+        if (missingWeeks.length > 0) {
+          // QUY TẮC BẮT BUỘC: Nếu bất kỳ tuần nào chưa có lịch học thì cảnh báo và chỉ ghi nhận đăng ký ăn, KHÔNG tạo hóa đơn
+          billWarningMessage = `Chưa tạo hóa đơn tháng ${month}/${year} do Lớp ${classObj.name} chưa có Thời khóa biểu các tuần: ${missingWeeks.map(w => `Tuần ${w}`).join(', ')}. Vui lòng tạo TKB lớp trước khi tạo hóa đơn!`;
+        } else {
+          // Đầy đủ TKB 100%: Quét từng ngày còn lại trong tháng đối chiếu theo TKB
+          const tempDate = new Date(Date.UTC(year, month - 1, now.getDate()));
+          while (tempDate <= endOfMonth) {
+            const dayOfWeek = tempDate.getUTCDay();
+            if (dayOfWeek !== 0) {
+              const dayField = dayFieldMap[dayOfWeek];
+              const weekNum = getWeekNumber(tempDate);
+              const weekSchedule = scheduleMap.get(weekNum);
+              if (weekSchedule && weekSchedule[dayField] && weekSchedule[dayField] !== 'NONE') {
+                scheduledDays++;
+              }
             }
-          });
+            tempDate.setUTCDate(tempDate.getUTCDate() + 1);
+          }
+
+          const priceSetting = await prisma.systemSetting.findUnique({ where: { key: "MEAL_UNIT_PRICE" } });
+          const unitPrice = parseInt(priceSetting?.value || "30000");
+          const finalAmount = scheduledDays * unitPrice;
+
+          if (finalAmount > 0) {
+            const { generateMealPaymentQR } = require("@/lib/vietqr");
+            const systemSettings = await prisma.systemSetting.findMany({
+              where: { key: { in: ['BANK_NAME', 'BANK_ACCOUNT_NO', 'BANK_ACCOUNT_NAME'] } },
+            });
+            const customBankInfo = {
+              bankName: systemSettings.find(s => s.key === 'BANK_NAME')?.value,
+              accountNo: systemSettings.find(s => s.key === 'BANK_ACCOUNT_NO')?.value,
+              accountName: systemSettings.find(s => s.key === 'BANK_ACCOUNT_NAME')?.value,
+            };
+
+            const qrCodeUrl = generateMealPaymentQR(finalBoardingCode, month, year, finalAmount, customBankInfo);
+
+            await prisma.monthlyBill.create({
+              data: {
+                studentId: newStudent.id,
+                month,
+                year,
+                scheduleMealDays: scheduledDays,
+                canceledDays: 0,
+                netPayableDays: scheduledDays,
+                unitPrice,
+                totalAmount: finalAmount,
+                previousDeduction: 0,
+                finalAmount,
+                paymentStatus: "UNPAID",
+                qrCodeUrl
+              }
+            });
+
+            billCreated = true;
+            broadcastChange('monthly_bills', 'INSERT');
+          }
+        }
+      }
+
+      broadcastChange('students', 'INSERT', newStudent);
+      broadcastChange('daily_meals', 'UPDATE');
+
+      let responseMsg = "Đăng ký học sinh thành công";
+      if (generateBill) {
+        if (billCreated) {
+          responseMsg = `Đăng ký học sinh thành công và đã tạo hóa đơn tháng ${new Date().getMonth() + 1}/${new Date().getFullYear()} (${scheduledDays} ngày ăn theo TKB).`;
+        } else if (billWarningMessage) {
+          responseMsg = `Đăng ký học sinh thành công! ⚠️ ${billWarningMessage}`;
         }
       }
 
       return NextResponse.json({
         success: true,
-        message: generateBill
-          ? `Đăng ký học sinh thành công và đã tạo hóa đơn tháng ${new Date().getMonth() + 1}/${new Date().getFullYear()}`
-          : "Đăng ký học sinh thành công",
+        message: responseMsg,
+        billCreated,
+        billWarning: billWarningMessage || null,
         student: newStudent,
       });
     }
@@ -236,6 +310,9 @@ export async function POST(request: NextRequest) {
         where: { id: student.userId },
         data: { isActive: true },
       });
+
+      broadcastChange('students', 'UPDATE', { id: studentId, status: BoardingStatus.ACTIVE });
+      broadcastChange('daily_meals', 'UPDATE');
 
       return NextResponse.json({
         message: `Đã kích hoạt ăn bán trú cho HS ${student.id}`,
@@ -336,6 +413,10 @@ export async function POST(request: NextRequest) {
           data: { paymentStatus: "SETTLED" },
         });
       }
+
+      broadcastChange('students', 'UPDATE', { id: studentId, status: BoardingStatus.CANCELLED });
+      broadcastChange('daily_meals', 'UPDATE');
+      broadcastChange('monthly_bills', 'UPDATE');
 
       return NextResponse.json({
         message: `Đã hủy bán trú cho HS ${student.id}`,
@@ -441,6 +522,9 @@ export async function PUT(request: NextRequest) {
       },
     });
 
+    broadcastChange('students', 'UPDATE');
+    broadcastChange('daily_meals', 'UPDATE');
+
     return NextResponse.json({ message: "Cập nhật thông tin thành công" });
   } catch (error) {
     console.error("Update student error:", error);
@@ -473,6 +557,9 @@ export async function DELETE(request: NextRequest) {
       await tx.student.delete({ where: { id: studentId } });
       await tx.user.delete({ where: { id: student.userId } });
     });
+
+    broadcastChange('students', 'DELETE', { studentId });
+    broadcastChange('daily_meals', 'UPDATE');
 
     return NextResponse.json({ message: "Xóa học sinh thành công" });
   } catch (error) {

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
+import { broadcastChange } from "@/lib/realtime-hub";
 
 export async function GET() {
   const classes = await prisma.class.findMany({
@@ -45,6 +46,8 @@ export async function POST(req: Request) {
         teacherId: teacherId || null,
       },
     });
+
+    broadcastChange('classes', 'INSERT', newClass);
 
     return NextResponse.json(newClass, { status: 201 });
   } catch (error: any) {

@@ -42,6 +42,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
+import { useRealtime } from '@/hooks/use-realtime';
 
 interface TotalSummary {
   totalRegistered: number;
@@ -175,6 +176,12 @@ export default function DailyMealsPage() {
   useEffect(() => {
     fetchData(selectedDate);
   }, [selectedDate, fetchData]);
+
+  // Lắng nghe thay đổi Realtime từ máy chủ VPS (khi cắt suất, đổi món, đổi loại suất ăn...)
+  useRealtime({
+    table: 'daily_meals',
+    onChanged: () => fetchData(selectedDate),
+  });
 
   // Helper check if report is past lock time 2 (chốt chính thức)
   const isPastLockTime2 = useCallback(() => {

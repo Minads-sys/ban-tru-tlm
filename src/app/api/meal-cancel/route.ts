@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db";
 import { BoardingStatus } from "@prisma/client";
 import { getVietnamTodayUTC, isPastCutoffTime } from "@/lib/utils";
+import { broadcastChange } from "@/lib/realtime-hub";
 
 // GET: Lấy danh sách yêu cầu cắt suất của 1 học sinh
 export async function GET(request: NextRequest) {
@@ -183,6 +184,9 @@ export async function POST(request: NextRequest) {
         status: "PENDING",
       },
     });
+
+    broadcastChange('meal_cancellations', 'INSERT', cancellation);
+    broadcastChange('daily_meals', 'UPDATE');
 
     return NextResponse.json({
       message: "Đã gửi yêu cầu cắt suất thành công. Vui lòng chờ duyệt.",
