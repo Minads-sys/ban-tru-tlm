@@ -1,22 +1,25 @@
 @echo off
+setlocal
+cd /d "%~dp0"
 chcp 65001 >nul
+
 echo ========================================================
-echo   TỰ ĐỘNG ĐẨY CODE LÊN GITHUB & CẬP NHẬT TRỰC TIẾP VPS
+echo   DONG BO CODE LEN GITHUB VA CAP NHAT TRUC TIEP VPS
 echo ========================================================
 echo.
 
-echo 1. Lưu thay đổi và đẩy lên GitHub...
+echo 1. Dang luu thay doi va day len GitHub...
 git add .
-for /f "delims=" %%a in ('powershell -Command "Get-Date -Format 'yyyy-MM-dd HH:mm:ss'"') do set datetime=%%a
-git commit -m "Update: %datetime%"
+for /f "tokens=*" %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyy-MM-dd_HH:mm:ss"') do set DT=%%i
+git commit -m "Update: %DT%"
 git push origin main
 
 echo.
-echo 2. Kết nối đến VPS (14.225.224.121) để cập nhật website...
+echo 2. Dang ket noi den VPS (14.225.224.121) de cap nhat website...
 python sync_vps.py
 
 echo.
 echo ========================================================
-echo   HOÀN TẤT! WEBSITE ĐÃ ĐƯỢC CẬP NHẬT TẠI: bantrutlm.com
+echo   HOAN TAT! WEBSITE DA DUOC CAP NHAT TAI: bantrutlm.com
 echo ========================================================
 pause

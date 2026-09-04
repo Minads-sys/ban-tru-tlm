@@ -160,6 +160,11 @@ enum CancellationStatus {
   REJECTED
 }
 
+enum ApprovalType {
+  MANUAL
+  AUTO
+}
+
 model MealOverride {
   id         String   @id @default(cuid())
   studentId  String   @map("student_id")
@@ -175,14 +180,16 @@ model MealOverride {
 }
 
 model MealCancellation {
-  id         String              @id @default(cuid())
-  studentId  String              @map("student_id")
-  cancelDate DateTime            @map("cancel_date") @db.Date
-  reason     String
-  status     CancellationStatus  @default(PENDING)
-  createdAt  DateTime            @default(now()) @map("created_at")
-  approvedBy String?             @map("approved_by")
-  approvedAt DateTime?           @map("approved_at")
+  id           String              @id @default(cuid())
+  studentId    String              @map("student_id")
+  cancelDate   DateTime            @map("cancel_date") @db.Date
+  reason       String
+  status       CancellationStatus  @default(PENDING)
+  createdAt    DateTime            @default(now()) @map("created_at")
+  approvedBy   String?             @map("approved_by")
+  approvedAt   DateTime?           @map("approved_at")
+  approvalType ApprovalType        @default(MANUAL) @map("approval_type")
+  note         String?             @map("note")
 
   // Quan hệ
   student  Student @relation(fields: [studentId], references: [id])
