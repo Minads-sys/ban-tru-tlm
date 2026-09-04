@@ -36,7 +36,7 @@ import {
   X,
 } from "lucide-react";
 import { formatCurrency, numberToVietnameseWords, maskStudentCode, getVietnamTodayString } from "@/lib/utils";
-import { generateMealPaymentQR } from "@/lib/vietqr";
+import { generateMealPaymentQR, generateMealPaymentEMVCo } from "@/lib/vietqr";
 import { CashReceiptPrint, CashReceiptData } from "./cash-receipt-print";
 import { PaymentBillPrint, PaymentBillData } from "./payment-bill-print";
 
@@ -251,7 +251,7 @@ export function CashPos({ currentUser }: { currentUser: any }) {
     const accountName = settings.BANK_ACCOUNT_NAME || "HOANG KIM";
     const bankName = settings.BANK_NAME || "BIDV";
 
-    const qrUrl = generateMealPaymentQR(code, bill.month, bill.year, payAmount, {
+    const emvcoPayload = generateMealPaymentEMVCo(code, bill.month, bill.year, payAmount, {
       bankBin,
       accountNo,
       accountName,
@@ -259,7 +259,11 @@ export function CashPos({ currentUser }: { currentUser: any }) {
     });
 
     try {
-      const dataUrl = await QRCode.toDataURL(qrUrl, { margin: 1, width: 320 });
+      const dataUrl = await QRCode.toDataURL(emvcoPayload, {
+        margin: 1,
+        width: 360,
+        errorCorrectionLevel: "M",
+      });
       const mm = String(bill.month).padStart(2, "0");
       const yy = String(bill.year).slice(-2);
       const content = `BSTLM ${code} T${mm}${yy}`;

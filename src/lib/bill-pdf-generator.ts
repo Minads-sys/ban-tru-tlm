@@ -1,5 +1,6 @@
 import QRCode from "qrcode";
 import { numberToVietnameseWords } from "@/lib/utils";
+import { generateMealPaymentEMVCo } from "@/lib/vietqr";
 
 // Lấy pdfmake và vfs_fonts
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -90,8 +91,13 @@ export async function generateBillPdfBuffer(
   const accountName = settings.accountName || "HOANG KIM";
   const bankBin = settings.bankBin || "970418"; // BIDV
 
-  // Tạo mã QR VietQR (VietQR raw string hoặc link)
-  const qrRawPayload = `https://img.vietqr.io/image/${bankBin}-${accountNo}-compact2.jpg?amount=${Math.max(0, Math.round(bill.finalAmount))}&addInfo=${encodeURIComponent(transferContent)}&accountName=${encodeURIComponent(accountName)}`;
+  // Tạo mã QR VietQR chuẩn Napas 24/7 (EMVCo) để quét trực tiếp trên App Ngân hàng
+  const qrRawPayload = generateMealPaymentEMVCo(boardingCode, bill.month, bill.year, bill.finalAmount, {
+    bankBin,
+    bankName: settings.bankName,
+    accountNo,
+    accountName,
+  });
   
   // Tạo ảnh QR trực tiếp trong Node.js
   let qrDataUrl = "";
