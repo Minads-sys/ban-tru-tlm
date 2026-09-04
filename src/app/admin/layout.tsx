@@ -10,7 +10,7 @@ export default async function AdminLayout({
 }) {
   const session = await auth();
 
-  if (!session?.user || !["ADMIN", "BOARDING_MANAGER", "BOARDING_STAFF"].includes(session.user.role)) {
+  if (!session?.user || !["ADMIN", "BOARDING_MANAGER", "BOARDING_STAFF", "CASHIER"].includes(session.user.role)) {
     redirect("/login");
   }
 

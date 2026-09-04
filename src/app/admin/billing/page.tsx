@@ -329,6 +329,12 @@ export default function BillingPage() {
   }, []);
 
   useEffect(() => {
+    if (session?.user?.role === "CASHIER") {
+      setActiveTab("pos");
+    }
+  }, [session?.user?.role]);
+
+  useEffect(() => {
     if (activeTab === "bills") {
       fetchBills(currentPage);
     } else if (activeTab === "transactions") {

@@ -33,6 +33,7 @@ enum UserRole {
   STUDENT
   BOARDING_MANAGER
   BOARDING_STAFF
+  CASHIER
 }
 
 model User {

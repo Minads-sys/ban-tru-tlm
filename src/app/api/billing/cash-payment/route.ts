@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   try {
     const session = await auth();
-    if (!session?.user || !["ADMIN", "BOARDING_MANAGER", "BOARDING_STAFF"].includes(session.user.role)) {
+    if (!session?.user || !["ADMIN", "BOARDING_MANAGER", "BOARDING_STAFF", "CASHIER"].includes(session.user.role)) {
       return NextResponse.json({ error: "Bạn không có quyền thực hiện thu tiền mặt" }, { status: 403 });
     }
 

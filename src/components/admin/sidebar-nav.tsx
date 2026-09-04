@@ -168,6 +168,7 @@ export function SidebarNav({ user }: SidebarNavProps) {
             if (item.adminOnly && user?.role !== "ADMIN") return false;
             if (!item.permission) return true;
             if (user?.role === "ADMIN") return true;
+            if (user?.role === "CASHIER" && item.href === "/admin/billing") return true;
             const userPermissions = user?.permissions || [];
             return userPermissions.includes(item.permission);
           }).map((item) => {
@@ -206,10 +207,18 @@ export function SidebarNav({ user }: SidebarNavProps) {
           </div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-xs font-semibold text-slate-100">
-              {user?.name || user?.username || "Quản trị viên"}
+              {user?.name || user?.username || "Nhân sự"}
             </p>
             <p className="truncate text-[11px] text-blue-400 font-medium">
-              Quản trị hệ thống
+              {user?.role === "ADMIN"
+                ? "Quản trị hệ thống"
+                : user?.role === "CASHIER"
+                ? "Thu ngân"
+                : user?.role === "BOARDING_MANAGER"
+                ? "Quản lý bán trú"
+                : user?.role === "BOARDING_STAFF"
+                ? "Nhân viên bán trú"
+                : "Nhân sự bán trú"}
             </p>
           </div>
         </div>

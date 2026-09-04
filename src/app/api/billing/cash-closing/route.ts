@@ -202,7 +202,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const session = await auth();
-    if (!session?.user || !["ADMIN", "BOARDING_MANAGER", "BOARDING_STAFF"].includes(session.user.role)) {
+    if (!session?.user || !["ADMIN", "BOARDING_MANAGER", "BOARDING_STAFF", "CASHIER"].includes(session.user.role)) {
       return NextResponse.json({ error: "Bạn không có quyền lập biên bản bàn giao tiền mặt" }, { status: 403 });
     }
 

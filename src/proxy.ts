@@ -17,7 +17,7 @@ export default auth((req) => {
     if (!isLoggedIn) {
       return NextResponse.redirect(new URL('/login', nextUrl));
     }
-    const allowedRoles = ['ADMIN', 'BOARDING_MANAGER', 'BOARDING_STAFF', 'TEACHER'];
+    const allowedRoles = ['ADMIN', 'BOARDING_MANAGER', 'BOARDING_STAFF', 'TEACHER', 'CASHIER'];
     if (!allowedRoles.includes(userRole as string)) {
       return NextResponse.redirect(new URL('/login', nextUrl));
     }

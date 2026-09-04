@@ -11,7 +11,7 @@ export default async function ForceChangePasswordPage() {
 
   // If they don't require password change, send them to their dashboard
   if (!session.user.requiresPasswordChange) {
-    const isAdmin = ["ADMIN", "BOARDING_MANAGER", "BOARDING_STAFF"].includes(session.user.role);
+    const isAdmin = ["ADMIN", "BOARDING_MANAGER", "BOARDING_STAFF", "CASHIER"].includes(session.user.role);
     redirect(isAdmin ? "/admin/dashboard" : "/student/dashboard");
   }
 

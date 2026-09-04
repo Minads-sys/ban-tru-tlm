@@ -46,6 +46,7 @@ const ROLE_LABELS: Record<string, string> = {
   TEACHER: "Giáo viên",
   BOARDING_MANAGER: "Quản lý bán trú",
   BOARDING_STAFF: "Nhân viên bán trú",
+  CASHIER: "Thu ngân",
 };
 
 export default function UsersPage() {
@@ -213,7 +214,18 @@ export default function UsersPage() {
                       <TableCell className="font-medium">{u.fullName}</TableCell>
                       <TableCell>{u.username}</TableCell>
                       <TableCell>
-                        <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                        <Badge
+                          variant="outline"
+                          className={
+                            u.role === "ADMIN"
+                              ? "bg-purple-50 text-purple-700 border-purple-200 font-semibold"
+                              : u.role === "CASHIER"
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-200 font-semibold"
+                              : u.role === "BOARDING_MANAGER"
+                              ? "bg-blue-50 text-blue-700 border-blue-200 font-semibold"
+                              : "bg-slate-50 text-slate-700 border-slate-200"
+                          }
+                        >
                           {ROLE_LABELS[u.role] || u.role}
                         </Badge>
                       </TableCell>
@@ -346,6 +358,7 @@ export default function UsersPage() {
                     <SelectItem value="ADMIN">Quản trị viên (Toàn quyền)</SelectItem>
                     <SelectItem value="BOARDING_MANAGER">Quản lý bán trú</SelectItem>
                     <SelectItem value="BOARDING_STAFF">Nhân viên bán trú</SelectItem>
+                    <SelectItem value="CASHIER">Thu ngân</SelectItem>
                     <SelectItem value="TEACHER">Giáo viên</SelectItem>
                   </SelectContent>
                 </Select>

@@ -4,7 +4,7 @@ declare module 'next-auth' {
   interface Session {
     user: {
       id: string;
-      role: 'ADMIN' | 'TEACHER' | 'STUDENT' | 'BOARDING_MANAGER' | 'BOARDING_STAFF';
+      role: 'ADMIN' | 'TEACHER' | 'STUDENT' | 'BOARDING_MANAGER' | 'BOARDING_STAFF' | 'CASHIER';
       permissions?: string[];
       studentId?: string;
       studentCode?: string;
@@ -13,7 +13,7 @@ declare module 'next-auth' {
   }
 
   interface User {
-    role: 'ADMIN' | 'TEACHER' | 'STUDENT' | 'BOARDING_MANAGER' | 'BOARDING_STAFF';
+    role: 'ADMIN' | 'TEACHER' | 'STUDENT' | 'BOARDING_MANAGER' | 'BOARDING_STAFF' | 'CASHIER';
     permissions?: string[];
     studentId?: string;
     studentCode?: string;
@@ -24,7 +24,7 @@ declare module 'next-auth' {
 declare module '@auth/core/jwt' {
   interface JWT {
     id: string;
-    role: 'ADMIN' | 'TEACHER' | 'STUDENT' | 'BOARDING_MANAGER' | 'BOARDING_STAFF';
+    role: 'ADMIN' | 'TEACHER' | 'STUDENT' | 'BOARDING_MANAGER' | 'BOARDING_STAFF' | 'CASHIER';
     permissions?: string[];
     studentId?: string;
     studentCode?: string;

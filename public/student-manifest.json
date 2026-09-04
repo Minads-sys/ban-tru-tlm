@@ -1,0 +1,42 @@
+﻿{
+  "name": "Sổ Bán Trú - Bán Trú TLM",
+  "short_name": "Sổ Bán Trú",
+  "description": "Sổ Bán Trú dành cho Phụ huynh và Học sinh",
+  "start_url": "/student-login",
+  "id": "/student-login",
+  "display": "standalone",
+  "background_color": "#27C334",
+  "theme_color": "#27C334",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/student-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/student-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/student-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/student-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/student-apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}
