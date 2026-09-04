@@ -45,8 +45,13 @@ import {
   Send,
   HelpCircle,
   UserCheck,
+  Banknote,
+  FileCheck2,
 } from "lucide-react";
+import { useSession } from "next-auth/react";
 import { useRealtime } from "@/hooks/use-realtime";
+import { CashPos } from "@/components/admin/cash-pos";
+import { CashClosingManager } from "@/components/admin/cash-closing-manager";
 
 interface BillData {
   id: string;
@@ -116,6 +121,7 @@ interface SepayTransaction {
 }
 
 export default function BillingPage() {
+  const { data: session } = useSession();
   const [activeTab, setActiveTab] = useState("bills");
 
   // ================= TAB 1: BILLS STATE =================
@@ -772,12 +778,26 @@ export default function BillingPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="no-print">
-        <TabsList className="grid grid-cols-3 max-w-xl">
-          <TabsTrigger value="bills" className="flex items-center gap-2">
+        <TabsList className="grid grid-cols-2 sm:grid-cols-5 w-full max-w-4xl h-auto p-1 gap-1">
+          <TabsTrigger value="bills" className="flex items-center gap-2 py-2">
             <Receipt className="h-4 w-4" />
-            Hóa đơn học sinh
+            Hóa đơn
           </TabsTrigger>
-          <TabsTrigger value="transactions" className="flex items-center gap-2">
+          <TabsTrigger
+            value="pos"
+            className="flex items-center gap-2 py-2 text-emerald-700 data-[state=active]:bg-emerald-50 data-[state=active]:text-emerald-800 font-bold"
+          >
+            <Banknote className="h-4 w-4 text-emerald-600" />
+            Quầy Thu Tiền Mặt
+          </TabsTrigger>
+          <TabsTrigger
+            value="cash-closing"
+            className="flex items-center gap-2 py-2 text-blue-700 data-[state=active]:bg-blue-50 data-[state=active]:text-blue-800 font-bold"
+          >
+            <FileCheck2 className="h-4 w-4 text-blue-600" />
+            Chốt Ca & Báo Cáo
+          </TabsTrigger>
+          <TabsTrigger value="transactions" className="flex items-center gap-2 py-2">
             <CreditCard className="h-4 w-4" />
             Đối soát SePay
             {txStats && txStats.unmatchedCount > 0 && (
@@ -786,11 +806,21 @@ export default function BillingPage() {
               </span>
             )}
           </TabsTrigger>
-          <TabsTrigger value="config" className="flex items-center gap-2">
+          <TabsTrigger value="config" className="flex items-center gap-2 py-2">
             <Settings className="h-4 w-4" />
             Cấu hình & Test
           </TabsTrigger>
         </TabsList>
+
+        {/* ================= TAB: QUẦY THU TIỀN MẶT ================= */}
+        <TabsContent value="pos" className="space-y-4 pt-2">
+          <CashPos currentUser={session?.user} />
+        </TabsContent>
+
+        {/* ================= TAB: CHỐT CA & BÁO CÁO BÀN GIAO ================= */}
+        <TabsContent value="cash-closing" className="space-y-4 pt-2">
+          <CashClosingManager currentUser={session?.user} />
+        </TabsContent>
 
         {/* ================= TAB 1: DANH SÁCH HÓA ĐƠN ================= */}
         <TabsContent value="bills" className="space-y-4 pt-2">

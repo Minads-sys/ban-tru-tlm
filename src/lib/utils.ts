@@ -203,3 +203,17 @@ export function numberToVietnameseWords(number: number): string {
   resultStr = resultStr.trim().replace(/\s+/g, ' ');
   return resultStr.charAt(0).toUpperCase() + resultStr.slice(1) + ' đồng';
 }
+
+/**
+ * Che mã học sinh (CCCD), chỉ hiển thị 4 số cuối (bảo mật thông tin cho Thu ngân)
+ * Ví dụ: "001202012345" -> "********2345"
+ */
+export function maskStudentCode(code: string | null | undefined): string {
+  if (!code) return "";
+  const str = String(code).trim();
+  if (str.length <= 4) return "****";
+  const visiblePart = str.slice(-4);
+  const maskedPart = "*".repeat(str.length - 4);
+  return `${maskedPart}${visiblePart}`;
+}
+

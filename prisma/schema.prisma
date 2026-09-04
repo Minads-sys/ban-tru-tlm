@@ -52,6 +52,10 @@ model User {
   teacherClass         Class?           @relation("ClassTeacher")
   approvedCancellations MealCancellation[] @relation("Approver")
   settlementRecords    SettlementRecord[] @relation("SettlementCreator")
+  cashierTransactions PaymentTransaction[] @relation("CashierTransactions")
+  voidedTransactions  PaymentTransaction[] @relation("VoidedTransactions")
+  cashierClosings      DailyCashClosing[]   @relation("UserCashClosings")
+  accountantClosings   DailyCashClosing[]   @relation("AccountantConfirmations")
 
   @@map("users")
 }
@@ -265,6 +269,17 @@ model MonthlyBill {
 
 // ==================== GIAO DỊCH THANH TOÁN ====================
 
+enum PaymentMethod {
+  BANK_TRANSFER
+  CASH
+}
+
+enum ClosingStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+}
+
 enum PaymentTransactionStatus {
   MATCHED
   UNMATCHED
@@ -274,9 +289,19 @@ enum PaymentTransactionStatus {
 
 model PaymentTransaction {
   id              String                   @id @default(cuid())
+  receiptNumber   String?                  @unique @map("receipt_number")
   billId          String?                  @map("bill_id")
   studentId       String?                  @map("student_id")
   sepayTransId    String?                  @unique @map("sepay_trans_id")
+  paymentMethod   PaymentMethod            @default(BANK_TRANSFER) @map("payment_method")
+  cashierId       String?                  @map("cashier_id")
+  cashierName     String?                  @map("cashier_name")
+  closingSessionId String?                 @map("closing_session_id")
+  isVoided        Boolean                  @default(false) @map("is_voided")
+  voidedBy        String?                  @map("voided_by")
+  voidedAt        DateTime?                @map("voided_at")
+  voidReason      String?                  @map("void_reason")
+  note            String?                  @map("note")
   amount          Decimal                  @db.Decimal(10, 0)
   content         String
   transDate       DateTime                 @default(now()) @map("trans_date")
@@ -287,14 +312,47 @@ model PaymentTransaction {
   rawPayload      String?                  @map("raw_payload")
 
   // Quan hệ
-  bill    MonthlyBill? @relation(fields: [billId], references: [id])
-  student Student?     @relation(fields: [studentId], references: [id])
+  bill            MonthlyBill?             @relation(fields: [billId], references: [id])
+  student         Student?                 @relation(fields: [studentId], references: [id])
+  cashier         User?                    @relation("CashierTransactions", fields: [cashierId], references: [id])
+  voidedByUser    User?                    @relation("VoidedTransactions", fields: [voidedBy], references: [id])
+  closingSession  DailyCashClosing?        @relation(fields: [closingSessionId], references: [id])
 
   @@index([billId])
   @@index([studentId])
   @@index([sepayTransId])
   @@index([status])
+  @@index([paymentMethod])
+  @@index([cashierId])
+  @@index([closingSessionId])
   @@map("payment_transactions")
+}
+
+model DailyCashClosing {
+  id                String        @id @default(cuid())
+  code              String        @unique // BBBG-YYYYMMDD-XXXX
+  closingDate       DateTime      @db.Date
+  startTime         DateTime      @map("start_time")
+  endTime           DateTime      @default(now()) @map("end_time")
+  cashierId         String        @map("cashier_id")
+  accountantId      String?       @map("accountant_id")
+  totalTransactions Int           @default(0) @map("total_transactions")
+  totalAmount       Decimal       @default(0) @map("total_amount") @db.Decimal(12, 0)
+  denominationData  String?       @map("denomination_data") // JSON { "500000": 10, ... }
+  status            ClosingStatus @default(PENDING)
+  confirmedAt       DateTime?     @map("confirmed_at")
+  note              String?
+  createdAt         DateTime      @default(now()) @map("created_at")
+
+  // Quan hệ
+  cashier           User          @relation("UserCashClosings", fields: [cashierId], references: [id])
+  accountant        User?         @relation("AccountantConfirmations", fields: [accountantId], references: [id])
+  transactions      PaymentTransaction[]
+
+  @@index([closingDate])
+  @@index([cashierId])
+  @@index([status])
+  @@map("daily_cash_closings")
 }
 
 // ==================== QUYẾT TOÁN KHI HỦY BÁN TRÚ ====================
