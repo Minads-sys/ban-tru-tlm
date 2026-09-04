@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db";
 import { CancellationStatus, BoardingStatus } from "@prisma/client";
 import { broadcastChange } from "@/lib/realtime-hub";
+import { getWeekNumber } from "@/lib/utils";
 
 // GET: Lấy tổng hợp suất ăn cho 1 ngày
 export async function GET(request: NextRequest) {
@@ -13,8 +14,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Thiếu tham số date" }, { status: 400 });
   }
 
-  const date = new Date(dateStr);
-  const dayOfWeek = date.getDay(); // 0=CN, 1=T2, ..., 6=T7
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d));
+  const dayOfWeek = date.getUTCDay(); // 0=CN, 1=T2, ..., 6=T7
 
   // Map JS day to schedule field
   const dayFieldMap: Record<number, string> = {
@@ -34,16 +36,13 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  // Tính tuần
-  const startOfYear = new Date(date.getFullYear(), 0, 1);
-  const weekNumber = Math.ceil(
-    ((date.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7
-  );
+  // Tính tuần chuẩn ISO
+  const weekNumber = getWeekNumber(date);
 
   // Lấy tất cả các lớp có lịch ăn ngày này
   const schedules = await prisma.classWeeklySchedule.findMany({
     where: {
-      year: date.getFullYear(),
+      year: y,
       weekNumber,
       [dayField]: { not: "NONE" },
     },
@@ -171,8 +170,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Thiếu tham số date" }, { status: 400 });
     }
 
-    const date = new Date(dateStr);
-    const dayOfWeek = date.getDay();
+    const [y, m, d] = dateStr.split("-").map(Number);
+    const date = new Date(Date.UTC(y, m - 1, d));
+    const dayOfWeek = date.getUTCDay();
 
     const dayFieldMap: Record<number, string> = {
       1: "monday",
@@ -188,15 +188,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Chủ nhật không có suất ăn" }, { status: 400 });
     }
 
-    const startOfYear = new Date(date.getFullYear(), 0, 1);
-    const weekNumber = Math.ceil(
-      ((date.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7
-    );
+    const weekNumber = getWeekNumber(date);
 
     // Lấy TKB
     const schedules = await prisma.classWeeklySchedule.findMany({
       where: {
-        year: date.getFullYear(),
+        year: y,
         weekNumber,
         [dayField]: { not: "NONE" },
       },

@@ -106,6 +106,17 @@ function formatDisplayDate(dateStr: string): string {
   }
 }
 
+function formatDateDDMMYYYY(dateStr: string): string {
+  try {
+    if (!dateStr) return '';
+    const [y, m, d] = dateStr.split('-');
+    if (!y || !m || !d) return dateStr;
+    return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+  } catch {
+    return dateStr;
+  }
+}
+
 export default function DailyMealsPage() {
   const [selectedDate, setSelectedDate] = useState<string>(getTomorrowDateString());
   const [data, setData] = useState<DailyMealsResponse | null>(null);
@@ -231,7 +242,7 @@ export default function DailyMealsPage() {
       setIsConfirmOpen(false);
       setAlertMessage({
         type: 'success',
-        text: result.message || `Đã chốt thành công suất ăn cho ngày ${selectedDate}!`,
+        text: result.message || `Đã chốt thành công suất ăn cho ngày ${formatDateDDMMYYYY(selectedDate)}!`,
       });
       // Refresh data
       await fetchData(selectedDate);
@@ -366,7 +377,7 @@ export default function DailyMealsPage() {
             Ngày phục vụ: <span className="font-bold">{formattedDateString}</span>
           </p>
           <p className="text-xs italic text-slate-500">
-            (Căn cứ theo dữ liệu chốt suất ăn bán trú ngày {selectedDate})
+            (Căn cứ theo dữ liệu chốt suất ăn bán trú ngày {formatDateDDMMYYYY(selectedDate)})
           </p>
         </div>
 
@@ -615,7 +626,7 @@ export default function DailyMealsPage() {
         <div className="flex items-center justify-between">
           <h2 className="text-base font-semibold text-slate-900 flex items-center gap-2">
             <Utensils className="h-4 w-4 text-slate-500" />
-            Tổng hợp toàn trường ({selectedDate})
+            Tổng hợp toàn trường ({formatDateDDMMYYYY(selectedDate)})
             
             {/* Status Badge */}
             {isFullyLocked ? (
@@ -760,7 +771,7 @@ export default function DailyMealsPage() {
                 <Calendar className="h-7 w-7" />
               </div>
               <h3 className="text-sm font-semibold text-slate-800">
-                Không có dữ liệu suất ăn cho ngày {selectedDate}
+                Không có dữ liệu suất ăn cho ngày {formatDateDDMMYYYY(selectedDate)}
               </h3>
               <p className="mt-1 text-xs text-slate-500 max-w-sm">
                 Vui lòng kiểm tra lại thời khóa biểu tuần của các lớp hoặc chọn một ngày học khác.
@@ -987,7 +998,7 @@ export default function DailyMealsPage() {
             </div>
             <div>
               <h4 className="text-sm font-bold text-slate-900">
-                Khóa sổ dữ liệu ngày {selectedDate}
+                Khóa sổ dữ liệu ngày {formatDateDDMMYYYY(selectedDate)}
               </h4>
               <p className="text-xs text-slate-500">
                 Sau khi chốt, dữ liệu sẽ được lưu cố định vào bảng tổng hợp và gửi số lượng sang nhà bếp.
@@ -1003,7 +1014,7 @@ export default function DailyMealsPage() {
             className="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white font-bold px-6 py-2.5 shadow-md hover:shadow-lg transition-all text-sm gap-2 cursor-pointer"
           >
             <Lock className="h-4 w-4" />
-            <span>CHỐT SUẤT ĂN NGÀY {selectedDate}</span>
+            <span>CHỐT SUẤT ĂN NGÀY {formatDateDDMMYYYY(selectedDate)}</span>
           </Button>
         </div>
       )}
