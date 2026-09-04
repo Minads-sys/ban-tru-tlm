@@ -176,7 +176,7 @@ export default function StudentLoginForm({ schoolName }: { schoolName: string })
                     Đang đăng nhập...
                   </>
                 ) : (
-                  "Đăng Nhập Cắt Suất Bán Trú"
+                  "Đăng nhập"
                 )}
               </Button>
             </form>
