@@ -7,8 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { School, User, Lock, KeyRound, Loader2, AlertCircle, ArrowLeft, HelpCircle } from "lucide-react";
-import Link from "next/link";
+import { User, Lock, KeyRound, Loader2, AlertCircle, HelpCircle } from "lucide-react";
 
 export default function StudentLoginForm({ schoolName }: { schoolName: string }) {
   const router = useRouter();
@@ -72,12 +71,18 @@ export default function StudentLoginForm({ schoolName }: { schoolName: string })
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-100 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         {/* Top school branding header */}
-        <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-600 text-white shadow-lg mb-3">
-            <School className="h-8 w-8" />
+        <div className="text-center mb-5">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl shadow-md mb-2.5 overflow-hidden bg-white border border-emerald-200">
+            <img
+              src="/student-favicon.ico"
+              alt="Sổ Bán Trú"
+              className="w-full h-full object-cover"
+            />
           </div>
-          <h1 className="text-2xl font-extrabold text-emerald-950 uppercase">{schoolName}</h1>
-          <p className="text-sm font-semibold text-emerald-700 mt-0.5">
+          <h1 className="text-base min-[380px]:text-lg sm:text-xl md:text-2xl font-extrabold text-emerald-950 uppercase whitespace-nowrap tracking-tight">
+            {schoolName}
+          </h1>
+          <p className="text-[11px] min-[370px]:text-xs sm:text-sm font-bold text-emerald-700 mt-1 whitespace-nowrap tracking-tight">
             CỔNG ĐĂNG NHẬP DÀNH CHO HỌC SINH & PHỤ HUYNH
           </p>
         </div>
@@ -129,15 +134,15 @@ export default function StudentLoginForm({ schoolName }: { schoolName: string })
                   <Input
                     id="password"
                     type="password"
-                    placeholder="Dạng ddmmyyyy (VD: 15082018)"
+                    placeholder="Dạng ddmmyyyy (VD: 15082011)"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="pl-9 text-sm focus:border-emerald-500 focus:ring-emerald-500"
                     required
                   />
                 </div>
-                <p className="text-[11px] text-slate-500 pl-1">
-                  Ví dụ: Sinh ngày 15 tháng 08 năm 2018 → nhập <code className="bg-slate-100 px-1 py-0.5 rounded text-emerald-700 font-bold">15082018</code>
+                <p className="text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-2 py-1.5 mt-1 font-medium leading-relaxed">
+                  Lưu ý: Nếu đăng nhập lần đầu sinh ngày 15/08/2011 thì nhập <code className="bg-white px-1.5 py-0.5 rounded border border-emerald-300 text-emerald-700 font-bold">15082011</code>
                 </p>
               </div>
 
@@ -189,7 +194,7 @@ export default function StudentLoginForm({ schoolName }: { schoolName: string })
               </div>
               <ul className="list-disc list-inside space-y-0.5 text-[11px] text-emerald-700">
                 <li>Tên đăng nhập: Nhập đầy đủ Họ và tên (có dấu hoặc không dấu đều được).</li>
-                <li>Mật khẩu: Nhập liền 8 chữ số ngày sinh (VD: 01012018).</li>
+                <li>Mật khẩu: Nhập liền 8 chữ số ngày sinh (VD: 15082011).</li>
                 <li>Mã xác nhận: 6 chữ số cuối của Số CCCD.</li>
               </ul>
             </div>
