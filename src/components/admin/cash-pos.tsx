@@ -33,10 +33,12 @@ import {
   FileText,
   Loader2,
   ChevronRight,
+  X,
 } from "lucide-react";
 import { formatCurrency, numberToVietnameseWords, maskStudentCode, getVietnamTodayString } from "@/lib/utils";
 import { generateMealPaymentQR } from "@/lib/vietqr";
 import { CashReceiptPrint, CashReceiptData } from "./cash-receipt-print";
+import { PaymentBillPrint, PaymentBillData } from "./payment-bill-print";
 
 interface StudentSearchResult {
   id: string;
@@ -52,8 +54,14 @@ interface BillItem {
   month: number;
   year: number;
   finalAmount: number;
+  totalAmount?: number;
+  scheduleMealDays?: number;
+  canceledDays?: number;
+  previousDeduction?: number;
+  unitPrice?: number;
   paymentStatus: "UNPAID" | "PAID" | "PARTIAL" | "SETTLED";
   transactions?: Array<{ id: string; amount: number; isVoided?: boolean }>;
+  student?: any;
 }
 
 export function CashPos({ currentUser }: { currentUser: any }) {
@@ -78,10 +86,12 @@ export function CashPos({ currentUser }: { currentUser: any }) {
   const [printReceiptData, setPrintReceiptData] = useState<CashReceiptData | null>(null);
   const [openPrintModal, setOpenPrintModal] = useState(false);
 
-  // Modal hiển thị VietQR tại quầy
-  const [openQrModal, setOpenQrModal] = useState(false);
-  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>("");
-  const [qrDetails, setQrDetails] = useState<{ amount: number; content: string; bankAccount: string } | null>(null);
+  // Modal in phiếu thanh toán có mã QR (A5 & K80)
+  const [printBillData, setPrintBillData] = useState<PaymentBillData | null>(null);
+  const [openPrintBillModal, setOpenPrintBillModal] = useState(false);
+
+  // Cài đặt hệ thống (thông tin trường học, ngân hàng)
+  const [settings, setSettings] = useState<Record<string, string>>({});
 
   // Danh sách phiếu thu tiền mặt trong ngày của Thu ngân
   const [todayReceipts, setTodayReceipts] = useState<any[]>([]);
@@ -127,6 +137,12 @@ export function CashPos({ currentUser }: { currentUser: any }) {
 
   useEffect(() => {
     fetchTodayReceipts();
+    fetch("/api/settings")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && typeof data === "object") setSettings(data);
+      })
+      .catch((err) => console.error(err));
   }, [fetchTodayReceipts]);
 
   // Tìm kiếm học sinh tự động (debounce)
@@ -177,8 +193,14 @@ export function CashPos({ currentUser }: { currentUser: any }) {
         month: b.month,
         year: b.year,
         finalAmount: Number(b.finalAmount),
+        totalAmount: Number(b.totalAmount || b.finalAmount),
+        scheduleMealDays: b.scheduleMealDays || 0,
+        canceledDays: b.canceledDays || 0,
+        previousDeduction: Number(b.previousDeduction || 0),
+        unitPrice: Number(b.unitPrice || 0),
         paymentStatus: b.paymentStatus,
         transactions: b.transactions || [],
+        student: b.student,
       }));
 
       setStudentBills(formattedBills);
@@ -217,27 +239,71 @@ export function CashPos({ currentUser }: { currentUser: any }) {
     return Math.max(0, bill.finalAmount - paid);
   };
 
-  // Mở popup QR Code VietQR động
-  const handleOpenQrModal = async (bill: BillItem) => {
+  // Mở popup In Phiếu Thanh Toán có mã VietQR (hỗ trợ khổ K80 & A5)
+  const handleOpenPrintBill = async (bill: BillItem) => {
     if (!selectedStudent) return;
     const debt = getBillRemainingDebt(bill);
     const code = selectedStudent.boardingCode || selectedStudent.studentCode;
+    const payAmount = debt > 0 ? debt : bill.finalAmount;
 
-    const qrUrl = generateMealPaymentQR(code, bill.month, bill.year, debt);
+    const bankBin = settings.BANK_BIN || "970418";
+    const accountNo = settings.BANK_ACCOUNT_NO || "96247BANTRUTLM08";
+    const accountName = settings.BANK_ACCOUNT_NAME || "HOANG KIM";
+    const bankName = settings.BANK_NAME || "BIDV";
+
+    const qrUrl = generateMealPaymentQR(code, bill.month, bill.year, payAmount, {
+      bankBin,
+      accountNo,
+      accountName,
+      bankName,
+    });
+
     try {
-      const dataUrl = await QRCode.toDataURL(qrUrl, { margin: 1, width: 300 });
-      setQrCodeDataUrl(dataUrl);
+      const dataUrl = await QRCode.toDataURL(qrUrl, { margin: 1, width: 320 });
       const mm = String(bill.month).padStart(2, "0");
       const yy = String(bill.year).slice(-2);
-      setQrDetails({
-        amount: debt,
-        content: `BSTLM ${code} T${mm}${yy}`,
-        bankAccount: "Tài khoản Bán Trú Trường",
+      const content = `BSTLM ${code} T${mm}${yy}`;
+
+      const paid = (bill.transactions || [])
+        .filter((t) => !t.isVoided)
+        .reduce((sum, t) => sum + Number(t.amount), 0);
+
+      setPrintBillData({
+        schoolName: settings.SCHOOL_NAME || "TRƯỜNG BÁN TRÚ TIỂU HỌC & THCS THĂNG LONG",
+        schoolAddress: settings.SCHOOL_ADDRESS || "Hà Nội",
+        schoolPhone: settings.SCHOOL_PHONE || "(024) 3888.xxxx",
+        student: {
+          fullName: selectedStudent.user?.fullName || "Học sinh",
+          studentCode: selectedStudent.studentCode,
+          boardingCode: selectedStudent.boardingCode,
+          className: selectedStudent.class?.name || selectedStudent.classId,
+          mealType: bill.student?.mealType,
+        },
+        bill: {
+          id: bill.id,
+          month: bill.month,
+          year: bill.year,
+          finalAmount: bill.finalAmount,
+          paidAmount: paid,
+          remainingDebt: payAmount,
+          scheduleMealDays: bill.scheduleMealDays,
+          canceledDays: bill.canceledDays,
+          unitPrice: bill.unitPrice,
+          previousDeduction: bill.previousDeduction,
+        },
+        bankInfo: {
+          bankName,
+          accountNo,
+          accountName,
+        },
+        qrCodeDataUrl: dataUrl,
+        transferContent: content,
       });
-      setOpenQrModal(true);
+
+      setOpenPrintBillModal(true);
     } catch (err) {
       console.error(err);
-      Swal.fire("Lỗi", "Không thể tạo mã QR", "error");
+      Swal.fire("Lỗi", "Không thể tạo phiếu thanh toán có mã QR", "error");
     }
   };
 
@@ -343,11 +409,27 @@ export function CashPos({ currentUser }: { currentUser: any }) {
                 placeholder="Gõ Họ tên, Lớp, Mã Bán Trú, hoặc 4 số cuối CCCD (Phím tắt: F2)..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-11 pr-4 py-6 text-base rounded-xl border-blue-300 focus:border-blue-500 bg-white shadow-xs font-medium"
+                className="pl-11 pr-16 py-6 text-base rounded-xl border-blue-300 focus:border-blue-500 bg-white shadow-xs font-medium"
               />
-              {isSearching && (
-                <Loader2 className="absolute right-3.5 top-1/2 -translate-y-1/2 h-5 w-5 animate-spin text-blue-500" />
-              )}
+              <div className="absolute right-3.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                {searchTerm && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchTerm("");
+                      setSearchResults([]);
+                      searchInputRef.current?.focus();
+                    }}
+                    className="p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                    title="Xóa tìm kiếm"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+                {isSearching && (
+                  <Loader2 className="h-5 w-5 animate-spin text-blue-500" />
+                )}
+              </div>
             </div>
 
             <div className="text-xs text-slate-500 flex items-center gap-2 whitespace-nowrap">
@@ -387,6 +469,19 @@ export function CashPos({ currentUser }: { currentUser: any }) {
                   </Button>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* TRƯỜNG HỢP KHÔNG TÌM THẤY KẾT QUẢ */}
+          {searchResults.length === 0 && !isSearching && searchTerm.trim().length > 0 && (
+            <div className="mt-2 bg-white border border-slate-200 rounded-xl shadow-sm p-4 text-center">
+              <div className="flex items-center justify-center gap-2 text-amber-600 font-semibold text-sm">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span>Không tìm thấy học sinh nào phù hợp với &quot;{searchTerm}&quot;</span>
+              </div>
+              <p className="text-xs text-slate-500 mt-1.5">
+                💡 <b>Gợi ý tìm nhanh:</b> Gõ <b>Tên</b> (VD: Bảo, Đạt), <b>Lớp</b> (VD: 10A1), <b>Mã Bán Trú</b> (VD: BT00001, BT00002) hoặc <b>4 số cuối CCCD</b> (VD: 0961).
+              </p>
             </div>
           )}
         </CardContent>
@@ -525,20 +620,19 @@ export function CashPos({ currentUser }: { currentUser: any }) {
                                 )}
                               </TableCell>
                               <TableCell className="text-right">
-                                {remainingDebt > 0 && (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleOpenQrModal(b);
-                                    }}
-                                    className="h-7 px-2 text-[11px] text-blue-700 border-blue-200 hover:bg-blue-50"
-                                  >
-                                    <QrCode className="h-3.5 w-3.5 mr-1" />
-                                    Mã QR
-                                  </Button>
-                                )}
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenPrintBill(b);
+                                  }}
+                                  className="h-7 px-2.5 text-[11px] font-semibold text-blue-700 border-blue-300 hover:bg-blue-50 hover:text-blue-800 shadow-2xs"
+                                  title="In phiếu thanh toán kèm mã QR (Khổ K80 hoặc A5)"
+                                >
+                                  <Printer className="h-3.5 w-3.5 mr-1 text-blue-600" />
+                                  In phiếu
+                                </Button>
                               </TableCell>
                             </TableRow>
                           );
@@ -819,45 +913,15 @@ export function CashPos({ currentUser }: { currentUser: any }) {
         </DialogContent>
       </Dialog>
 
-      {/* DIALOG HIỆN MÃ VIETQR TẠI QUẦY (ĐỂ PHỤ HUYNH QUÉT CHUYỂN KHOẢN TẠI CHỖ) */}
-      <Dialog open={openQrModal} onOpenChange={setOpenQrModal}>
-        <DialogContent className="max-w-md p-6 text-center space-y-4">
-          <DialogHeader>
-            <DialogTitle className="text-lg font-bold text-slate-900 flex items-center justify-center gap-2">
-              <QrCode className="h-5 w-5 text-blue-600" />
-              Mã Chuyển Khoản VietQR Tại Quầy
-            </DialogTitle>
-          </DialogHeader>
-
-          <p className="text-xs text-slate-500">
-            Hướng màn hình cho Phụ huynh dùng App Ngân hàng bất kỳ quét mã. Tiền về tài khoản sẽ tự động báo Ting-ting!
-          </p>
-
-          {qrCodeDataUrl && (
-            <div className="p-3 bg-white border-2 border-blue-500 rounded-2xl shadow-md inline-block mx-auto">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={qrCodeDataUrl} alt="VietQR" className="w-64 h-64 mx-auto" />
-            </div>
+      {/* DIALOG XEM TRƯỚC VÀ IN PHIẾU THANH TOÁN (KÈM MÃ QR) HỖ TRỢ K80 VÀ A5 */}
+      <Dialog open={openPrintBillModal} onOpenChange={setOpenPrintBillModal}>
+        <DialogContent className="max-w-3xl p-0 overflow-hidden">
+          {printBillData && (
+            <PaymentBillPrint
+              data={printBillData}
+              onClose={() => setOpenPrintBillModal(false)}
+            />
           )}
-
-          {qrDetails && (
-            <div className="bg-slate-50 p-3 rounded-xl border text-xs text-left space-y-1">
-              <div className="flex justify-between">
-                <span className="text-slate-500">Số tiền cần thanh toán:</span>
-                <span className="font-bold text-rose-600 text-sm">{formatCurrency(qrDetails.amount)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Cú pháp chuyển khoản:</span>
-                <span className="font-mono font-bold text-blue-700">{qrDetails.content}</span>
-              </div>
-            </div>
-          )}
-
-          <DialogFooter className="sm:justify-center">
-            <Button onClick={() => setOpenQrModal(false)} className="w-full text-xs">
-              Đã hiểu & Đóng
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

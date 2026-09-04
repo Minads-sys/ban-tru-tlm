@@ -122,6 +122,7 @@ interface SepayTransaction {
 
 export default function BillingPage() {
   const { data: session } = useSession();
+  const isCashier = session?.user?.role === "CASHIER";
   const [activeTab, setActiveTab] = useState("bills");
 
   // ================= TAB 1: BILLS STATE =================
@@ -329,18 +330,19 @@ export default function BillingPage() {
   }, []);
 
   useEffect(() => {
-    if (session?.user?.role === "CASHIER") {
+    if (isCashier && activeTab !== "pos" && activeTab !== "cash-closing") {
       setActiveTab("pos");
     }
-  }, [session?.user?.role]);
+  }, [isCashier, activeTab]);
 
   useEffect(() => {
+    if (isCashier) return;
     if (activeTab === "bills") {
       fetchBills(currentPage);
     } else if (activeTab === "transactions") {
       fetchTransactions(txPage);
     }
-  }, [activeTab, fetchBills, fetchTransactions, currentPage, txPage]);
+  }, [activeTab, fetchBills, fetchTransactions, currentPage, txPage, isCashier]);
 
   // Handle Sync SePay API
   const handleSyncSepay = async () => {
@@ -762,13 +764,27 @@ export default function BillingPage() {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 no-print">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2 text-slate-900">
-            <Receipt className="h-7 w-7 text-blue-600" />
-            Hóa đơn & Thanh toán Tự gạch nợ
-          </h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Tạo hóa đơn, in phiếu thu A5, tự động gạch nợ qua SePay (VietQR) và đối soát ngân hàng
-          </p>
+          {isCashier ? (
+            <>
+              <h1 className="text-2xl font-bold flex items-center gap-2 text-slate-900">
+                <Banknote className="h-7 w-7 text-emerald-600" />
+                Quầy Thu Ngân & Bàn Giao Tiền Mặt
+              </h1>
+              <p className="text-sm text-slate-500 mt-1">
+                Thu tiền mặt tại quầy, in phiếu thu phụ huynh và lập báo cáo bàn giao tiền mặt cuối ngày
+              </p>
+            </>
+          ) : (
+            <>
+              <h1 className="text-2xl font-bold flex items-center gap-2 text-slate-900">
+                <Receipt className="h-7 w-7 text-blue-600" />
+                Hóa đơn & Thanh toán Tự gạch nợ
+              </h1>
+              <p className="text-sm text-slate-500 mt-1">
+                Tạo hóa đơn, in phiếu thu A5, tự động gạch nợ qua SePay (VietQR) và đối soát ngân hàng
+              </p>
+            </>
+          )}
         </div>
 
         {/* Cụm thông tin tài khoản BIDV */}
@@ -784,38 +800,63 @@ export default function BillingPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="no-print">
-        <TabsList className="grid grid-cols-2 sm:grid-cols-5 w-full max-w-4xl h-auto p-1 gap-1">
-          <TabsTrigger value="bills" className="flex items-center gap-2 py-2">
-            <Receipt className="h-4 w-4" />
-            Hóa đơn
-          </TabsTrigger>
-          <TabsTrigger
-            value="pos"
-            className="flex items-center gap-2 py-2 text-emerald-700 data-[state=active]:bg-emerald-50 data-[state=active]:text-emerald-800 font-bold"
-          >
-            <Banknote className="h-4 w-4 text-emerald-600" />
-            Quầy Thu Tiền Mặt
-          </TabsTrigger>
-          <TabsTrigger
-            value="cash-closing"
-            className="flex items-center gap-2 py-2 text-blue-700 data-[state=active]:bg-blue-50 data-[state=active]:text-blue-800 font-bold"
-          >
-            <FileCheck2 className="h-4 w-4 text-blue-600" />
-            Chốt Ca & Báo Cáo
-          </TabsTrigger>
-          <TabsTrigger value="transactions" className="flex items-center gap-2 py-2">
-            <CreditCard className="h-4 w-4" />
-            Đối soát SePay
-            {txStats && txStats.unmatchedCount > 0 && (
-              <span className="ml-1 px-1.5 py-0.2 text-[10px] bg-amber-500 text-white rounded-full font-bold">
-                {txStats.unmatchedCount}
-              </span>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="config" className="flex items-center gap-2 py-2">
-            <Settings className="h-4 w-4" />
-            Cấu hình & Test
-          </TabsTrigger>
+        <TabsList
+          className={`grid ${
+            isCashier ? "grid-cols-2 max-w-md" : "grid-cols-2 sm:grid-cols-5 max-w-4xl"
+          } w-full h-auto p-1 gap-1`}
+        >
+          {isCashier ? (
+            <>
+              <TabsTrigger
+                value="pos"
+                className="flex items-center justify-center gap-2 py-2.5 text-emerald-700 data-[state=active]:bg-emerald-50 data-[state=active]:text-emerald-800 font-bold"
+              >
+                <Banknote className="h-4 w-4 text-emerald-600" />
+                💵 Quầy Thu Tiền Mặt
+              </TabsTrigger>
+              <TabsTrigger
+                value="cash-closing"
+                className="flex items-center justify-center gap-2 py-2.5 text-blue-700 data-[state=active]:bg-blue-50 data-[state=active]:text-blue-800 font-bold"
+              >
+                <FileCheck2 className="h-4 w-4 text-blue-600" />
+                📄 Chốt Ca & Báo Cáo
+              </TabsTrigger>
+            </>
+          ) : (
+            <>
+              <TabsTrigger value="bills" className="flex items-center gap-2 py-2">
+                <Receipt className="h-4 w-4" />
+                Hóa đơn
+              </TabsTrigger>
+              <TabsTrigger
+                value="pos"
+                className="flex items-center gap-2 py-2 text-emerald-700 data-[state=active]:bg-emerald-50 data-[state=active]:text-emerald-800 font-bold"
+              >
+                <Banknote className="h-4 w-4 text-emerald-600" />
+                Quầy Thu Tiền Mặt
+              </TabsTrigger>
+              <TabsTrigger
+                value="cash-closing"
+                className="flex items-center gap-2 py-2 text-blue-700 data-[state=active]:bg-blue-50 data-[state=active]:text-blue-800 font-bold"
+              >
+                <FileCheck2 className="h-4 w-4 text-blue-600" />
+                Chốt Ca & Báo Cáo
+              </TabsTrigger>
+              <TabsTrigger value="transactions" className="flex items-center gap-2 py-2">
+                <CreditCard className="h-4 w-4" />
+                Đối soát SePay
+                {txStats && txStats.unmatchedCount > 0 && (
+                  <span className="ml-1 px-1.5 py-0.2 text-[10px] bg-amber-500 text-white rounded-full font-bold">
+                    {txStats.unmatchedCount}
+                  </span>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="config" className="flex items-center gap-2 py-2">
+                <Settings className="h-4 w-4" />
+                Cấu hình & Test
+              </TabsTrigger>
+            </>
+          )}
         </TabsList>
 
         {/* ================= TAB: QUẦY THU TIỀN MẶT ================= */}
@@ -828,8 +869,10 @@ export default function BillingPage() {
           <CashClosingManager currentUser={session?.user} />
         </TabsContent>
 
-        {/* ================= TAB 1: DANH SÁCH HÓA ĐƠN ================= */}
-        <TabsContent value="bills" className="space-y-4 pt-2">
+        {!isCashier && (
+          <>
+            {/* ================= TAB 1: DANH SÁCH HÓA ĐƠN ================= */}
+            <TabsContent value="bills" className="space-y-4 pt-2">
           {/* Bộ lọc */}
           <Card>
             <CardContent className="pt-6">
@@ -1033,30 +1076,51 @@ export default function BillingPage() {
               <Table wrapperClassName="max-h-[60vh]">
                 <TableHeader className="sticky top-0 z-10 bg-white shadow-sm shadow-slate-200">
                   <TableRow>
-                    <TableHead>STT</TableHead>
+                    <TableHead className="w-12 text-center">STT</TableHead>
                     <TableHead>Mã Bán Trú</TableHead>
                     <TableHead>Họ tên</TableHead>
                     <TableHead>Lớp</TableHead>
                     <TableHead className="text-center">Ngày ăn</TableHead>
+                    <TableHead className="text-right">Đơn giá</TableHead>
                     <TableHead className="text-center">Ngày cắt</TableHead>
                     <TableHead className="text-right">Trừ T.trước</TableHead>
                     <TableHead className="text-right">Thành tiền</TableHead>
-                    <TableHead>Trạng thái</TableHead>
+                    <TableHead className="text-center">Trạng thái</TableHead>
                     <TableHead className="text-center">Thao tác</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {bills.map((bill, idx) => (
                     <TableRow key={bill.id}>
-                      <TableCell>{(currentPage - 1) * ITEMS_PER_PAGE + idx + 1}</TableCell>
+                      <TableCell className="text-center text-slate-500 font-medium">
+                        {(currentPage - 1) * ITEMS_PER_PAGE + idx + 1}
+                      </TableCell>
                       <TableCell className="font-mono text-xs font-semibold text-blue-600">
                         {bill.student.boardingCode || bill.student.studentCode}
                       </TableCell>
-                      <TableCell>{bill.student.user.fullName}</TableCell>
+                      <TableCell className="font-semibold text-slate-900">
+                        {bill.student.user.fullName}
+                      </TableCell>
                       <TableCell>{bill.student.class.name}</TableCell>
-                      <TableCell className="text-center">{bill.netPayableDays}</TableCell>
-                      <TableCell className="text-center">{bill.canceledDays}</TableCell>
-                      <TableCell className="text-right font-semibold">
+                      <TableCell className="text-center font-medium">{bill.netPayableDays}</TableCell>
+                      <TableCell className="text-right text-xs text-slate-600">
+                        {formatVND(bill.unitPrice)}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {bill.canceledDays > 0 ? (
+                          <span className="text-rose-600 font-semibold">{bill.canceledDays}</span>
+                        ) : (
+                          <span className="text-slate-400">0</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right text-xs">
+                        {parseInt(bill.previousDeduction) > 0 ? (
+                          <span className="text-rose-600 font-medium">-{formatVND(bill.previousDeduction)}</span>
+                        ) : (
+                          <span className="text-slate-400">0đ</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right font-bold text-slate-900">
                         <div>{formatVND(bill.finalAmount)}</div>
                         {(() => {
                           const paid = (bill.transactions || []).reduce((s: number, t: any) => s + Number(t.amount), 0);
@@ -1073,7 +1137,10 @@ export default function BillingPage() {
                         })()}
                       </TableCell>
                       <TableCell className="text-center">
-                        <div className="flex items-center justify-center gap-2">
+                        {statusBadge(bill.paymentStatus)}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <div className="flex items-center justify-center gap-1.5">
                           <Button variant="outline" size="sm" onClick={() => printSingleBill(bill.id)}>
                             In phiếu
                           </Button>
@@ -1086,7 +1153,7 @@ export default function BillingPage() {
                   ))}
                   {bills.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={10} className="text-center text-gray-400 py-8">
+                      <TableCell colSpan={11} className="text-center text-gray-400 py-8">
                         <FileDown className="h-8 w-8 mx-auto mb-2 opacity-50" />
                         Chưa có dữ liệu hóa đơn. Bấm &quot;Tải dữ liệu&quot; hoặc &quot;Tạo hóa đơn&quot; để bắt đầu.
                       </TableCell>
@@ -1472,8 +1539,12 @@ export default function BillingPage() {
             </Card>
           </div>
         </TabsContent>
-      </Tabs>
+      </>
+    )}
+  </Tabs>
 
+  {!isCashier && (
+    <>
       {/* ================= MODAL GẠCH NỢ THỦ CÔNG ================= */}
       <Dialog open={!!selectedTxForMatch} onOpenChange={(open) => !open && setSelectedTxForMatch(null)}>
         <DialogContent className="w-[96vw] max-w-lg max-h-[92vh] flex flex-col p-3.5 sm:p-5 overflow-hidden">
@@ -2108,6 +2179,8 @@ export default function BillingPage() {
             </div>
           ))}
       </div>
-    </div>
-  );
+    </>
+  )}
+</div>
+);
 }

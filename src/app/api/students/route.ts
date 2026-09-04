@@ -5,20 +5,69 @@ import { BoardingStatus, CancellationStatus } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { broadcastChange } from "@/lib/realtime-hub";
 
+import { removeVietnameseTones } from "@/lib/utils";
+
 // GET: Lấy danh sách học sinh
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const classId = searchParams.get("classId");
   const status = searchParams.get("status") as BoardingStatus | null;
   const studentId = searchParams.get("studentId") || searchParams.get("id");
+  const search = searchParams.get("search")?.trim();
+  const limit = searchParams.get("limit");
 
   const where: Record<string, unknown> = {};
   if (studentId) where.id = studentId;
   if (classId) where.classId = classId;
   if (status) where.boardingStatus = status;
 
-  const students = await prisma.student.findMany({
-    where,
+  // Nếu không có tìm kiếm -> Lấy danh sách thông thường theo filter
+  if (!search) {
+    const students = await prisma.student.findMany({
+      where,
+      take: limit ? parseInt(limit, 10) : undefined,
+      include: {
+        user: {
+          select: { fullName: true, username: true, isActive: true },
+        },
+        class: { select: { name: true } },
+      },
+      orderBy: [{ classId: "asc" }, { id: "asc" }],
+    });
+
+    return NextResponse.json(students);
+  }
+
+  // Khi có từ khóa tìm kiếm:
+  const cleanSearch = search.trim();
+  const normalizedSearch = removeVietnameseTones(cleanSearch);
+
+  // 1. Tìm kiếm trực tiếp trong Database với Prisma (khớp CCCD, Mã BT, SĐT, Tên có dấu, Lớp)
+  const dbMatches = await prisma.student.findMany({
+    where: {
+      ...where,
+      OR: [
+        { studentCode: { contains: cleanSearch, mode: "insensitive" } },
+        { boardingCode: { contains: cleanSearch, mode: "insensitive" } },
+        { parentPhone: { contains: cleanSearch, mode: "insensitive" } },
+        {
+          user: {
+            fullName: { contains: cleanSearch, mode: "insensitive" },
+          },
+        },
+        {
+          user: {
+            username: { contains: cleanSearch, mode: "insensitive" },
+          },
+        },
+        {
+          class: {
+            name: { contains: cleanSearch, mode: "insensitive" },
+          },
+        },
+      ],
+    },
+    take: limit ? parseInt(limit, 10) : 20,
     include: {
       user: {
         select: { fullName: true, username: true, isActive: true },
@@ -28,7 +77,46 @@ export async function GET(request: NextRequest) {
     orderBy: [{ classId: "asc" }, { id: "asc" }],
   });
 
-  return NextResponse.json(students);
+  // Nếu tìm thấy kết quả từ Database, trả về ngay
+  if (dbMatches.length > 0) {
+    return NextResponse.json(dbMatches);
+  }
+
+  // 2. Nếu người dùng gõ tiếng Việt không dấu (VD: "bao", "dat", "quoc bao"), tìm kiếm bổ sung bằng thuật toán bỏ dấu
+  if (normalizedSearch) {
+    const allCandidates = await prisma.student.findMany({
+      where,
+      take: 300,
+      include: {
+        user: {
+          select: { fullName: true, username: true, isActive: true },
+        },
+        class: { select: { name: true } },
+      },
+      orderBy: [{ classId: "asc" }, { id: "asc" }],
+    });
+
+    const accentFiltered = allCandidates.filter((s) => {
+      const normName = removeVietnameseTones(s.user?.fullName || "");
+      const normUsername = removeVietnameseTones(s.user?.username || "");
+      const normClass = removeVietnameseTones(s.class?.name || s.classId || "");
+      const code = (s.studentCode || "").toLowerCase();
+      const bCode = (s.boardingCode || "").toLowerCase();
+
+      return (
+        normName.includes(normalizedSearch) ||
+        normUsername.includes(normalizedSearch) ||
+        normClass.includes(normalizedSearch) ||
+        code.includes(cleanSearch.toLowerCase()) ||
+        bCode.includes(cleanSearch.toLowerCase())
+      );
+    });
+
+    const takeCount = limit ? parseInt(limit, 10) : 10;
+    return NextResponse.json(accentFiltered.slice(0, takeCount));
+  }
+
+  return NextResponse.json([]);
 }
 
 // POST: Thao tác trên học sinh bán trú

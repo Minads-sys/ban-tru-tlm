@@ -192,7 +192,11 @@ export function SidebarNav({ user }: SidebarNavProps) {
                     active ? "text-white" : "text-slate-400"
                   )}
                 />
-                <span className="truncate">{item.title}</span>
+                <span className="truncate">
+                  {user?.role === "CASHIER" && item.href === "/admin/billing"
+                    ? "Quầy Thu Ngân"
+                    : item.title}
+                </span>
               </Link>
             );
           })}
