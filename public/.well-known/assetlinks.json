@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "com.bantrutlm.app",
+        "sha256_cert_fingerprints": ["73:9F:21:54:1F:9D:13:0F:20:42:17:78:69:9C:DA:69:F2:2D:6D:44:BC:36:3A:41:A5:0E:53:BB:3E:4C:39:D8"]
+      }
+    }]
