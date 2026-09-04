@@ -18,9 +18,14 @@ export function formatCurrency(amount: number | string): string {
 }
 
 /**
- * Format ngày tháng tiếng Việt
+ * Format ngày tháng tiếng Việt (DD/MM/YYYY)
  */
-export function formatDate(date: Date | string): string {
+export function formatDate(date: Date | string | null | undefined): string {
+  if (!date) return "";
+  if (typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    const [y, m, d] = date.split("-");
+    return `${d}/${m}/${y}`;
+  }
   const d = typeof date === "string" ? new Date(date) : date;
   return new Intl.DateTimeFormat("vi-VN", {
     day: "2-digit",

@@ -38,6 +38,7 @@ import {
   TrendingUp,
   AlertTriangle,
 } from "lucide-react";
+import { formatDate } from "@/lib/utils";
 
 export default function ReportsPage() {
   const [loading, setLoading] = useState(false);
@@ -361,7 +362,7 @@ export default function ReportsPage() {
               {/* Chi tiết theo lớp */}
               <Card>
                 <CardHeader>
-                  <CardTitle>Chi tiết theo lớp - Ngày {reportDate}</CardTitle>
+                  <CardTitle>Chi tiết theo lớp - Ngày {formatDate(reportDate)}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   {/* Kiểm tra nếu chưa qua giờ chốt và chưa khóa thì ẩn chi tiết */}
