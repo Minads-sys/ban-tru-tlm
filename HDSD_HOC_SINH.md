@@ -34,6 +34,14 @@ Hệ thống **Quản lý Suất ăn Bán trú - Trường THPT Ten Lơ Man (BAN
 > [!NOTE]
 > Hệ thống hoạt động tốt trên mọi thiết bị: Máy tính để bàn, Laptop, Máy tính bảng và Điện thoại thông minh (giao diện tối ưu cho màn hình di động).
 
+> [!TIP]
+> **Tải hoặc xem trực tiếp tài liệu hướng dẫn dạng PDF:**
+> * Link xem/tải nhanh: [https://bantrutlm.com/huong-dan-hoc-sinh.pdf](https://bantrutlm.com/huong-dan-hoc-sinh.pdf)
+> * Link file gốc: [HUONG DAN PHAN MEM AN BÁN TRÚ DÀNH CHO HOC SINH TEN LƠ MAN.pdf](https://bantrutlm.com/HUONG%20DAN%20PHAN%20MEM%20AN%20B%C3%81N%20TR%C3%9A%20D%C3%80NH%20CHO%20HOC%20SINH%20TEN%20L%C6%A0%20MAN.pdf)
+> * Quét mã QR dưới đây bằng camera điện thoại để tải hoặc xem ngay:
+> 
+> ![Mã QR tải file Hướng Dẫn PDF](public/qr-huong-dan-hoc-sinh.png)
+
 ---
 
 ## 2. HƯỚNG DẪN ĐĂNG NHẬP & ĐỔI MẬT KHẨU LẦN ĐẦU

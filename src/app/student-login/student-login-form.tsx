@@ -187,10 +187,20 @@ export default function StudentLoginForm({ schoolName }: { schoolName: string })
             </form>
 
             {/* Help instructions box */}
-            <div className="mt-5 p-3 rounded-lg bg-emerald-50/80 border border-emerald-100 text-xs text-emerald-900 space-y-1">
-              <div className="flex items-center gap-1.5 font-semibold text-emerald-800">
-                <HelpCircle className="h-3.5 w-3.5 text-emerald-600" />
-                Hướng dẫn cho Phụ huynh & Học sinh:
+            <div className="mt-5 p-3 rounded-lg bg-emerald-50/80 border border-emerald-100 text-xs text-emerald-900 space-y-1.5">
+              <div className="flex items-center justify-between font-semibold text-emerald-800">
+                <div className="flex items-center gap-1.5">
+                  <HelpCircle className="h-3.5 w-3.5 text-emerald-600" />
+                  Hướng dẫn cho Phụ huynh & Học sinh:
+                </div>
+                <a
+                  href="/huong-dan-hoc-sinh.pdf"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[11px] text-emerald-700 hover:text-emerald-900 font-bold underline inline-flex items-center gap-1"
+                >
+                  📄 File HDSD (PDF)
+                </a>
               </div>
               <ul className="list-disc list-inside space-y-0.5 text-[11px] text-emerald-700">
                 <li>Tên đăng nhập: Nhập đầy đủ Họ và tên (có dấu hoặc không dấu đều được).</li>
