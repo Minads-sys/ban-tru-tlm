@@ -35,15 +35,10 @@ import {
   Calculator,
   CreditCard,
   Layers,
-  Settings,
   RefreshCw,
   Search,
   CheckCircle,
   AlertTriangle,
-  ArrowUpRight,
-  Copy,
-  Send,
-  HelpCircle,
   UserCheck,
   Banknote,
   FileCheck2,
@@ -213,12 +208,6 @@ export default function BillingPage() {
     });
   }, [matchStudents, matchSearchTerm]);
 
-  // ================= TAB 3: SANDBOX TEST STATE =================
-  const [testCode, setTestCode] = useState("BT00001");
-  const [testMonth, setTestMonth] = useState(new Date().getMonth() + 1);
-  const [testAmount, setTestAmount] = useState(700000);
-  const [testingWebhook, setTestingWebhook] = useState(false);
-  const [copiedUrl, setCopiedUrl] = useState(false);
 
   const fetchSettings = async () => {
     try {
@@ -474,66 +463,6 @@ export default function BillingPage() {
     }
   };
 
-  // Test Webhook Simulation
-  const handleSimulateWebhook = async () => {
-    setTestingWebhook(true);
-    try {
-      const simulatedPayload = {
-        id: Math.floor(Math.random() * 900000) + 100000,
-        gateway: "BIDV",
-        transactionDate: new Date().toISOString(),
-        accountNumber: settings.BANK_ACCOUNT_NO || "96247BANTRUTLM08",
-        transferType: "in",
-        transferAmount: testAmount,
-        content: `BSTLM ${testCode.trim()} T${String(testMonth).padStart(2, "0")}${String(year).slice(-2)}`,
-        description: `Chuyen khoan test BSTLM ${testCode.trim()} T${String(testMonth).padStart(2, "0")}${String(year).slice(-2)}`,
-      };
-
-      const res = await fetch("/api/sepay/webhook", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(simulatedPayload),
-      });
-
-      const data = await res.json();
-      if (res.ok && data.success) {
-        if (data.matched) {
-          Swal.fire({
-            title: "Gạch nợ tự động thành công!",
-            html: `
-              <div class="text-left text-sm space-y-1">
-                <p><b>Học sinh:</b> ${data.studentName} (${testCode})</p>
-                <p><b>Hóa đơn:</b> Tháng ${data.month}/${data.year}</p>
-                <p><b>Số tiền:</b> ${new Intl.NumberFormat("vi-VN").format(data.amount)}đ</p>
-                <p><b>Tổng đã đóng:</b> ${new Intl.NumberFormat("vi-VN").format(data.totalPaid)} / ${new Intl.NumberFormat("vi-VN").format(data.finalAmount)}đ</p>
-                <p><b>Trạng thái:</b> <span class="text-green-600 font-bold">${data.paymentStatus}</span></p>
-              </div>
-            `,
-            icon: "success",
-          });
-        } else {
-          Swal.fire({
-            title: "Webhook đã nhận (Chưa khớp)",
-            html: `
-              <div class="text-left text-sm space-y-1">
-                <p><b>Thông báo:</b> ${data.message}</p>
-                <p class="text-xs text-gray-500">Giao dịch đã được lưu vào danh sách chờ đối soát thủ công.</p>
-              </div>
-            `,
-            icon: "warning",
-          });
-        }
-        fetchBills(currentPage);
-        fetchTransactions(1);
-      } else {
-        Swal.fire("Lỗi xử lý", data.error || data.message || "Lỗi webhook", "error");
-      }
-    } catch (e) {
-      Swal.fire("Lỗi", "Lỗi gửi webhook thử nghiệm", "error");
-    } finally {
-      setTestingWebhook(false);
-    }
-  };
 
   // Tạo hóa đơn cho 1 lớp
   const generateBillsForClass = async (targetClassId: string, className: string) => {
@@ -767,8 +696,6 @@ export default function BillingPage() {
     }
   };
 
-  const webhookFullUrl = typeof window !== "undefined" ? `${window.location.origin}/api/sepay/webhook` : "/api/sepay/webhook";
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 no-print">
@@ -811,7 +738,7 @@ export default function BillingPage() {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="no-print">
         <TabsList
           className={`grid ${
-            isCashier ? "grid-cols-2 max-w-md" : "grid-cols-2 sm:grid-cols-5 max-w-4xl"
+            isCashier ? "grid-cols-2 max-w-md" : "grid-cols-2 sm:grid-cols-4 max-w-3xl"
           } w-full h-auto p-1 gap-1`}
         >
           {isCashier ? (
@@ -859,10 +786,6 @@ export default function BillingPage() {
                     {txStats.unmatchedCount}
                   </span>
                 )}
-              </TabsTrigger>
-              <TabsTrigger value="config" className="flex items-center gap-2 py-2">
-                <Settings className="h-4 w-4" />
-                Cấu hình & Test
               </TabsTrigger>
             </>
           )}
@@ -1447,129 +1370,6 @@ export default function BillingPage() {
           </Card>
         </TabsContent>
 
-        {/* ================= TAB 3: CẤU HÌNH & TEST ================= */}
-        <TabsContent value="config" className="space-y-6 pt-2">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Card thông tin Webhook */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2 text-slate-800">
-                  <ArrowUpRight className="h-5 w-5 text-blue-600" />
-                  Thông tin Webhook SePay
-                </CardTitle>
-                <CardDescription>
-                  Sao chép URL này và dán vào mục <b>Webhook</b> trên trang quản trị SePay (my.sepay.vn).
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label className="text-xs text-gray-500 uppercase">Webhook Endpoint URL</Label>
-                  <div className="flex items-center gap-2 mt-1">
-                    <Input readOnly value={webhookFullUrl} className="font-mono text-xs bg-slate-50" />
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        navigator.clipboard.writeText(webhookFullUrl);
-                        setCopiedUrl(true);
-                        setTimeout(() => setCopiedUrl(false), 2000);
-                      }}
-                    >
-                      {copiedUrl ? <CheckCircle className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
-                    </Button>
-                  </div>
-                  <p className="text-[11px] text-gray-500 mt-1">
-                    Phương thức: <b>POST</b> • Định dạng: <b>JSON</b>
-                  </p>
-                </div>
-
-                <div className="p-3 bg-blue-50 border border-blue-200 rounded-md text-xs space-y-2 text-blue-900">
-                  <p className="font-semibold flex items-center gap-1">
-                    <HelpCircle className="h-4 w-4 text-blue-600" /> Cú pháp nội dung chuyển khoản hợp lệ:
-                  </p>
-                  <div className="font-mono bg-white p-2 rounded border border-blue-200 text-blue-800 text-center font-bold text-sm">
-                    BSTLM [Mã Bán Trú] T[MM][YY]
-                  </div>
-                  <p className="text-[11px] text-slate-600">
-                    Ví dụ: <code className="font-bold">BSTLM BT00001 T0926</code> hoặc <code className="font-bold">BSTLM HS24001 T0926</code>.
-                    Hệ thống tự động nhận diện cả tháng và năm (09 = Tháng 9, 26 = Năm 2026), loại bỏ hoàn toàn nguy cơ nhầm lẫn giữa các niên khóa.
-                  </p>
-                </div>
-
-                <div className="pt-2 border-t text-xs text-slate-600 space-y-1">
-                  <p><b>Ngân hàng liên kết:</b> BIDV</p>
-                  <p><b>Số tài khoản:</b> {settings.BANK_ACCOUNT_NO || "96247BANTRUTLM08"}</p>
-                  <p><b>Chủ tài khoản:</b> {settings.BANK_ACCOUNT_NAME || "HOANG KIM"}</p>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Card Giả lập Test Webhook */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2 text-slate-800">
-                  <Send className="h-5 w-5 text-green-600" />
-                  Giả lập Gạch nợ Webhook (Sandbox)
-                </CardTitle>
-                <CardDescription>
-                  Gửi dữ liệu thanh toán mô phỏng từ SePay để kiểm tra luồng tự gạch nợ ngay lập tức mà không cần chuyển tiền thật.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label>Mã học sinh / Bán trú</Label>
-                    <Input
-                      placeholder="VD: BT00001"
-                      value={testCode}
-                      onChange={(e) => setTestCode(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <Label>Tháng thanh toán</Label>
-                    <Input
-                      type="number"
-                      min={1}
-                      max={12}
-                      value={testMonth}
-                      onChange={(e) => setTestMonth(parseInt(e.target.value))}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <Label>Số tiền chuyển khoản (VNĐ)</Label>
-                  <Input
-                    type="number"
-                    step={10000}
-                    value={testAmount}
-                    onChange={(e) => setTestAmount(parseInt(e.target.value))}
-                  />
-                </div>
-
-                <div className="p-2.5 bg-slate-100 rounded text-xs">
-                  <span className="text-gray-500">Nội dung giả lập: </span>
-                  <span className="font-mono font-bold text-blue-700">
-                    BSTLM {testCode.trim().toUpperCase()} T{String(testMonth).padStart(2, "0")}{String(year).slice(-2)}
-                  </span>
-                </div>
-
-                <Button
-                  onClick={handleSimulateWebhook}
-                  disabled={testingWebhook || !testCode.trim()}
-                  className="w-full bg-green-600 hover:bg-green-700 text-white"
-                >
-                  {testingWebhook ? (
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  ) : (
-                    <Send className="h-4 w-4 mr-2" />
-                  )}
-                  Gửi Webhook Thử Nghiệm
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
       </>
     )}
   </Tabs>

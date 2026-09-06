@@ -172,6 +172,10 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
   const getTomorrowDateString = () => {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
+    // Nếu ngày mai là Chủ nhật (0), chuyển sang Thứ Hai vì Chủ nhật không có suất ăn
+    if (tomorrow.getDay() === 0) {
+      tomorrow.setDate(tomorrow.getDate() + 1);
+    }
     const yyyy = tomorrow.getFullYear();
     const mm = String(tomorrow.getMonth() + 1).padStart(2, "0");
     const dd = String(tomorrow.getDate()).padStart(2, "0");
@@ -198,6 +202,24 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
 
   const minDate = getTomorrowDateString();
   const maxDate = getEndOfWeekDateString();
+
+  const isSunday = (dateStr: string) => {
+    if (!dateStr) return false;
+    const parts = dateStr.split("-").map(Number);
+    if (parts.length !== 3) return false;
+    const [y, m, d] = parts;
+    return new Date(y, m - 1, d).getDay() === 0;
+  };
+
+  const isDateCancelled = (dateStr: string) => {
+    if (!dateStr) return false;
+    return cancellations.some((c) => {
+      if (c.status === "REJECTED") return false;
+      const cd = new Date(c.cancelDate);
+      const cdStr = `${cd.getUTCFullYear()}-${String(cd.getUTCMonth() + 1).padStart(2, "0")}-${String(cd.getUTCDate()).padStart(2, "0")}`;
+      return cdStr === dateStr;
+    });
+  };
 
   const fetchStudentInfo = useCallback(async (id: string) => {
     try {
@@ -297,6 +319,11 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
     e.preventDefault();
     if (!studentId || !cancelDate || !reason.trim()) return;
 
+    if (isSunday(cancelDate)) {
+      setCancelError("Chủ nhật không có lịch ăn bán trú. Vui lòng chọn ngày từ Thứ 2 đến Thứ 6.");
+      return;
+    }
+
     setSubmittingCancel(true);
     setCancelError(null);
     setCancelSuccess(null);
@@ -333,6 +360,16 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
   const handleOverrideSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!studentId || !overrideDate || !overrideMealType) return;
+
+    if (isSunday(overrideDate)) {
+      setOverrideError("Chủ nhật không có lịch ăn bán trú. Vui lòng chọn ngày từ Thứ 2 đến Thứ 6.");
+      return;
+    }
+
+    if (isDateCancelled(overrideDate)) {
+      setOverrideError("Học sinh đang có yêu cầu cắt suất vào ngày này (chưa bị từ chối), không thể đổi món.");
+      return;
+    }
 
     setSubmittingOverride(true);
     setOverrideError(null);
@@ -630,17 +667,18 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                         max={maxDate}
                         value={cancelDate}
                         onChange={(e) => {
-                           const d = new Date(e.target.value);
-                           if (d.getDay() === 0) {
-                             alert("Chủ nhật không có lịch ăn bán trú.");
-                             setCancelDate("");
-                             return;
-                           }
-                           setCancelDate(e.target.value);
+                          setCancelDate(e.target.value);
+                          if (cancelError) setCancelError(null);
                         }}
                         required
                         className="bg-white"
                       />
+                      {isSunday(cancelDate) && (
+                        <p className="text-xs font-medium text-rose-600 flex items-center gap-1.5 mt-1.5 bg-rose-50 p-2 rounded border border-rose-200">
+                          <AlertCircle className="h-4 w-4 shrink-0 text-rose-500" />
+                          <span>Chủ nhật không có lịch ăn bán trú. Vui lòng chọn ngày khác (Thứ 2 đến Thứ 6).</span>
+                        </p>
+                      )}
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="reason">Lý do <span className="text-rose-500">*</span></Label>
@@ -670,7 +708,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
 
                     <Button
                       type="submit"
-                      disabled={submittingCancel || !cancelDate || !reason.trim()}
+                      disabled={submittingCancel || !cancelDate || !reason.trim() || isSunday(cancelDate)}
                       className="w-full bg-green-600 hover:bg-green-700 text-white disabled:bg-gray-400 disabled:text-black disabled:opacity-100 font-medium"
                     >
                       {submittingCancel ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
@@ -754,37 +792,24 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                         max={maxDate}
                         value={overrideDate}
                         onChange={(e) => {
-                           const val = e.target.value;
-                           if (!val) {
-                             setOverrideDate("");
-                             return;
-                           }
-                           const d = new Date(val);
-                           if (d.getDay() === 0) {
-                             alert("Chủ nhật không có lịch ăn bán trú.");
-                             setOverrideDate("");
-                             return;
-                           }
-                           
-                           // Check against active cancellations
-                           const hasCancellation = cancellations.some(c => {
-                             if (c.status === "REJECTED") return false;
-                             const cd = new Date(c.cancelDate);
-                             const cdStr = `${cd.getUTCFullYear()}-${String(cd.getUTCMonth() + 1).padStart(2, '0')}-${String(cd.getUTCDate()).padStart(2, '0')}`;
-                             return cdStr === val;
-                           });
-                           
-                           if (hasCancellation) {
-                             alert("Học sinh đang có yêu cầu cắt suất vào ngày này (chưa bị từ chối), không thể đổi món.");
-                             setOverrideDate("");
-                             return;
-                           }
-                           
-                           setOverrideDate(val);
+                          setOverrideDate(e.target.value);
+                          if (overrideError) setOverrideError(null);
                         }}
                         required
                         className="bg-white"
                       />
+                      {isSunday(overrideDate) && (
+                        <p className="text-xs font-medium text-rose-600 flex items-center gap-1.5 mt-1.5 bg-rose-50 p-2 rounded border border-rose-200">
+                          <AlertCircle className="h-4 w-4 shrink-0 text-rose-500" />
+                          <span>Chủ nhật không có lịch ăn bán trú. Vui lòng chọn ngày khác (Thứ 2 đến Thứ 6).</span>
+                        </p>
+                      )}
+                      {isDateCancelled(overrideDate) && !isSunday(overrideDate) && (
+                        <p className="text-xs font-medium text-amber-700 flex items-center gap-1.5 mt-1.5 bg-amber-50 p-2 rounded border border-amber-200">
+                          <AlertCircle className="h-4 w-4 shrink-0 text-amber-600" />
+                          <span>Học sinh đang có yêu cầu cắt suất vào ngày này (chưa bị từ chối), không thể đổi món.</span>
+                        </p>
+                      )}
                     </div>
                     <div className="space-y-2">
                       <Label>Món ăn muốn đổi <span className="text-rose-500">*</span></Label>
@@ -801,7 +826,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                     </div>
                     <Button
                       type="submit"
-                      disabled={submittingOverride || !overrideDate}
+                      disabled={submittingOverride || !overrideDate || isSunday(overrideDate) || isDateCancelled(overrideDate)}
                       className="w-full bg-green-600 hover:bg-green-700 text-white disabled:bg-gray-400 disabled:text-black disabled:opacity-100 font-medium"
                     >
                       {submittingOverride ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
