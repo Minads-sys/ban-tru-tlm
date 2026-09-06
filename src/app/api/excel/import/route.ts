@@ -8,7 +8,7 @@ import {
 } from "@/lib/excel";
 import bcrypt from "bcryptjs";
 import { MealType, BoardingStatus, UserRole } from "@prisma/client";
-
+import { parseDateValue } from "@/lib/utils";
 import { auth } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
@@ -127,17 +127,9 @@ export async function POST(request: NextRequest) {
         
         let birthDateVal: Date | null = null;
         if (row.ngaySinh) {
-          // parse ddmmyyyy if it is a string without slashes, or parsing from DD/MM/YYYY
-          if (row.ngaySinh.length === 8 && !row.ngaySinh.includes("/")) {
-            const d = parseInt(row.ngaySinh.substring(0,2));
-            const m = parseInt(row.ngaySinh.substring(2,4)) - 1;
-            const y = parseInt(row.ngaySinh.substring(4,8));
-            birthDateVal = new Date(Date.UTC(y, m, d));
-          } else if (row.ngaySinh.includes("/")) {
-            const parts = row.ngaySinh.split("/");
-            if (parts.length === 3) {
-              birthDateVal = new Date(Date.UTC(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0])));
-            }
+          const parsed = parseDateValue(row.ngaySinh);
+          if (parsed) {
+            birthDateVal = parsed.dateObj;
           }
         }
 

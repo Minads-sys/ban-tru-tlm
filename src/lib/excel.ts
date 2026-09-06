@@ -1,5 +1,5 @@
 import ExcelJS from "exceljs";
-import { removeVietnameseTones, formatDateDDMMYYYY } from "./utils";
+import { removeVietnameseTones, formatDateDDMMYYYY, parseDateValue } from "./utils";
 
 // ==================== TYPES ====================
 
@@ -408,13 +408,9 @@ export async function parseStudentExcel(
 
     const hoTen = String(row.getCell(3).value || "").trim();
     const gioiTinh = String(row.getCell(4).value || "NAM").trim().toUpperCase();
-    const ngaySinhRaw = row.getCell(5).value;
-    let ngaySinhStr = "";
-    if (ngaySinhRaw instanceof Date) {
-      ngaySinhStr = formatDateDDMMYYYY(ngaySinhRaw);
-    } else if (typeof ngaySinhRaw === "string") {
-      ngaySinhStr = ngaySinhRaw.replace(/\D/g, "");
-    }
+    const cell5 = row.getCell(5);
+    const parsedBirthDate = parseDateValue(cell5.value, cell5.text);
+    const ngaySinhStr = parsedBirthDate ? parsedBirthDate.display : "";
 
     let tenDN = String(row.getCell(6).value || "").trim().toLowerCase();
     
@@ -437,8 +433,8 @@ export async function parseStudentExcel(
     }
 
     let matKhau = String(row.getCell(7).value || "").trim();
-    if (!matKhau && ngaySinhStr) {
-      matKhau = ngaySinhStr;
+    if (!matKhau && parsedBirthDate) {
+      matKhau = parsedBirthDate.ddmmyyyy;
     } else if (!matKhau) {
       matKhau = "123456"; // Mật khẩu mặc định fallback
     }

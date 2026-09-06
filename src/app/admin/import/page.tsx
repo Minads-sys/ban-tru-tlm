@@ -63,6 +63,8 @@ interface StudentRow {
   stt: number;
   maHocSinh: string;
   hoTen: string;
+  gioiTinh?: "NAM" | "NU";
+  ngaySinh?: string;
   tenDangNhap: string;
   matKhauBanDau: string;
   maLop: string;
@@ -1061,6 +1063,8 @@ function StudentPreviewTable({
               <TableHead className="w-12 text-center">STT</TableHead>
               <TableHead className="w-28">Mã HS</TableHead>
               <TableHead className="w-44">Họ và Tên</TableHead>
+              <TableHead className="w-20 text-center">Giới tính</TableHead>
+              <TableHead className="w-28 text-center">Ngày sinh</TableHead>
               <TableHead className="w-32">Tên đăng nhập</TableHead>
               <TableHead className="w-24">Mật khẩu</TableHead>
               <TableHead className="w-20 text-center">Mã Lớp</TableHead>
@@ -1073,7 +1077,7 @@ function StudentPreviewTable({
           <TableBody>
             {data.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} className="text-center py-8 text-slate-400">
+                <TableCell colSpan={12} className="text-center py-8 text-slate-400">
                   Không có dữ liệu để hiển thị
                 </TableCell>
               </TableRow>
@@ -1096,6 +1100,16 @@ function StudentPreviewTable({
                       {row.maHocSinh}
                     </TableCell>
                     <TableCell className="font-medium">{row.hoTen}</TableCell>
+                    <TableCell className="text-center text-xs">
+                      {row.gioiTinh === "NU" ? (
+                        <Badge variant="outline" className="text-pink-700 bg-pink-50 border-pink-200 text-[10px]">Nữ</Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-blue-700 bg-blue-50 border-blue-200 text-[10px]">Nam</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-center font-mono text-xs text-slate-700 dark:text-slate-300">
+                      {row.ngaySinh || "-"}
+                    </TableCell>
                     <TableCell className="font-mono text-xs text-slate-600 dark:text-slate-300">
                       {row.tenDangNhap}
                     </TableCell>

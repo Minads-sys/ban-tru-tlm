@@ -100,6 +100,147 @@ export function formatDateDDMMYYYY(date: Date | string): string {
   return `${day}${month}${year}`;
 }
 
+export interface ParsedDateResult {
+  day: number;
+  month: number;
+  year: number;
+  ddmmyyyy: string;
+  display: string; // "DD/MM/YYYY"
+  dateObj: Date;
+}
+
+/**
+ * Parse linh hoạt ngày sinh từ nhiều định dạng Excel khác nhau:
+ * - String: "6/7/2011", "06/07/2011", "26/3/2011", "1/1/2011", "18/6/2011", "2011-07-06", "15082018"
+ * - Date object từ ExcelJS
+ * - Số serial Excel (VD: 40730)
+ * - Object chứa text/result
+ */
+export function parseDateValue(raw: any, cellText?: string): ParsedDateResult | null {
+  if (raw === null || raw === undefined || raw === "") {
+    if (!cellText) return null;
+  }
+
+  // 1. Nếu là Date object từ ExcelJS
+  if (raw instanceof Date && !isNaN(raw.getTime())) {
+    const y = raw.getUTCFullYear();
+    const m = raw.getUTCMonth() + 1;
+    const d = raw.getUTCDate();
+    const ddmmyyyy = `${String(d).padStart(2, "0")}${String(m).padStart(2, "0")}${y}`;
+    const display = `${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")}/${y}`;
+    return {
+      day: d,
+      month: m,
+      year: y,
+      ddmmyyyy,
+      display,
+      dateObj: new Date(Date.UTC(y, m - 1, d)),
+    };
+  }
+
+  // 2. Nếu là số serial của Excel (VD: 40730 cho ngày 06/07/2011)
+  if (typeof raw === "number" && !isNaN(raw) && raw > 0) {
+    const date = new Date(Math.round((raw - 25569) * 86400 * 1000));
+    if (!isNaN(date.getTime())) {
+      const y = date.getUTCFullYear();
+      const m = date.getUTCMonth() + 1;
+      const d = date.getUTCDate();
+      const ddmmyyyy = `${String(d).padStart(2, "0")}${String(m).padStart(2, "0")}${y}`;
+      const display = `${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")}/${y}`;
+      return {
+        day: d,
+        month: m,
+        year: y,
+        ddmmyyyy,
+        display,
+        dateObj: new Date(Date.UTC(y, m - 1, d)),
+      };
+    }
+  }
+
+  // 3. Nếu là Object (ExcelJS Cell result / richText / formula)
+  let str = "";
+  if (typeof raw === "object" && raw !== null) {
+    if ("result" in raw && raw.result) {
+      const parsedRes = parseDateValue(raw.result, cellText);
+      if (parsedRes) return parsedRes;
+    }
+    if ("text" in raw && typeof raw.text === "string") {
+      str = raw.text;
+    }
+  }
+
+  if (!str) {
+    str = cellText || String(raw || "").trim();
+  }
+
+  str = str.trim();
+  if (!str) return null;
+
+  // 4. Định dạng chuỗi có dấu phân tách (/, -, .)
+  if (/[\/\-\.]/.test(str)) {
+    const parts = str.split(/[\/\-\.]/).map((p) => p.trim());
+    if (parts.length === 3) {
+      if (parts[0].length === 4) {
+        // YYYY-MM-DD
+        const y = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10);
+        const d = parseInt(parts[2], 10);
+        if (y >= 1900 && y <= 2100 && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+          const ddmmyyyy = `${String(d).padStart(2, "0")}${String(m).padStart(2, "0")}${y}`;
+          const display = `${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")}/${y}`;
+          return {
+            day: d,
+            month: m,
+            year: y,
+            ddmmyyyy,
+            display,
+            dateObj: new Date(Date.UTC(y, m - 1, d)),
+          };
+        }
+      } else {
+        // DD/MM/YYYY hoặc D/M/YYYY
+        const d = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10);
+        const y = parseInt(parts[2], 10);
+        if (y >= 1900 && y <= 2100 && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+          const ddmmyyyy = `${String(d).padStart(2, "0")}${String(m).padStart(2, "0")}${y}`;
+          const display = `${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")}/${y}`;
+          return {
+            day: d,
+            month: m,
+            year: y,
+            ddmmyyyy,
+            display,
+            dateObj: new Date(Date.UTC(y, m - 1, d)),
+          };
+        }
+      }
+    }
+  }
+
+  // 5. Chuỗi thuần số (VD: "15082018" - 8 chữ số DDMMYYYY)
+  const digits = str.replace(/\D/g, "");
+  if (digits.length === 8) {
+    const d = parseInt(digits.substring(0, 2), 10);
+    const m = parseInt(digits.substring(2, 4), 10);
+    const y = parseInt(digits.substring(4, 8), 10);
+    if (y >= 1900 && y <= 2100 && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+      const display = `${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")}/${y}`;
+      return {
+        day: d,
+        month: m,
+        year: y,
+        ddmmyyyy: digits,
+        display,
+        dateObj: new Date(Date.UTC(y, m - 1, d)),
+      };
+    }
+  }
+
+  return null;
+}
+
 /**
  * Get the current time in Vietnam (GMT+7) as a Date object.
  * This Date object will return the correct local components (getHours, getDate, etc) 
