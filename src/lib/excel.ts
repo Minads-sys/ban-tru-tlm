@@ -474,7 +474,82 @@ export async function parseStudentExcel(
 }
 
 /**
+ * Chuẩn hóa tên ngày trong header Excel (ví dụ "Thứ 2", "Thứ Hai", "T2" -> "thu2")
+ */
+function normalizeDayHeader(val: any): "thu2" | "thu3" | "thu4" | "thu5" | "thu6" | "thu7" | null {
+  if (val === null || val === undefined) return null;
+  const raw = typeof val === "object" && val.text ? val.text : String(val);
+  const firstLine = raw.split("\n")[0].trim();
+  const s = removeVietnameseTones(firstLine).toLowerCase().trim();
+
+  // Bỏ qua nếu dòng này chỉ nói về Tiết
+  if (/^tiet\s*[0-9]+$/i.test(s)) return null;
+
+  if (/\bthu\s*2\b|\bthuhai\b|\bthu\s*hai\b|\bt2\b|\bhai\b|\bmon(day)?\b/.test(s)) return "thu2";
+  if (/\bthu\s*3\b|\bthuba\b|\bthu\s*ba\b|\bt3\b|\bba\b|\btue(sday)?\b/.test(s)) return "thu3";
+  if (/\bthu\s*4\b|\bthutu\b|\bthu\s*tu\b|\bt4\b|\btu\b|\bwed(nesday)?\b/.test(s)) return "thu4";
+  if (/\bthu\s*5\b|\bthunam\b|\bthu\s*nam\b|\bt5\b|\bnam\b|\bthur(sday)?\b/.test(s)) return "thu5";
+  if (/\bthu\s*6\b|\bthusau\b|\bthu\s*sau\b|\bt6\b|\bsau\b|\bfri(day)?\b/.test(s)) return "thu6";
+  if (/\bthu\s*7\b|\bthubay\b|\bthu\s*bay\b|\bt7\b|\bbay\b|\bsat(urday)?\b/.test(s)) return "thu7";
+  return null;
+}
+
+/**
+ * Chuẩn hóa tiêu đề tiết (Tiết 4 -> TIET_4, Tiết 5 -> TIET_5)
+ */
+function normalizePeriodHeader(val: any): "TIET_4" | "TIET_5" | null {
+  if (val === null || val === undefined) return null;
+  const raw = typeof val === "object" && val.text ? val.text : String(val);
+  const s = removeVietnameseTones(raw).toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (s.includes("tiet4") || s === "t4" || s === "4") return "TIET_4";
+  if (s.includes("tiet5") || s === "t5" || s === "5") return "TIET_5";
+  return null;
+}
+
+/**
+ * Kiểm tra xem ô có được đánh dấu (x, X, v, V, 1, ✓...) hay không
+ */
+function isCellMarked(val: any): boolean {
+  if (val === null || val === undefined) return false;
+  const s = (typeof val === "object" && val.text ? val.text : String(val)).trim().toLowerCase();
+  if (!s || s === "0" || s === "-" || s === "khong" || s === "false" || s === "null" || s === "none") return false;
+  return true;
+}
+
+/**
+ * Khớp tên lớp trong Excel với danh sách mã lớp đã có trong hệ thống
+ * Hỗ trợ các trường hợp như "Lớp 10A1", "LOP 10A1", "10 a 1", "10a1" -> "10A1"
+ */
+function findMatchingClassId(raw: string, classIds: string[]): string | null {
+  const clean = raw.trim();
+  if (!clean) return null;
+
+  // 1. Khớp chính xác
+  if (classIds.includes(clean)) return clean;
+
+  // 2. Khớp không phân biệt hoa thường
+  const upper = clean.toUpperCase();
+  const matchCase = classIds.find((id) => id.toUpperCase() === upper);
+  if (matchCase) return matchCase;
+
+  // 3. Bỏ tiền tố "Lớp " hoặc "LOP " (ví dụ "Lớp 10A1" -> "10A1")
+  const stripped = clean.replace(/^(lớp|lop)\s+/i, "").trim().toUpperCase();
+  const matchStripped = classIds.find((id) => id.toUpperCase() === stripped);
+  if (matchStripped) return matchStripped;
+
+  // 4. Bỏ mọi khoảng trắng thừa (ví dụ "10 A 1" -> "10A1")
+  const noSpace = stripped.replace(/\s+/g, "");
+  const matchNoSpace = classIds.find((id) => id.toUpperCase().replace(/\s+/g, "") === noSpace);
+  if (matchNoSpace) return matchNoSpace;
+
+  return null;
+}
+
+/**
  * Parse file Excel Thời khóa biểu
+ * Hỗ trợ tự động 2 định dạng:
+ * 1. Định dạng Ma trận phân ca (Dòng trên là Thứ gộp ô, dòng dưới là Tiết 4 / Tiết 5, đánh dấu 'x' / 'v')
+ * 2. Định dạng Cột đơn chuẩn (Mỗi thứ 1 cột với giá trị KHONG / TIET_4 / TIET_5)
  */
 export async function parseScheduleExcel(
   buffer: Uint8Array,
@@ -487,53 +562,196 @@ export async function parseScheduleExcel(
   const errors: ValidationError[] = [];
   const classIdSet = new Set(existingClassIds);
   const seenMaLop = new Set<string>();
-  const validOptions = ["KHONG", "TIET_4", "TIET_5"];
 
-  let headerRowNum = 3;
+  // 1. Tìm dòng header chứa các Thứ trong tuần
+  let dayHeaderRow = -1;
   sheet.eachRow((row, rowNumber) => {
-    const cell = String(row.getCell(2).value || "");
-    if (cell.includes("MaLop")) headerRowNum = rowNumber;
+    if (dayHeaderRow !== -1) return;
+    let dayCount = 0;
+    row.eachCell((cell) => {
+      if (normalizeDayHeader(cell.value)) dayCount++;
+    });
+    if (dayCount >= 2) dayHeaderRow = rowNumber;
   });
 
-  sheet.eachRow((row, rowNumber) => {
-    if (rowNumber <= headerRowNum) return;
-    const maLop = String(row.getCell(2).value || "").trim().toUpperCase();
-    if (!maLop) return;
+  if (dayHeaderRow === -1) {
+    // Fallback: tìm dòng có chứa "MaLop" hoặc "Lớp"
+    sheet.eachRow((row, rowNumber) => {
+      if (dayHeaderRow !== -1) return;
+      row.eachCell((cell) => {
+        const str = String(cell.value || "").toLowerCase();
+        if (str.includes("malop") || str.includes("mã lớp")) dayHeaderRow = rowNumber;
+      });
+    });
+  }
 
-    const days: Record<string, string> = {};
-    const dayColumns = ["thu2", "thu3", "thu4", "thu5", "thu6", "thu7"];
-    for (let col = 3; col <= 8; col++) {
-      const val = String(row.getCell(col).value || "KHONG").trim().toUpperCase();
-      if (!validOptions.includes(val)) {
-        errors.push({
-          row: rowNumber,
-          column: dayColumns[col - 3],
-          message: `Cột ${dayColumns[col - 3]} chỉ nhận KHONG, TIET_4 hoặc TIET_5 (Hiện tại: ${val})`,
-        });
+  if (dayHeaderRow === -1) {
+    dayHeaderRow = 3;
+  }
+
+  const headerRow1 = sheet.getRow(dayHeaderRow);
+
+  // Xác định cột Lớp và cột Ghi chú ở headerRow1
+  let classCol = 1;
+  let noteCol = -1;
+  for (let c = 1; c <= 20; c++) {
+    const val1 = String(headerRow1.getCell(c).value || "").toLowerCase();
+    if (val1.includes("lop") || val1.includes("lớp")) {
+      classCol = c;
+    }
+    if (val1.includes("ghichu") || val1.includes("ghi chú") || val1.includes("note")) {
+      noteCol = c;
+    }
+  }
+
+  // 2. Nhận diện định dạng: Ma trận phân tiết (Matrix) hay Cột đơn (Classic)
+  let isMatrix = false;
+  const periodHeaderRow = dayHeaderRow + 1;
+  if (dayHeaderRow > 0 && periodHeaderRow <= sheet.rowCount) {
+    const nextRow = sheet.getRow(periodHeaderRow);
+    const cellClassVal = String(nextRow.getCell(classCol).value || "").trim();
+    const isNextRowADataClass = !!findMatchingClassId(cellClassVal, existingClassIds);
+
+    // Nếu dòng kế tiếp không phải là dữ liệu học sinh/lớp thì kiểm tra xem có phải header các tiết không
+    if (!isNextRowADataClass) {
+      let periodCount = 0;
+      nextRow.eachCell((cell) => {
+        if (normalizePeriodHeader(cell.value)) periodCount++;
+      });
+      if (periodCount >= 2) isMatrix = true;
+    }
+  }
+
+  const headerRow2 = isMatrix ? sheet.getRow(periodHeaderRow) : null;
+  if (headerRow2 && classCol === 1) {
+    // Kiểm tra lại cột lớp ở headerRow2 nếu cần
+    for (let c = 1; c <= 10; c++) {
+      const val2 = String(headerRow2.getCell(c).value || "").toLowerCase();
+      if (val2.includes("lop") || val2.includes("lớp")) {
+        classCol = c;
       }
-      days[dayColumns[col - 3]] = val;
+      if (val2.includes("ghichu") || val2.includes("ghi chú") || val2.includes("note")) {
+        noteCol = c;
+      }
+    }
+  }
+
+  // Heuristic dự phòng: Nếu classCol vẫn là 1, kiểm tra xem cột 1 có phải là số thứ tự (STT) và cột 2 là mã lớp không
+  const sampleDataRowIndex = isMatrix ? periodHeaderRow + 1 : dayHeaderRow + 1;
+  if (classCol === 1 && sampleDataRowIndex <= sheet.rowCount) {
+    const sampleRow = sheet.getRow(sampleDataRowIndex);
+    const c1 = String(sampleRow.getCell(1).value || "").trim();
+    const c2 = String(sampleRow.getCell(2).value || "").trim();
+    if (/^\d+$/.test(c1) && !findMatchingClassId(c1, existingClassIds) && findMatchingClassId(c2, existingClassIds)) {
+      classCol = 2;
+    }
+  }
+
+  // 3. Xây dựng bản đồ ánh xạ các cột
+  const matrixColMap = new Map<number, { day: string; period: "TIET_4" | "TIET_5" }>();
+  const classicColMap = new Map<number, string>();
+  const maxCol = Math.max(headerRow1.cellCount, headerRow2 ? headerRow2.cellCount : 0, 20);
+
+  if (isMatrix) {
+    let currentDay: string | null = null;
+    for (let c = 1; c <= maxCol; c++) {
+      const dayVal = headerRow1.getCell(c).value;
+      const detectedDay = normalizeDayHeader(dayVal);
+      if (detectedDay) {
+        currentDay = detectedDay;
+      }
+      if (headerRow2) {
+        const periodVal = headerRow2.getCell(c).value;
+        const detectedPeriod = normalizePeriodHeader(periodVal);
+        if (currentDay && detectedPeriod) {
+          matrixColMap.set(c, { day: currentDay, period: detectedPeriod });
+        }
+      }
+    }
+  } else {
+    for (let c = 1; c <= maxCol; c++) {
+      const dayVal = headerRow1.getCell(c).value;
+      const detectedDay = normalizeDayHeader(dayVal);
+      if (detectedDay) {
+        classicColMap.set(c, detectedDay);
+      }
+    }
+  }
+
+  // 4. Đọc dữ liệu các dòng lớp
+  const startDataRow = isMatrix ? periodHeaderRow + 1 : dayHeaderRow + 1;
+
+  sheet.eachRow((row, rowNumber) => {
+    if (rowNumber < startDataRow) return;
+    const rawClass = String(row.getCell(classCol).value || "").trim();
+    if (!rawClass) return; // Bỏ qua dòng trống
+
+    const matchedClassId = findMatchingClassId(rawClass, existingClassIds);
+    const finalMaLop = matchedClassId || rawClass.toUpperCase();
+
+    if (!matchedClassId || !classIdSet.has(matchedClassId)) {
+      errors.push({
+        row: rowNumber,
+        column: "MaLop",
+        message: `Mã Lớp "${rawClass}" không tồn tại trong hệ thống`,
+      });
     }
 
-    if (!classIdSet.has(maLop)) {
-      errors.push({ row: rowNumber, column: "MaLop", message: `Mã Lớp "${maLop}" không tồn tại` });
+    if (seenMaLop.has(finalMaLop)) {
+      errors.push({
+        row: rowNumber,
+        column: "MaLop",
+        message: `Mã Lớp "${finalMaLop}" bị trùng trong file`,
+      });
     }
-    
-    if (seenMaLop.has(maLop)) {
-      errors.push({ row: rowNumber, column: "MaLop", message: `Mã Lớp "${maLop}" bị trùng trong file` });
-    }
-    seenMaLop.add(maLop);
+    seenMaLop.add(finalMaLop);
 
-    const ghiChu = String(row.getCell(9).value || "").trim();
+    const days: Record<string, "KHONG" | "TIET_4" | "TIET_5"> = {
+      thu2: "KHONG",
+      thu3: "KHONG",
+      thu4: "KHONG",
+      thu5: "KHONG",
+      thu6: "KHONG",
+      thu7: "KHONG",
+    };
+
+    if (isMatrix) {
+      matrixColMap.forEach(({ day, period }, c) => {
+        const val = row.getCell(c).value;
+        if (isCellMarked(val)) {
+          days[day] = period;
+        }
+      });
+    } else {
+      classicColMap.forEach((day, c) => {
+        const rawVal = String(row.getCell(c).value || "KHONG").trim().toUpperCase();
+        if (rawVal === "TIET_4" || rawVal === "4") {
+          days[day] = "TIET_4";
+        } else if (rawVal === "TIET_5" || rawVal === "5" || rawVal === "CO") {
+          days[day] = "TIET_5";
+        } else if (rawVal === "KHONG" || rawVal === "-" || !rawVal) {
+          days[day] = "KHONG";
+        } else {
+          errors.push({
+            row: rowNumber,
+            column: day,
+            message: `Cột ${day} chỉ nhận KHONG, TIET_4 hoặc TIET_5 (Hiện tại: ${rawVal})`,
+          });
+        }
+      });
+    }
+
+    const ghiChu = noteCol > 0 ? String(row.getCell(noteCol).value || "").trim() : undefined;
 
     data.push({
-      stt: rowNumber - headerRowNum,
-      maLop,
-      thu2: days.thu2 as "KHONG" | "TIET_4" | "TIET_5",
-      thu3: days.thu3 as "KHONG" | "TIET_4" | "TIET_5",
-      thu4: days.thu4 as "KHONG" | "TIET_4" | "TIET_5",
-      thu5: days.thu5 as "KHONG" | "TIET_4" | "TIET_5",
-      thu6: days.thu6 as "KHONG" | "TIET_4" | "TIET_5",
-      thu7: days.thu7 as "KHONG" | "TIET_4" | "TIET_5",
+      stt: rowNumber - startDataRow + 1,
+      maLop: finalMaLop,
+      thu2: days.thu2,
+      thu3: days.thu3,
+      thu4: days.thu4,
+      thu5: days.thu5,
+      thu6: days.thu6,
+      thu7: days.thu7,
       ghiChu: ghiChu || undefined,
     });
   });

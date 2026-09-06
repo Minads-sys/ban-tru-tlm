@@ -77,12 +77,12 @@ interface StudentRow {
 interface ScheduleRow {
   stt: number;
   maLop: string;
-  thu2: "CO" | "KHONG";
-  thu3: "CO" | "KHONG";
-  thu4: "CO" | "KHONG";
-  thu5: "CO" | "KHONG";
-  thu6: "CO" | "KHONG";
-  thu7: "CO" | "KHONG";
+  thu2: "KHONG" | "TIET_4" | "TIET_5" | "CO";
+  thu3: "KHONG" | "TIET_4" | "TIET_5" | "CO";
+  thu4: "KHONG" | "TIET_4" | "TIET_5" | "CO";
+  thu5: "KHONG" | "TIET_4" | "TIET_5" | "CO";
+  thu6: "KHONG" | "TIET_4" | "TIET_5" | "CO";
+  thu7: "KHONG" | "TIET_4" | "TIET_5" | "CO";
   ghiChu?: string;
 }
 
@@ -1179,7 +1179,21 @@ function SchedulePreviewTable({
 }) {
   const hasErrors = errors.length > 0;
 
-  const renderDayBadge = (val: "CO" | "KHONG") => {
+  const renderDayBadge = (val: string) => {
+    if (val === "TIET_5") {
+      return (
+        <span className="inline-flex items-center justify-center px-2 py-0.5 rounded text-xs font-semibold bg-blue-100 text-blue-800 border border-blue-200 dark:bg-blue-900/50 dark:text-blue-200">
+          Tiết 5
+        </span>
+      );
+    }
+    if (val === "TIET_4") {
+      return (
+        <span className="inline-flex items-center justify-center px-2 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200 dark:bg-amber-900/50 dark:text-amber-200">
+          Tiết 4
+        </span>
+      );
+    }
     if (val === "CO") {
       return (
         <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold">
@@ -1188,7 +1202,7 @@ function SchedulePreviewTable({
       );
     }
     return (
-      <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-slate-100 text-slate-400 text-xs">
+      <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-slate-100 text-slate-400 text-xs dark:bg-slate-800 dark:text-slate-500">
         -
       </span>
     );
@@ -1197,12 +1211,17 @@ function SchedulePreviewTable({
   return (
     <Card className="border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
       <CardHeader className="bg-slate-50/70 dark:bg-slate-900/70 border-b border-slate-200 dark:border-slate-800 py-3.5 px-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
             <CardTitle className="text-base font-semibold">Kết quả xem trước Thời khóa biểu</CardTitle>
             <Badge variant="outline" className="bg-white dark:bg-slate-800 font-mono text-xs">
               {data.length} lớp
             </Badge>
+            <div className="flex items-center gap-1.5 ml-2 text-xs text-slate-500">
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-blue-100 text-blue-800">Tiết 5</span>
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-amber-100 text-amber-800">Tiết 4</span>
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-500">- Không ăn</span>
+            </div>
           </div>
           <div>
             {hasErrors ? (
