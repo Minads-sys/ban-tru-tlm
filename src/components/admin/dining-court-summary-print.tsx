@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Printer, Download, X, Layers, Utensils, Users, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Printer, Download, Layers, Utensils, Users, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { DiningAllocationResult } from '@/lib/dining-court-service';
 import Swal from 'sweetalert2';
 
@@ -22,7 +22,14 @@ export function DiningCourtSummaryPrint({
   const [isExportingPdf, setIsExportingPdf] = useState<boolean>(false);
 
   const handlePrint = () => {
+    document.body.classList.add('printing-modal-open');
+    const cleanup = () => {
+      document.body.classList.remove('printing-modal-open');
+      window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
     window.print();
+    setTimeout(cleanup, 2000);
   };
 
   const handleDownloadPdf = async () => {
@@ -106,7 +113,27 @@ export function DiningCourtSummaryPrint({
                 background: #ffffff !important;
                 color: #000000 !important;
                 height: auto !important;
+                min-height: 0 !important;
                 overflow: visible !important;
+              }
+              /* Ẩn triệt để toàn bộ phần giao diện nền phía dưới Modal khi in để không bao giờ bị dư trang trắng ở trên */
+              body > *:not(:has([role="dialog"])),
+              #admin-main-layout {
+                display: none !important;
+                height: 0 !important;
+                min-height: 0 !important;
+                max-height: 0 !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                overflow: hidden !important;
+              }
+              /* Loại bỏ margin/padding của thẻ wrapper chứa Dialog */
+              body > div:has([role="dialog"]) {
+                margin: 0 !important;
+                padding: 0 !important;
+                border: none !important;
+                height: auto !important;
+                min-height: 0 !important;
               }
               .no-print,
               .no-print *,
@@ -117,7 +144,7 @@ export function DiningCourtSummaryPrint({
                 opacity: 0 !important;
                 background: transparent !important;
               }
-              /* Căn chỉnh lại Dialog khi in ấn */
+              /* Căn chỉnh lại Dialog khi in ấn bắt đầu ngay đỉnh trang 1 */
               [role="dialog"] {
                 position: static !important;
                 transform: none !important;
@@ -126,6 +153,7 @@ export function DiningCourtSummaryPrint({
                 width: 100% !important;
                 max-width: 100% !important;
                 height: auto !important;
+                min-height: 0 !important;
                 max-height: none !important;
                 margin: 0 !important;
                 padding: 0 !important;
@@ -147,13 +175,19 @@ export function DiningCourtSummaryPrint({
                 box-shadow: none !important;
                 border: none !important;
                 color: #000000 !important;
+                min-height: 0 !important;
+              }
+              table {
+                width: 100% !important;
+                border-collapse: collapse !important;
+              }
+              tr {
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
               }
               * {
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
-              }
-              .page-break {
-                page-break-before: always;
               }
             }
           `,
@@ -161,7 +195,7 @@ export function DiningCourtSummaryPrint({
       />
 
       {/* THANH ĐIỀU KHIỂN TRÊN MÀN HÌNH (ẨN KHI IN) */}
-      <div className="no-print flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 bg-white border-b border-slate-200 shrink-0">
+      <div className="no-print flex flex-col sm:flex-row items-center justify-between gap-3 px-4 sm:pr-12 py-3 bg-white border-b border-slate-200 shrink-0">
         {/* Bộ lọc chọn ca */}
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold text-slate-700">Phạm vi in:</span>
@@ -183,7 +217,7 @@ export function DiningCourtSummaryPrint({
               className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
                 activeShiftFilter === 'TIET_4'
                   ? 'bg-orange-600 text-white shadow-xs font-semibold'
-                  : 'text-orange-900 hover:text-orange-950 hover:bg-orange-100/60'
+                  : 'text-orange-800 hover:text-orange-950 hover:bg-orange-100/60'
               }`}
             >
               Chỉ Tiết 4 ({tiet4Courts.length} sân)
@@ -225,18 +259,6 @@ export function DiningCourtSummaryPrint({
             <Download className="h-3.5 w-3.5 text-slate-600" />
             <span>{isExportingPdf ? 'Đang tạo PDF...' : 'Tải file PDF'}</span>
           </Button>
-
-          {onClose && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={onClose}
-              className="h-8 w-8 p-0 text-slate-500 hover:text-slate-900 rounded-full"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          )}
         </div>
       </div>
 
@@ -502,7 +524,7 @@ export function DiningCourtSummaryPrint({
           )}
 
           {/* 6. Ghi chú phân công & Chữ ký bàn giao */}
-          <div className="mt-4 pt-3 border-t border-slate-200">
+          <div className="mt-4 pt-3 border-t border-slate-200 print:break-inside-avoid">
             <p className="text-[11px] text-slate-600 italic mb-6 leading-relaxed">
               * <strong>Lưu ý nhiệm vụ:</strong> Nhân viên phụ trách nhà bếp tập kết đúng và đủ số suất ăn (Mặn / Chay / Cháo)
               đến từng vị trí sân trước giờ ăn (Tiết 4 lúc 10h45, Tiết 5 lúc 11h35). Giáo viên trực sân kiểm tra số lượng,

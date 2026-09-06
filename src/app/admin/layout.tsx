@@ -19,10 +19,10 @@ export default async function AdminLayout({
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div id="admin-main-layout" className="min-h-screen bg-slate-50 print:min-h-0 print:h-auto print:bg-white">
       <SidebarNav user={session.user} />
-      <div className="flex min-h-screen flex-col md:pl-[250px] print:pl-0">
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto print:p-0 print:max-w-none">
+      <div className="flex min-h-screen flex-col md:pl-[250px] print:pl-0 print:min-h-0 print:h-auto print:block">
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto print:p-0 print:max-w-none print:min-h-0 print:h-auto print:block">
           {children}
         </main>
       </div>

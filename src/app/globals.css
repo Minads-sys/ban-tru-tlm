@@ -75,5 +75,18 @@ body {
     background: transparent !important;
     opacity: 0 !important;
   }
+  /* Khi có Dialog mở để in ấn, ẩn toàn bộ layout nền phía dưới để tránh tạo trang trắng thừa phía trên */
+  body:has([role="dialog"]) #admin-main-layout,
+  body.printing-modal-open #admin-main-layout,
+  body:has([role="dialog"]) > *:not(:has([role="dialog"])),
+  body.printing-modal-open > *:not(:has([role="dialog"])) {
+    display: none !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    max-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+  }
 }
 
