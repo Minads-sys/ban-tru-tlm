@@ -34,7 +34,10 @@ export interface BillPdfData {
   year: number;
   scheduleMealDays: number;
   canceledDays: number;
+  scheduleReducedDays?: number;
+  extraMealDays?: number;
   previousDeduction: number;
+  previousAddition?: number;
   unitPrice: number;
   finalAmount: number;
   paymentStatus: string;
@@ -224,8 +227,14 @@ export async function generateBillPdfBuffer(
                   },
                   {
                     text: [
-                      { text: "Số ngày duyệt cắt suất: ", bold: true, fontSize: 9 },
-                      { text: `${bill.canceledDays} ngày`, fontSize: 9, color: bill.canceledDays > 0 ? "#dc2626" : "#000" },
+                      { text: "Số ngày duyệt cắt/hủy: ", bold: true, fontSize: 9 },
+                      {
+                        text: bill.scheduleReducedDays && bill.scheduleReducedDays > 0
+                          ? `${bill.canceledDays} ngày (${bill.canceledDays - bill.scheduleReducedDays} cắt + ${bill.scheduleReducedDays} hủy)`
+                          : `${bill.canceledDays} ngày`,
+                        fontSize: 9,
+                        color: bill.canceledDays > 0 ? "#dc2626" : "#000"
+                      },
                     ],
                     margin: [0, 1.5, 0, 1.5],
                   },
@@ -236,6 +245,21 @@ export async function generateBillPdfBuffer(
                     ],
                     margin: [0, 1.5, 0, 1.5],
                   },
+                  ...((bill.previousAddition && bill.previousAddition > 0) || (bill.extraMealDays && bill.extraMealDays > 0)
+                    ? [
+                        {
+                          text: [
+                            { text: "Ăn thêm tháng trước: ", bold: true, fontSize: 9 },
+                            {
+                              text: `+${formatVND(bill.previousAddition || 0)}${bill.extraMealDays ? ` (${bill.extraMealDays} ngày)` : ""}`,
+                              fontSize: 9,
+                              color: "#15803d",
+                            },
+                          ],
+                          margin: [0, 1.5, 0, 1.5],
+                        },
+                      ]
+                    : []),
                   {
                     text: [
                       { text: "Đơn giá suất ăn: ", bold: true, fontSize: 9 },

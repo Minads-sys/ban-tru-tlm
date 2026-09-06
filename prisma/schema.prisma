@@ -250,10 +250,13 @@ model MonthlyBill {
   year              Int
   scheduleMealDays  Int           @default(0) @map("schedule_meal_days")
   canceledDays      Int           @default(0) @map("canceled_days")
+  scheduleReducedDays Int         @default(0) @map("schedule_reduced_days")
+  extraMealDays     Int           @default(0) @map("extra_meal_days")
   netPayableDays    Int           @default(0) @map("net_payable_days")
   unitPrice         Decimal       @default(0) @map("unit_price") @db.Decimal(10, 0)
   totalAmount       Decimal       @default(0) @map("total_amount") @db.Decimal(10, 0)
   previousDeduction Decimal       @default(0) @map("previous_deduction") @db.Decimal(10, 0)
+  previousAddition  Decimal       @default(0) @map("previous_addition") @db.Decimal(10, 0)
   finalAmount       Decimal       @default(0) @map("final_amount") @db.Decimal(10, 0)
   paymentStatus     PaymentStatus @default(UNPAID) @map("payment_status")
   qrCodeUrl         String?       @map("qr_code_url")

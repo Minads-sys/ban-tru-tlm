@@ -26,8 +26,11 @@ export interface PaymentBillData {
     remainingDebt: number;
     scheduleMealDays?: number;
     canceledDays?: number;
+    scheduleReducedDays?: number;
+    extraMealDays?: number;
     unitPrice?: number;
     previousDeduction?: number;
+    previousAddition?: number;
   };
   bankInfo?: {
     bankName?: string;
@@ -211,8 +214,15 @@ export function PaymentBillPrint({ data, onClose, defaultFormat = "K80" }: Props
                   </div>
                   {data.bill.canceledDays !== undefined && data.bill.canceledDays > 0 && (
                     <div className="flex justify-between">
-                      <span>Số ngày cắt suất:</span>
-                      <span className="font-semibold text-slate-900">{data.bill.canceledDays} ngày</span>
+                      <span>Số ngày cắt/hủy:</span>
+                      <span className="font-semibold text-slate-900">
+                        {data.bill.canceledDays} ngày
+                        {(data.bill.scheduleReducedDays ?? 0) > 0 && (
+                          <span className="text-[10px] text-slate-500 font-normal ml-1">
+                            ({data.bill.canceledDays - (data.bill.scheduleReducedDays ?? 0)} cắt + {data.bill.scheduleReducedDays} hủy)
+                          </span>
+                        )}
+                      </span>
                     </div>
                   )}
                   {data.bill.previousDeduction !== undefined && data.bill.previousDeduction > 0 && (
@@ -220,6 +230,19 @@ export function PaymentBillPrint({ data, onClose, defaultFormat = "K80" }: Props
                       <span>Trừ tiền tháng trước:</span>
                       <span className="font-semibold text-slate-900">
                         -{formatCurrency(data.bill.previousDeduction)}
+                      </span>
+                    </div>
+                  )}
+                  {((data.bill.previousAddition !== undefined && data.bill.previousAddition > 0) || (data.bill.extraMealDays ?? 0) > 0) && (
+                    <div className="flex justify-between text-emerald-700">
+                      <span>Ăn thêm tháng trước:</span>
+                      <span className="font-semibold">
+                        +{formatCurrency(data.bill.previousAddition || 0)}
+                        {(data.bill.extraMealDays ?? 0) > 0 && (
+                          <span className="text-[10px] text-slate-500 font-normal ml-1">
+                            ({data.bill.extraMealDays} ngày)
+                          </span>
+                        )}
                       </span>
                     </div>
                   )}
@@ -371,19 +394,38 @@ export function PaymentBillPrint({ data, onClose, defaultFormat = "K80" }: Props
                     <span>{data.bill.scheduleMealDays || 0} ngày</span>
                   </p>
                   <p className="flex">
-                    <span className="font-bold w-36 shrink-0">Số ngày cắt suất:</span>
-                    <span>{data.bill.canceledDays || 0} ngày</span>
+                    <span className="font-bold w-36 shrink-0">Số ngày cắt/hủy:</span>
+                    <span>
+                      {data.bill.canceledDays || 0} ngày
+                      {(data.bill.scheduleReducedDays ?? 0) > 0 && (
+                        <span className="text-[10px] text-slate-600 ml-1">
+                          (gồm {(data.bill.canceledDays || 0) - (data.bill.scheduleReducedDays ?? 0)} cắt + {data.bill.scheduleReducedDays} trường hủy)
+                        </span>
+                      )}
+                    </span>
                   </p>
                   <div className="flex">
                     <span className="font-bold w-36 shrink-0">Trừ tiền tháng trước:</span>
                     <div className="flex flex-col">
                       <span>{formatCurrency(data.bill.previousDeduction || 0)}</span>
                       <span className="text-[10px] italic text-slate-600">
-                        (Hủy suất ăn của tháng {data.bill.month === 1 ? 12 : data.bill.month - 1}/
+                        (Khấu trừ của tháng {data.bill.month === 1 ? 12 : data.bill.month - 1}/
                         {data.bill.month === 1 ? data.bill.year - 1 : data.bill.year})
                       </span>
                     </div>
                   </div>
+                  {((data.bill.previousAddition !== undefined && data.bill.previousAddition > 0) || (data.bill.extraMealDays ?? 0) > 0) && (
+                    <div className="flex">
+                      <span className="font-bold w-36 shrink-0 text-emerald-800">Ăn thêm tháng trước:</span>
+                      <div className="flex flex-col">
+                        <span className="text-emerald-700 font-bold">+{formatCurrency(data.bill.previousAddition || 0)}</span>
+                        <span className="text-[10px] italic text-slate-600">
+                          (Lịch TKB phát sinh {data.bill.extraMealDays} ngày tháng {data.bill.month === 1 ? 12 : data.bill.month - 1}/
+                          {data.bill.month === 1 ? data.bill.year - 1 : data.bill.year})
+                        </span>
+                      </div>
+                    </div>
+                  )}
                   <p className="flex">
                     <span className="font-bold w-36 shrink-0">Đơn giá:</span>
                     <span>{formatCurrency(data.bill.unitPrice || 35000)}/suất</span>

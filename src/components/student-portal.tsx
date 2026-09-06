@@ -93,10 +93,13 @@ interface StudentBill {
   year: number;
   scheduleMealDays: number;
   canceledDays: number;
+  scheduleReducedDays?: number;
+  extraMealDays?: number;
   netPayableDays: number;
   unitPrice: string | number;
   totalAmount: string | number;
   previousDeduction: string | number;
+  previousAddition?: string | number;
   finalAmount: string | number;
   paymentStatus: "UNPAID" | "PAID" | "PARTIAL" | "SETTLED";
   qrCodeUrl: string | null;
@@ -962,8 +965,15 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                               <span className="text-sm font-bold text-slate-800">{bill.scheduleMealDays} ngày</span>
                             </div>
                             <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-100">
-                              <span className="text-slate-500 block text-[11px]">Đã duyệt cắt suất:</span>
-                              <span className="text-sm font-bold text-rose-600">{bill.canceledDays} ngày</span>
+                              <span className="text-slate-500 block text-[11px]">Số ngày cắt/hủy:</span>
+                              <span className="text-sm font-bold text-rose-600">
+                                {bill.canceledDays} ngày
+                                {(bill.scheduleReducedDays ?? 0) > 0 && (
+                                  <span className="block text-[10px] text-slate-500 font-normal">
+                                    ({bill.canceledDays - (bill.scheduleReducedDays ?? 0)} cắt + {bill.scheduleReducedDays} hủy)
+                                  </span>
+                                )}
+                              </span>
                             </div>
                             <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-100">
                               <span className="text-slate-500 block text-[11px]">Tổng tiền hóa đơn:</span>
@@ -978,6 +988,23 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                               </span>
                             </div>
                           </div>
+
+                          {/* Chi tiết bù trừ tháng trước (nếu có) */}
+                          {(Number(bill.previousDeduction) > 0 || Number(bill.previousAddition || 0) > 0) && (
+                            <div className="p-2 bg-blue-50/70 border border-blue-200/70 rounded-lg text-[11px] text-slate-700 flex flex-wrap items-center gap-x-4 gap-y-1">
+                              <span className="font-semibold text-blue-900">Bù trừ tháng trước:</span>
+                              {Number(bill.previousDeduction) > 0 && (
+                                <span className="text-rose-700 font-medium">
+                                  Giảm trừ: -{formatMoney(bill.previousDeduction)} ({bill.canceledDays} ngày)
+                                </span>
+                              )}
+                              {Number(bill.previousAddition || 0) > 0 && (
+                                <span className="text-emerald-700 font-medium">
+                                  Ăn thêm lịch phát sinh: +{formatMoney(bill.previousAddition || 0)} ({bill.extraMealDays || 0} ngày)
+                                </span>
+                              )}
+                            </div>
+                          )}
 
                           {/* Nếu là thanh toán 1 phần: Hiển thị phân tích công nợ & lịch sử đã nộp */}
                           {isPartial && (

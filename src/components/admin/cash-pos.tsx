@@ -57,7 +57,10 @@ interface BillItem {
   totalAmount?: number;
   scheduleMealDays?: number;
   canceledDays?: number;
+  scheduleReducedDays?: number;
+  extraMealDays?: number;
   previousDeduction?: number;
+  previousAddition?: number;
   unitPrice?: number;
   paymentStatus: "UNPAID" | "PAID" | "PARTIAL" | "SETTLED";
   transactions?: Array<{ id: string; amount: number; isVoided?: boolean }>;
@@ -196,7 +199,10 @@ export function CashPos({ currentUser }: { currentUser: any }) {
         totalAmount: Number(b.totalAmount || b.finalAmount),
         scheduleMealDays: b.scheduleMealDays || 0,
         canceledDays: b.canceledDays || 0,
+        scheduleReducedDays: b.scheduleReducedDays || 0,
+        extraMealDays: b.extraMealDays || 0,
         previousDeduction: Number(b.previousDeduction || 0),
+        previousAddition: Number(b.previousAddition || 0),
         unitPrice: Number(b.unitPrice || 0),
         paymentStatus: b.paymentStatus,
         transactions: b.transactions || [],
@@ -292,8 +298,11 @@ export function CashPos({ currentUser }: { currentUser: any }) {
           remainingDebt: payAmount,
           scheduleMealDays: bill.scheduleMealDays,
           canceledDays: bill.canceledDays,
+          scheduleReducedDays: bill.scheduleReducedDays,
+          extraMealDays: bill.extraMealDays,
           unitPrice: bill.unitPrice,
           previousDeduction: bill.previousDeduction,
+          previousAddition: bill.previousAddition,
         },
         bankInfo: {
           bankName,

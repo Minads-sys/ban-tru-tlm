@@ -60,10 +60,13 @@ interface BillData {
   year: number;
   scheduleMealDays: number;
   canceledDays: number;
+  scheduleReducedDays?: number;
+  extraMealDays?: number;
   netPayableDays: number;
   unitPrice: string;
   totalAmount: string;
   previousDeduction: string;
+  previousAddition?: string;
   finalAmount: string;
   paymentStatus: string;
   qrCodeUrl: string | null;
@@ -140,8 +143,11 @@ export default function BillingPage() {
   const [editForm, setEditForm] = useState({
     scheduleMealDays: 0,
     canceledDays: 0,
+    scheduleReducedDays: 0,
+    extraMealDays: 0,
     unitPrice: 0,
     previousDeduction: 0,
+    previousAddition: 0,
     paymentStatus: "UNPAID",
   });
   const [savingEdit, setSavingEdit] = useState(false);
@@ -682,8 +688,11 @@ export default function BillingPage() {
     setEditForm({
       scheduleMealDays: bill.scheduleMealDays,
       canceledDays: bill.canceledDays,
+      scheduleReducedDays: bill.scheduleReducedDays || 0,
+      extraMealDays: bill.extraMealDays || 0,
       unitPrice: parseInt(bill.unitPrice),
       previousDeduction: parseInt(bill.previousDeduction),
+      previousAddition: parseInt(bill.previousAddition || "0"),
       paymentStatus: bill.paymentStatus,
     });
   };
@@ -1082,8 +1091,9 @@ export default function BillingPage() {
                     <TableHead>Lớp</TableHead>
                     <TableHead className="text-center">Ngày ăn</TableHead>
                     <TableHead className="text-right">Đơn giá</TableHead>
-                    <TableHead className="text-center">Ngày cắt</TableHead>
+                    <TableHead className="text-center">Ngày cắt/hủy</TableHead>
                     <TableHead className="text-right">Trừ T.trước</TableHead>
+                    <TableHead className="text-right">Ăn thêm (+)</TableHead>
                     <TableHead className="text-right">Thành tiền</TableHead>
                     <TableHead className="text-center">Trạng thái</TableHead>
                     <TableHead className="text-center">Thao tác</TableHead>
@@ -1108,7 +1118,14 @@ export default function BillingPage() {
                       </TableCell>
                       <TableCell className="text-center">
                         {bill.canceledDays > 0 ? (
-                          <span className="text-rose-600 font-semibold">{bill.canceledDays}</span>
+                          <div>
+                            <span className="text-rose-600 font-semibold">{bill.canceledDays}</span>
+                            {(bill.scheduleReducedDays ?? 0) > 0 && (
+                              <span className="block text-[10px] text-slate-500 font-normal">
+                                ({bill.canceledDays - (bill.scheduleReducedDays ?? 0)} cắt + {bill.scheduleReducedDays} hủy)
+                              </span>
+                            )}
+                          </div>
                         ) : (
                           <span className="text-slate-400">0</span>
                         )}
@@ -1116,6 +1133,20 @@ export default function BillingPage() {
                       <TableCell className="text-right text-xs">
                         {parseInt(bill.previousDeduction) > 0 ? (
                           <span className="text-rose-600 font-medium">-{formatVND(bill.previousDeduction)}</span>
+                        ) : (
+                          <span className="text-slate-400">0đ</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right text-xs">
+                        {parseInt(bill.previousAddition || "0") > 0 || (bill.extraMealDays ?? 0) > 0 ? (
+                          <div>
+                            <span className="text-emerald-700 font-medium">+{formatVND(bill.previousAddition || 0)}</span>
+                            {(bill.extraMealDays ?? 0) > 0 && (
+                              <span className="block text-[10px] text-slate-500 font-normal">
+                                ({bill.extraMealDays} ngày)
+                              </span>
+                            )}
+                          </div>
                         ) : (
                           <span className="text-slate-400">0đ</span>
                         )}
@@ -1861,12 +1892,46 @@ export default function BillingPage() {
                 />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right">Trừ T.trước</Label>
+                <Label className="text-right">Trừ T.trước (đ)</Label>
                 <Input
                   type="number"
                   className="col-span-3"
                   value={editForm.previousDeduction}
                   onChange={(e) => setEditForm({ ...editForm, previousDeduction: parseInt(e.target.value) || 0 })}
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label className="text-right">Trường hủy (n)</Label>
+                <Input
+                  type="number"
+                  className="col-span-3"
+                  value={editForm.scheduleReducedDays}
+                  onChange={(e) => setEditForm({ ...editForm, scheduleReducedDays: parseInt(e.target.value) || 0 })}
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label className="text-right">Ăn thêm (ngày)</Label>
+                <Input
+                  type="number"
+                  className="col-span-3"
+                  value={editForm.extraMealDays}
+                  onChange={(e) => {
+                    const days = parseInt(e.target.value) || 0;
+                    setEditForm({
+                      ...editForm,
+                      extraMealDays: days,
+                      previousAddition: days * editForm.unitPrice,
+                    });
+                  }}
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label className="text-right">Cộng thêm (đ)</Label>
+                <Input
+                  type="number"
+                  className="col-span-3"
+                  value={editForm.previousAddition}
+                  onChange={(e) => setEditForm({ ...editForm, previousAddition: parseInt(e.target.value) || 0 })}
                 />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
@@ -2107,18 +2172,37 @@ export default function BillingPage() {
                   </p>
                   <p className="flex">
                     <span className="font-bold w-36 shrink-0">Số ngày cắt suất:</span>{" "}
-                    <span>{bill.canceledDays} ngày</span>
+                    <span>
+                      {bill.canceledDays} ngày
+                      {(bill.scheduleReducedDays ?? 0) > 0 && (
+                        <span className="text-[11px] text-gray-600 ml-1">
+                          (gồm {bill.canceledDays - (bill.scheduleReducedDays ?? 0)} cắt + {bill.scheduleReducedDays} trường hủy)
+                        </span>
+                      )}
+                    </span>
                   </p>
                   <div className="flex">
                     <span className="font-bold w-36 shrink-0">Trừ tiền tháng trước:</span>
                     <div className="flex flex-col">
                       <span>{formatVND(bill.previousDeduction)}</span>
                       <span className="text-[11px] italic text-gray-700">
-                        (Hủy suất ăn của tháng {bill.month === 1 ? 12 : bill.month - 1}/
+                        (Khấu trừ của tháng {bill.month === 1 ? 12 : bill.month - 1}/
                         {bill.month === 1 ? bill.year - 1 : bill.year})
                       </span>
                     </div>
                   </div>
+                  {(parseInt(bill.previousAddition || "0") > 0 || (bill.extraMealDays ?? 0) > 0) && (
+                    <div className="flex">
+                      <span className="font-bold w-36 shrink-0">Ăn thêm tháng trước:</span>
+                      <div className="flex flex-col">
+                        <span className="text-emerald-700 font-bold">+{formatVND(bill.previousAddition || 0)}</span>
+                        <span className="text-[11px] italic text-gray-700">
+                          (Lịch TKB phát sinh {bill.extraMealDays} ngày tháng {bill.month === 1 ? 12 : bill.month - 1}/
+                          {bill.month === 1 ? bill.year - 1 : bill.year})
+                        </span>
+                      </div>
+                    </div>
+                  )}
                   <p className="flex">
                     <span className="font-bold w-36 shrink-0">Đơn giá:</span>{" "}
                     <span>{formatVND(bill.unitPrice)}/suất</span>

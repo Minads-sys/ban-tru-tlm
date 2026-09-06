@@ -228,15 +228,19 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 3. Lấy thời khóa biểu các lớp trong năm để tính số ngày ăn dự kiến của tháng mục tiêu
+    // 3. Lấy thời khóa biểu các lớp trong năm mục tiêu và năm trước (nếu khác năm)
+    const prevMonth = month === 1 ? 12 : month - 1;
+    const prevYear = month === 1 ? year - 1 : year;
+    const yearsToFetch = Array.from(new Set([year, prevYear]));
+
     const schedules = await prisma.classWeeklySchedule.findMany({
-      where: { year },
+      where: { year: { in: yearsToFetch } },
     });
 
-    // Map schedule theo classId và weekNumber
+    // Map schedule theo classId, year và weekNumber
     const scheduleMap = new Map<string, (typeof schedules)[0]>();
     schedules.forEach((s) => {
-      scheduleMap.set(`${s.classId}_${s.weekNumber}`, s);
+      scheduleMap.set(`${s.classId}_${s.year}_${s.weekNumber}`, s);
     });
 
     const dayFieldMap: Record<number, 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday'> = {
@@ -248,78 +252,27 @@ export async function POST(request: NextRequest) {
       6: 'saturday',
     };
 
-    const startOfYear = new Date(Date.UTC(year, 0, 1));
-    const getWeekNumber = (d: Date): number => {
+    const getWeekNumber = (d: Date, targetYear: number): number => {
+      const startOfYear = new Date(Date.UTC(targetYear, 0, 1));
       return Math.ceil(
         ((d.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getUTCDay() + 1) / 7
       );
     };
 
-    // Tìm tất cả các tuần giao với tháng mục tiêu
-    const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
-    const monthWeekNumbers = new Set<number>();
-    for (let day = 1; day <= daysInMonth; day++) {
-      const date = new Date(Date.UTC(year, month - 1, day));
-      if (date.getUTCDay() !== 0) { // Không tính Chủ nhật
-        monthWeekNumbers.add(getWeekNumber(date));
-      }
-    }
-    const monthWeeksList = Array.from(monthWeekNumbers).sort((a, b) => a - b);
-
-    // Kiểm tra từng lớp xem có tuần nào trong tháng bị thiếu TKB không
-    const classMissingWeeks = new Map<string, number[]>();
-    const classIdToName = new Map<string, string>();
-    activeStudents.forEach((s) => {
-      if (s.class) classIdToName.set(s.classId, s.class.name || s.classId);
-    });
-
-    const uniqueClassIds = Array.from(new Set(activeStudents.map((s) => s.classId)));
-    uniqueClassIds.forEach((cId) => {
-      const missing = monthWeeksList.filter((w) => !scheduleMap.has(`${cId}_${w}`));
-      if (missing.length > 0) {
-        classMissingWeeks.set(cId, missing);
-      }
-    });
-
-    // QUY TẮC NGHIÊM NGẶT: NẾU TẠO CHO 1 LỚP CỤ THỂ VÀ LỚP ĐÓ THIẾU TKB BẤT KỲ TUẦN NÀO:
-    // Tuyệt đối không tạo hóa đơn, báo lỗi rõ ràng các tuần còn thiếu!
-    if (classId && classMissingWeeks.has(classId)) {
-      const missing = classMissingWeeks.get(classId)!;
-      const cName = classIdToName.get(classId) || classId;
-      return NextResponse.json(
-        {
-          error: `Lớp ${cName} chưa có Thời khóa biểu đầy đủ cho tháng ${month}/${year} (Đang thiếu: ${missing.map((w) => `Tuần ${w}`).join(', ')}). Vui lòng vào mục Thời khóa biểu để thiết lập lịch học trước khi tạo hóa đơn!`,
-        },
-        { status: 400 }
-      );
-    }
-
-    // NẾU TẠO TOÀN TRƯỜNG VÀ TẤT CẢ CÁC LỚP ĐỀU CHƯA CÓ TKB ĐẦY ĐỦ: BÁO LỖI
-    if (!classId && classMissingWeeks.size === uniqueClassIds.length) {
-      return NextResponse.json(
-        {
-          error: `Chưa có lớp nào có Thời khóa biểu đầy đủ cho tháng ${month}/${year}. Vui lòng thiết lập Thời khóa biểu cho các lớp trước khi tạo hóa đơn!`,
-        },
-        { status: 400 }
-      );
-    }
-
-    // Lọc ra các học sinh thuộc các lớp CÓ ĐỦ TKB 100% trong tháng
-    const studentsWithFullSchedule = activeStudents.filter((s) => !classMissingWeeks.has(s.classId));
-
-    // Hàm tính số ngày ăn theo TKB của 1 lớp trong tháng mục tiêu (Chỉ tính khi lớp có TKB, không đoán mò)
-    const calculateScheduleMealDays = (cId: string): number => {
+    // Hàm tính số ngày ăn theo TKB của 1 lớp trong bất kỳ tháng/năm nào (theo TKB hiện có)
+    const calculateScheduleDaysForMonth = (cId: string, targetMonth: number, targetYear: number): number => {
+      const numDays = new Date(Date.UTC(targetYear, targetMonth, 0)).getUTCDate();
       let count = 0;
-      for (let day = 1; day <= daysInMonth; day++) {
-        const date = new Date(Date.UTC(year, month - 1, day));
+      for (let day = 1; day <= numDays; day++) {
+        const date = new Date(Date.UTC(targetYear, targetMonth - 1, day));
         const dayOfWeek = date.getUTCDay(); // 0=CN, 1=T2..6=T7
         if (dayOfWeek === 0) continue; // CN không tính
 
         const dayField = dayFieldMap[dayOfWeek];
         if (!dayField) continue;
 
-        const weekNum = getWeekNumber(date);
-        const scheduleKey = `${cId}_${weekNum}`;
+        const weekNum = getWeekNumber(date, targetYear);
+        const scheduleKey = `${cId}_${targetYear}_${weekNum}`;
         const schedule = scheduleMap.get(scheduleKey);
 
         if (schedule && schedule[dayField] && schedule[dayField] !== 'NONE') {
@@ -329,40 +282,123 @@ export async function POST(request: NextRequest) {
       return count;
     };
 
-    // 4. Tính số ngày cắt suất đã duyệt của tháng trước
-    const prevMonth = month === 1 ? 12 : month - 1;
-    const prevYear = month === 1 ? year - 1 : year;
-    const prevMonthStart = new Date(Date.UTC(prevYear, prevMonth - 1, 1));
-    const prevMonthEnd = new Date(Date.UTC(prevYear, prevMonth, 0, 23, 59, 59, 999));
+    const classIdToName = new Map<string, string>();
+    activeStudents.forEach((s) => {
+      if (s.class) classIdToName.set(s.classId, s.class.name || s.classId);
+    });
 
-    const cancellationWhere: Record<string, unknown> = {
-      status: CancellationStatus.APPROVED,
-      cancelDate: {
-        gte: prevMonthStart,
-        lte: prevMonthEnd,
-      },
-    };
+    const uniqueClassIds = Array.from(new Set(activeStudents.map((s) => s.classId)));
 
-    if (classId) {
-      cancellationWhere.student = { classId };
+    // Tính số ngày ăn tạm thời của các lớp trong tháng mục tiêu (theo TKB hiện có)
+    const currentClassMealDays = new Map<string, number>();
+    uniqueClassIds.forEach((cId) => {
+      currentClassMealDays.set(cId, calculateScheduleDaysForMonth(cId, month, year));
+    });
+
+    // Nếu tạo cho 1 lớp cụ thể và lớp đó có 0 ngày TKB:
+    if (classId && (currentClassMealDays.get(classId) || 0) === 0) {
+      const cName = classIdToName.get(classId) || classId;
+      return NextResponse.json(
+        {
+          error: `Lớp ${cName} chưa có bất kỳ buổi ăn bán trú nào được xếp trên Thời khóa biểu cho tháng ${month}/${year}. Vui lòng vào mục Thời khóa biểu để thiết lập lịch học trước khi tạo hóa đơn!`,
+        },
+        { status: 400 }
+      );
     }
 
-    const approvedCancellations = await prisma.mealCancellation.findMany({
-      where: cancellationWhere,
-    });
-
-    const cancellationsPerStudent = new Map<string, number>();
-    approvedCancellations.forEach((c) => {
-      cancellationsPerStudent.set(
-        c.studentId,
-        (cancellationsPerStudent.get(c.studentId) || 0) + 1
+    // Nếu tạo cho toàn trường và TẤT CẢ các lớp đều có 0 ngày TKB:
+    const totalDaysAllClasses = Array.from(currentClassMealDays.values()).reduce((sum, d) => sum + d, 0);
+    if (!classId && totalDaysAllClasses === 0) {
+      return NextResponse.json(
+        {
+          error: `Chưa có lớp nào có lịch ăn bán trú trên Thời khóa biểu cho tháng ${month}/${year}. Vui lòng thiết lập Thời khóa biểu cho các lớp trước khi tạo hóa đơn!`,
+        },
+        { status: 400 }
       );
-    });
+    }
+
+    // Lọc ra các học sinh thuộc lớp CÓ ít nhất 1 buổi TKB trong tháng
+    const studentsWithSchedule = activeStudents.filter((s) => (currentClassMealDays.get(s.classId) || 0) > 0);
+    const classesWithoutSchedule = uniqueClassIds.filter((cId) => (currentClassMealDays.get(cId) || 0) === 0);
+
+    // 4. Kiểm tra xem có áp dụng bù trừ tháng trước không
+    // Nhận diện tháng bắt đầu năm học
+    let isStartOfSchoolYear = false;
+    if (startSetting) {
+      const [syY, syM] = startSetting.split("-").map(Number);
+      const startMonthValue = syY * 12 + syM;
+      const prevMonthValue = prevYear * 12 + prevMonth;
+      if (prevMonthValue < startMonthValue) {
+        isStartOfSchoolYear = true;
+      }
+    }
+    // Nếu tháng mục tiêu là tháng 9, quy ước là tháng bắt đầu năm học
+    if (month === 9) {
+      isStartOfSchoolYear = true;
+    }
+
+    // Map lưu số ngày cắt suất của học sinh trong tháng trước
+    const studentCancellationsMap = new Map<string, number>();
+    // Map lưu số buổi ăn đã tạm tính trên phiếu tháng trước của học sinh
+    const prevBillPlannedDaysMap = new Map<string, number>();
+    // Map lưu số ngày ăn TKB thực tế tháng trước của từng lớp
+    const prevClassActualDaysMap = new Map<string, number>();
+
+    if (!isStartOfSchoolYear) {
+      // 4.1 Lấy các yêu cầu cắt suất đã duyệt trong tháng trước
+      const prevMonthStart = new Date(Date.UTC(prevYear, prevMonth - 1, 1));
+      const prevMonthEnd = new Date(Date.UTC(prevYear, prevMonth, 0, 23, 59, 59, 999));
+
+      const cancellationWhere: Record<string, unknown> = {
+        status: CancellationStatus.APPROVED,
+        cancelDate: {
+          gte: prevMonthStart,
+          lte: prevMonthEnd,
+        },
+      };
+
+      if (classId) {
+        cancellationWhere.student = { classId };
+      }
+
+      const approvedCancellations = await prisma.mealCancellation.findMany({
+        where: cancellationWhere,
+      });
+
+      approvedCancellations.forEach((c) => {
+        studentCancellationsMap.set(
+          c.studentId,
+          (studentCancellationsMap.get(c.studentId) || 0) + 1
+        );
+      });
+
+      // 4.2 Lấy hóa đơn tháng trước của học sinh để biết số buổi đã tạm tính
+      const prevBills = await prisma.monthlyBill.findMany({
+        where: {
+          studentId: { in: studentsWithSchedule.map((s) => s.id) },
+          month: prevMonth,
+          year: prevYear,
+        },
+        select: {
+          studentId: true,
+          scheduleMealDays: true,
+        },
+      });
+
+      prevBills.forEach((b) => {
+        prevBillPlannedDaysMap.set(b.studentId, b.scheduleMealDays);
+      });
+
+      // 4.3 Tính số ngày ăn theo TKB thực tế của tháng trước cho từng lớp
+      uniqueClassIds.forEach((cId) => {
+        prevClassActualDaysMap.set(cId, calculateScheduleDaysForMonth(cId, prevMonth, prevYear));
+      });
+    }
 
     // 5. Kiểm tra và bảo vệ hóa đơn đã thanh toán (PAID hoặc PARTIAL)
     const existingBills = await prisma.monthlyBill.findMany({
       where: {
-        studentId: { in: studentsWithFullSchedule.map((s) => s.id) },
+        studentId: { in: studentsWithSchedule.map((s) => s.id) },
         month,
         year,
       },
@@ -378,12 +414,12 @@ export async function POST(request: NextRequest) {
         .map((b) => b.studentId)
     );
 
-    const studentsToProcess = studentsWithFullSchedule.filter((s) => !paidOrPartialStudentIds.has(s.id));
+    const studentsToProcess = studentsWithSchedule.filter((s) => !paidOrPartialStudentIds.has(s.id));
 
-    if (studentsToProcess.length === 0 && studentsWithFullSchedule.length > 0) {
+    if (studentsToProcess.length === 0 && studentsWithSchedule.length > 0) {
       return NextResponse.json({
         success: true,
-        message: `Tất cả ${studentsWithFullSchedule.length} học sinh đều đã có hóa đơn đã thanh toán (PAID). Hệ thống giữ nguyên dữ liệu gốc, không ghi đè.`,
+        message: `Tất cả ${studentsWithSchedule.length} học sinh đều đã có hóa đơn đã thanh toán (PAID/PARTIAL). Hệ thống giữ nguyên dữ liệu gốc, không ghi đè.`,
         count: 0,
         preservedCount: paidOrPartialStudentIds.size,
         month,
@@ -394,7 +430,6 @@ export async function POST(request: NextRequest) {
 
     // 6. Tạo/Cập nhật hóa đơn cho các học sinh chưa thanh toán - dùng Prisma transaction
     let generatedCount = 0;
-    const classMealDaysCache = new Map<string, number>();
     const BATCH_SIZE = 30;
 
     for (let i = 0; i < studentsToProcess.length; i += BATCH_SIZE) {
@@ -402,18 +437,46 @@ export async function POST(request: NextRequest) {
 
       await prisma.$transaction(
         batch.map((student) => {
-          if (!classMealDaysCache.has(student.classId)) {
-            classMealDaysCache.set(student.classId, calculateScheduleMealDays(student.classId));
+          const scheduleMealDays = currentClassMealDays.get(student.classId) || 0;
+          let studentCanceledDays = 0;
+          let scheduleReducedDays = 0;
+          let extraMealDays = 0;
+
+          if (!isStartOfSchoolYear) {
+            studentCanceledDays = studentCancellationsMap.get(student.id) || 0;
+
+            if (prevBillPlannedDaysMap.has(student.id)) {
+              const plannedPrevDays = prevBillPlannedDaysMap.get(student.id) || 0;
+              const actualPrevDays = prevClassActualDaysMap.get(student.classId) || 0;
+              const delta = actualPrevDays - plannedPrevDays;
+
+              if (delta > 0) {
+                // TKB phát sinh tăng sau khi ra phiếu tháng trước -> Ăn thêm
+                extraMealDays = delta;
+                scheduleReducedDays = 0;
+              } else if (delta < 0) {
+                // Trường tự hủy lịch đột xuất sau khi ra phiếu tháng trước -> Hoàn trừ
+                extraMealDays = 0;
+                scheduleReducedDays = Math.abs(delta);
+              }
+            }
           }
 
-          const scheduleMealDays = classMealDaysCache.get(student.classId) || 0;
-          const canceledDays = cancellationsPerStudent.get(student.id) || 0;
+          // Tổng số ngày giảm trừ = Học sinh cắt suất + Trường tự hủy lịch
+          const canceledDays = studentCanceledDays + scheduleReducedDays;
           const netPayableDays = scheduleMealDays;
-          const previousDeduction = canceledDays * unitPrice;
           const totalAmount = netPayableDays * unitPrice;
-          const finalAmount = Math.max(0, totalAmount - previousDeduction);
+          const previousDeduction = canceledDays * unitPrice;
+          const previousAddition = extraMealDays * unitPrice;
+          const finalAmount = Math.max(0, totalAmount - previousDeduction + previousAddition);
 
-          const qrCodeUrl = generateMealPaymentQR(student.boardingCode || student.studentCode, month, year, finalAmount, customBankInfo);
+          const qrCodeUrl = generateMealPaymentQR(
+            student.boardingCode || student.studentCode,
+            month,
+            year,
+            finalAmount,
+            customBankInfo
+          );
 
           return prisma.monthlyBill.upsert({
             where: {
@@ -426,10 +489,13 @@ export async function POST(request: NextRequest) {
             update: {
               scheduleMealDays,
               canceledDays,
+              scheduleReducedDays,
+              extraMealDays,
               netPayableDays,
               unitPrice,
               totalAmount,
               previousDeduction,
+              previousAddition,
               finalAmount,
               qrCodeUrl,
             },
@@ -439,10 +505,13 @@ export async function POST(request: NextRequest) {
               year,
               scheduleMealDays,
               canceledDays,
+              scheduleReducedDays,
+              extraMealDays,
               netPayableDays,
               unitPrice,
               totalAmount,
               previousDeduction,
+              previousAddition,
               finalAmount,
               paymentStatus: finalAmount === 0 ? PaymentStatus.PAID : PaymentStatus.UNPAID,
               qrCodeUrl,
@@ -464,11 +533,11 @@ export async function POST(request: NextRequest) {
       ? `Đã tạo/cập nhật ${generatedCount} hóa đơn lớp ${classIdToName.get(classId) || classId} tháng ${month}/${year}${preservedText}`
       : `Đã tạo/cập nhật thành công ${generatedCount} hóa đơn cho tháng ${month}/${year}${preservedText}`;
 
-    if (classMissingWeeks.size > 0) {
-      const missingDetails = Array.from(classMissingWeeks.entries())
-        .map(([cId, weeks]) => `${classIdToName.get(cId) || cId} (thiếu Tuần ${weeks.join(', ')})`)
-        .join('; ');
-      summaryMessage += `. ⚠️ Đã bỏ qua ${classMissingWeeks.size} lớp do chưa có đủ TKB: ${missingDetails}.`;
+    if (classesWithoutSchedule.length > 0) {
+      const missingDetails = classesWithoutSchedule
+        .map((cId) => classIdToName.get(cId) || cId)
+        .join(', ');
+      summaryMessage += `. ⚠️ Đã bỏ qua ${classesWithoutSchedule.length} lớp do chưa có TKB: ${missingDetails}.`;
     }
 
     return NextResponse.json({
@@ -476,7 +545,7 @@ export async function POST(request: NextRequest) {
       message: summaryMessage,
       count: generatedCount,
       preservedCount,
-      skippedClassesCount: classMissingWeeks.size,
+      skippedClassesCount: classesWithoutSchedule.length,
       month,
       year,
       classId: classId || null,
@@ -494,7 +563,17 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { id, scheduleMealDays, canceledDays, unitPrice, previousDeduction, paymentStatus } = body;
+    const {
+      id,
+      scheduleMealDays,
+      canceledDays,
+      scheduleReducedDays = 0,
+      extraMealDays = 0,
+      unitPrice,
+      previousDeduction,
+      previousAddition = 0,
+      paymentStatus,
+    } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'Thiếu ID hóa đơn' }, { status: 400 });
@@ -510,7 +589,7 @@ export async function PUT(request: NextRequest) {
 
     const netPayableDays = scheduleMealDays;
     const totalAmount = netPayableDays * unitPrice;
-    const finalAmount = Math.max(0, totalAmount - previousDeduction);
+    const finalAmount = Math.max(0, totalAmount - previousDeduction + previousAddition);
     
     // Fetch bank settings to generate QR code correctly
     const systemSettings = await prisma.systemSetting.findMany({
@@ -523,17 +602,26 @@ export async function PUT(request: NextRequest) {
     };
     
     // Cập nhật QR code với số tiền mới
-    const qrCodeUrl = generateMealPaymentQR(currentBill.student.boardingCode || currentBill.student.studentCode, currentBill.month, currentBill.year, finalAmount, customBankInfo);
+    const qrCodeUrl = generateMealPaymentQR(
+      currentBill.student.boardingCode || currentBill.student.studentCode,
+      currentBill.month,
+      currentBill.year,
+      finalAmount,
+      customBankInfo
+    );
 
     const updatedBill = await prisma.monthlyBill.update({
       where: { id },
       data: {
         scheduleMealDays,
         canceledDays,
+        scheduleReducedDays: Number(scheduleReducedDays) || 0,
+        extraMealDays: Number(extraMealDays) || 0,
         netPayableDays,
         unitPrice,
         totalAmount,
         previousDeduction,
+        previousAddition,
         finalAmount,
         paymentStatus,
         qrCodeUrl,
