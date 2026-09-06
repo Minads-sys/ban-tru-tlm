@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db";
 import { broadcastChange } from "@/lib/realtime-hub";
+import { auth } from "@/lib/auth";
 
 // GET: Lấy TKB tuần
 export async function GET(request: NextRequest) {
@@ -58,6 +59,11 @@ export async function GET(request: NextRequest) {
 // POST: Lưu TKB tuần
 export async function POST(request: NextRequest) {
   try {
+    const session = await auth();
+    if (session?.user?.role === 'ACCOUNTANT') {
+      return NextResponse.json({ error: "Tài khoản Kế toán chỉ có quyền xem thời khóa biểu" }, { status: 403 });
+    }
+
     const { year, weekNumber, schedules } = await request.json();
 
     if (!year || !weekNumber || !schedules) {
@@ -123,6 +129,11 @@ export async function POST(request: NextRequest) {
 
 // DELETE: Xóa toàn bộ TKB của một tuần
 export async function DELETE(request: NextRequest) {
+  const session = await auth();
+  if (session?.user?.role === 'ACCOUNTANT') {
+    return NextResponse.json({ error: "Tài khoản Kế toán không có quyền xóa thời khóa biểu" }, { status: 403 });
+  }
+
   const { searchParams } = new URL(request.url);
   const year = parseInt(searchParams.get("year") || "");
   const weekNumber = parseInt(searchParams.get("weekNumber") || "");

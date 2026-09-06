@@ -18,6 +18,8 @@ import {
   Loader2,
   HelpCircle,
   Info,
+  CalendarX,
+  UtensilsCrossed,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
@@ -28,6 +30,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ApprovalActions } from '@/components/admin/approval-actions';
 import { bulkApproveCancellations, autoApproveExpiredCancellations } from '@/app/admin/meal-cancel/actions';
+import { BulkMealCancelDialog } from '@/components/admin/bulk-meal-cancel-dialog';
+import { BulkMealOverrideDialog } from '@/components/admin/bulk-meal-override-dialog';
 import Swal from 'sweetalert2';
 
 export interface CancellationItem {
@@ -62,16 +66,24 @@ interface MealCancelManagerProps {
   initialPending: CancellationItem[];
   initialHistory: CancellationItem[];
   cutoffTime: string;
+  classes?: { id: string; name: string }[];
+  isAccountant?: boolean;
 }
 
 export function MealCancelManager({
   initialPending,
   initialHistory,
   cutoffTime,
+  classes = [],
+  isAccountant = false,
 }: MealCancelManagerProps) {
   const [activeTab, setActiveTab] = useState<'pending' | 'history'>('pending');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isBulkPending, startBulkTransition] = useTransition();
+
+  // Dialog states for Bulk Actions
+  const [openBulkCancel, setOpenBulkCancel] = useState<boolean>(false);
+  const [openBulkOverride, setOpenBulkOverride] = useState<boolean>(false);
 
   // Filters for History Tab
   const [searchQuery, setSearchQuery] = useState('');
@@ -268,6 +280,20 @@ export function MealCancelManager({
 
   return (
     <div className="space-y-6">
+      {isAccountant && (
+        <div className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50/80 p-4 text-sm text-amber-900 shadow-xs">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
+            <Info className="h-4 w-4" />
+          </div>
+          <div>
+            <div className="font-semibold text-amber-800">Chế độ xem lịch sử & yêu cầu cắt suất (Kế toán)</div>
+            <div className="text-xs text-amber-700 mt-0.5">
+              Tài khoản Kế toán có quyền theo dõi danh sách chờ duyệt và đối soát toàn bộ lịch sử cắt suất ăn, nhưng không thể duyệt, từ chối hoặc thao tác cắt suất/đổi món.
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Top Banner Notice: Dynamic Cutoff Time */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3.5 rounded-xl bg-gradient-to-r from-blue-50 via-indigo-50 to-emerald-50 border border-blue-200/80 shadow-xs gap-3">
         <div className="flex items-center gap-2.5">
@@ -289,20 +315,42 @@ export function MealCancelManager({
           </div>
         </div>
 
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleCheckAutoApprove}
-          disabled={isBulkPending}
-          className="text-xs shrink-0 bg-white hover:bg-slate-50 border-slate-300 text-slate-700 shadow-2xs cursor-pointer"
-        >
-          {isBulkPending ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
-          ) : (
-            <RefreshCw className="h-3.5 w-3.5 mr-1.5 text-blue-600" />
-          )}
-          Kiểm tra Tự động duyệt
-        </Button>
+        {!isAccountant && (
+          <div className="flex items-center gap-2 shrink-0 flex-wrap">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleCheckAutoApprove}
+              disabled={isBulkPending}
+              className="text-xs shrink-0 bg-white hover:bg-slate-50 border-slate-300 text-slate-700 shadow-2xs cursor-pointer"
+            >
+              {isBulkPending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5 mr-1.5 text-blue-600" />
+              )}
+              Kiểm tra Tự động duyệt
+            </Button>
+
+            <Button
+              size="sm"
+              onClick={() => setOpenBulkCancel(true)}
+              className="text-xs shrink-0 bg-rose-600 hover:bg-rose-700 text-white shadow-xs cursor-pointer gap-1.5 font-medium"
+            >
+              <CalendarX className="h-3.5 w-3.5" />
+              <span>Cắt suất hàng loạt</span>
+            </Button>
+
+            <Button
+              size="sm"
+              onClick={() => setOpenBulkOverride(true)}
+              className="text-xs shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs cursor-pointer gap-1.5 font-medium"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              <span>Đổi món hàng loạt</span>
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Tabs Layout */}
@@ -367,7 +415,7 @@ export function MealCancelManager({
                 </div>
 
                 {/* Bulk Action Buttons */}
-                {initialPending.length > 0 && (
+                {initialPending.length > 0 && !isAccountant && (
                   <div className="flex items-center gap-2">
                     <Button
                       size="sm"
@@ -416,20 +464,24 @@ export function MealCancelManager({
                   <Table>
                     <TableHeader className="bg-slate-50/80">
                       <TableRow>
-                        <TableHead className="w-10 text-center">
-                          <button
-                            type="button"
-                            onClick={toggleSelectAll}
-                            className="p-1 text-slate-600 hover:text-slate-900 cursor-pointer"
-                            title={isAllSelected ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}
-                          >
-                            {isAllSelected ? (
-                              <CheckSquare className="h-4 w-4 text-emerald-600" />
-                            ) : (
-                              <Square className="h-4 w-4 text-slate-400" />
-                            )}
-                          </button>
-                        </TableHead>
+                        {!isAccountant ? (
+                          <TableHead className="w-10 text-center">
+                            <button
+                              type="button"
+                              onClick={toggleSelectAll}
+                              className="p-1 text-slate-600 hover:text-slate-900 cursor-pointer"
+                              title={isAllSelected ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}
+                            >
+                              {isAllSelected ? (
+                                <CheckSquare className="h-4 w-4 text-emerald-600" />
+                              ) : (
+                                <Square className="h-4 w-4 text-slate-400" />
+                              )}
+                            </button>
+                          </TableHead>
+                        ) : (
+                          <TableHead className="w-4"></TableHead>
+                        )}
                         <TableHead className="w-12 text-center text-xs font-semibold">STT</TableHead>
                         <TableHead className="w-28 text-xs font-semibold">Mã HS</TableHead>
                         <TableHead className="text-xs font-semibold">Họ tên học sinh</TableHead>
@@ -452,19 +504,23 @@ export function MealCancelManager({
                             key={item.id}
                             className={`hover:bg-slate-50/70 transition-colors ${isChecked ? 'bg-emerald-50/30' : ''}`}
                           >
-                            <TableCell className="text-center">
-                              <button
-                                type="button"
-                                onClick={() => toggleSelect(item.id)}
-                                className="p-1 text-slate-600 hover:text-slate-900 cursor-pointer"
-                              >
-                                {isChecked ? (
-                                  <CheckSquare className="h-4 w-4 text-emerald-600" />
-                                ) : (
-                                  <Square className="h-4 w-4 text-slate-300" />
-                                )}
-                              </button>
-                            </TableCell>
+                            {!isAccountant ? (
+                              <TableCell className="text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => toggleSelect(item.id)}
+                                  className="p-1 text-slate-600 hover:text-slate-900 cursor-pointer"
+                                >
+                                  {isChecked ? (
+                                    <CheckSquare className="h-4 w-4 text-emerald-600" />
+                                  ) : (
+                                    <Square className="h-4 w-4 text-slate-300" />
+                                  )}
+                                </button>
+                              </TableCell>
+                            ) : (
+                              <TableCell></TableCell>
+                            )}
                             <TableCell className="text-center text-xs font-medium text-slate-500">
                               {index + 1}
                             </TableCell>
@@ -499,7 +555,13 @@ export function MealCancelManager({
                               </div>
                             </TableCell>
                             <TableCell className="text-center">
-                              <ApprovalActions id={item.id} studentName={studentName} />
+                              {isAccountant ? (
+                                <Badge variant="outline" className="text-amber-700 bg-amber-50 border-amber-200 text-xs font-medium">
+                                  Chờ duyệt
+                                </Badge>
+                              ) : (
+                                <ApprovalActions id={item.id} studentName={studentName} />
+                              )}
                             </TableCell>
                           </TableRow>
                         );
@@ -693,6 +755,21 @@ export function MealCancelManager({
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Dialogs Cắt suất & Đổi món hàng loạt */}
+      <BulkMealCancelDialog
+        open={openBulkCancel}
+        onOpenChange={setOpenBulkCancel}
+        classes={classes}
+        cutoffTime={cutoffTime}
+      />
+
+      <BulkMealOverrideDialog
+        open={openBulkOverride}
+        onOpenChange={setOpenBulkOverride}
+        classes={classes}
+        cutoffTime={cutoffTime}
+      />
     </div>
   );
 }

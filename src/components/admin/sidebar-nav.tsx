@@ -176,6 +176,19 @@ export function SidebarNav({ user }: SidebarNavProps) {
             if (!item.permission) return true;
             if (user?.role === "ADMIN") return true;
             if (user?.role === "CASHIER" && item.href === "/admin/billing") return true;
+            if (user?.role === "ACCOUNTANT") {
+              const accountantAllowedPaths = [
+                "/admin",
+                "/admin/students",
+                "/admin/classes",
+                "/admin/schedule",
+                "/admin/meal-cancel",
+                "/admin/daily-meals",
+                "/admin/billing",
+                "/admin/reports",
+              ];
+              if (accountantAllowedPaths.includes(item.href)) return true;
+            }
             const userPermissions = user?.permissions || [];
             return userPermissions.includes(item.permission);
           }).map((item) => {
@@ -202,6 +215,8 @@ export function SidebarNav({ user }: SidebarNavProps) {
                 <span className="truncate">
                   {user?.role === "CASHIER" && item.href === "/admin/billing"
                     ? "Quầy Thu Ngân"
+                    : user?.role === "ACCOUNTANT" && item.href === "/admin/meal-cancel"
+                    ? "Lịch sử & Cắt suất"
                     : item.title}
                 </span>
               </Link>
@@ -225,6 +240,8 @@ export function SidebarNav({ user }: SidebarNavProps) {
                 ? "Quản trị hệ thống"
                 : user?.role === "CASHIER"
                 ? "Thu ngân"
+                : user?.role === "ACCOUNTANT"
+                ? "Kế toán"
                 : user?.role === "BOARDING_MANAGER"
                 ? "Quản lý bán trú"
                 : user?.role === "BOARDING_STAFF"

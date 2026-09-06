@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useSession } from "next-auth/react";
 import Swal from "sweetalert2";
 import { format } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -67,6 +68,9 @@ const getStatusBadge = (status: string) => {
 };
 
 export default function ClassesPage() {
+  const { data: session } = useSession();
+  const isAccountant = session?.user?.role === "ACCOUNTANT";
+
   const [classes, setClasses] = useState<ClassData[]>([]);
   const [teachers, setTeachers] = useState<TeacherData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -249,10 +253,12 @@ export default function ClassesPage() {
           <School className="h-6 w-6 text-blue-600" />
           Danh sách Lớp học
         </h1>
-        <Button onClick={() => openModal()} className="bg-blue-600 hover:bg-blue-700 text-white">
-          <Plus className="h-4 w-4 mr-2" />
-          Thêm Lớp
-        </Button>
+        {!isAccountant && (
+          <Button onClick={() => openModal()} className="bg-blue-600 hover:bg-blue-700 text-white">
+            <Plus className="h-4 w-4 mr-2" />
+            Thêm Lớp
+          </Button>
+        )}
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
@@ -294,7 +300,7 @@ export default function ClassesPage() {
                   <TableHead>Tên Lớp</TableHead>
                   <TableHead>GVCN</TableHead>
                   <TableHead className="text-center">Sĩ số</TableHead>
-                  <TableHead className="text-right">Hành động</TableHead>
+                  {!isAccountant && <TableHead className="text-right">Hành động</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -319,16 +325,18 @@ export default function ClassesPage() {
                         {cls._count?.students || 0}
                       </span>
                     </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <Button variant="outline" size="sm" onClick={() => openModal(cls)}>
-                          <Pencil className="h-4 w-4 mr-1" /> Sửa
-                        </Button>
-                        <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700 hover:bg-red-50" onClick={() => handleDelete(cls)}>
-                          <Trash className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
+                    {!isAccountant && (
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <Button variant="outline" size="sm" onClick={() => openModal(cls)}>
+                            <Pencil className="h-4 w-4 mr-1" /> Sửa
+                          </Button>
+                          <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700 hover:bg-red-50" onClick={() => handleDelete(cls)}>
+                            <Trash className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
                 {classes.length === 0 && (

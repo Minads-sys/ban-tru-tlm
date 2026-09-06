@@ -24,6 +24,9 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const session = await auth();
+  if (session?.user?.role === "ACCOUNTANT") {
+    return NextResponse.json({ error: "Tài khoản Kế toán chỉ có quyền xem danh sách lớp học" }, { status: 403 });
+  }
   if (!session?.user || (!hasPermission(session.user.permissions || [], "MANAGE_STUDENTS") && session.user.role !== "ADMIN")) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }

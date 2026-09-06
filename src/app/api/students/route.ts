@@ -123,6 +123,9 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const session = await auth();
+    if (session?.user?.role === 'ACCOUNTANT') {
+      return NextResponse.json({ error: "Tài khoản Kế toán chỉ có quyền xem và xuất Excel danh sách học sinh" }, { status: 403 });
+    }
     const body = await request.json();
     const { action, studentId } = body;
     const adminId = body.adminId || session?.user?.id;
@@ -672,6 +675,9 @@ export async function PUT(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const session = await auth();
+    if (session?.user?.role === 'ACCOUNTANT') {
+      return NextResponse.json({ error: "Tài khoản Kế toán không có quyền xóa học sinh" }, { status: 403 });
+    }
     const { searchParams } = new URL(request.url);
     const studentId = searchParams.get("studentId");
 

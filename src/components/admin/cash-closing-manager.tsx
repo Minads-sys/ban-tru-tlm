@@ -73,6 +73,7 @@ export function CashClosingManager({ currentUser }: { currentUser: any }) {
   // TAB 3: Quản lý Hủy phiếu (Chỉ Kế toán / Admin)
   const isAccountantOrAdmin =
     currentUser?.role === "ADMIN" ||
+    currentUser?.role === "ACCOUNTANT" ||
     hasPermission(currentUser?.permissions || [], "MANAGE_FINANCE");
 
   const [voidSearchTerm, setVoidSearchTerm] = useState("");

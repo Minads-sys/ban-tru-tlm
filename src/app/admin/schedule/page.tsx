@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useSession } from "next-auth/react";
 import Swal from "sweetalert2";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,7 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { CalendarDays, Save, Loader2, Copy, CheckCircle, X, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
+import { CalendarDays, Save, Loader2, Copy, CheckCircle, X, ChevronLeft, ChevronRight, Trash2, Info } from "lucide-react";
 import { format, parse, startOfWeek, endOfWeek, addDays, addWeeks } from "date-fns";
 
 interface ScheduleData {
@@ -54,6 +55,9 @@ function getWeekDateRange(weekStr: string): string {
 }
 
 export default function SchedulePage() {
+  const { data: session } = useSession();
+  const isAccountant = session?.user?.role === "ACCOUNTANT";
+
   const [weekString, setWeekString] = useState<string>(() => getCurrentWeekString());
   const [schedules, setSchedules] = useState<ScheduleData[]>([]);
   const [loading, setLoading] = useState(false);
@@ -112,6 +116,7 @@ export default function SchedulePage() {
   }, [weekString]);
 
   const createNewSchedule = async () => {
+    if (isAccountant) return;
     const [y, w] = weekString.split("-W").map(Number);
     const year = y || new Date().getFullYear();
     const weekNumber = w || 1;
@@ -132,6 +137,7 @@ export default function SchedulePage() {
   };
 
   const toggleDay = (classId: string, day: "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday") => {
+    if (isAccountant) return;
     setSchedules((prev) =>
       prev.map((s) => {
         if (s.classId !== classId) return s;
@@ -146,6 +152,7 @@ export default function SchedulePage() {
   };
 
   const saveSchedules = async () => {
+    if (isAccountant) return;
     const [y, w] = weekString.split("-W").map(Number);
     const year = y || new Date().getFullYear();
     const weekNumber = w || 1;
@@ -172,6 +179,7 @@ export default function SchedulePage() {
   };
 
   const deleteSchedule = async () => {
+    if (isAccountant) return;
     const [y, w] = weekString.split("-W").map(Number);
     const year = y || new Date().getFullYear();
     const weekNumber = w || 1;
@@ -207,6 +215,7 @@ export default function SchedulePage() {
   };
 
   const copyFromPrevWeek = async () => {
+    if (isAccountant) return;
     const [y, w] = weekString.split("-W").map(Number);
     const year = y || new Date().getFullYear();
     const weekNumber = w || 1;
@@ -248,6 +257,7 @@ export default function SchedulePage() {
   };
 
   const clearDay = (day: keyof ScheduleData, dayName: string) => {
+    if (isAccountant) return;
     Swal.fire({
       title: `Xóa TKB ${dayName}?`,
       text: `Bạn có chắc muốn chuyển TKB của TẤT CẢ lớp trong ngày ${dayName} về "Trống"?`,
@@ -294,6 +304,20 @@ export default function SchedulePage() {
         Thời khóa biểu Bán trú
       </h1>
 
+      {isAccountant && (
+        <div className="mb-6 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50/80 p-4 text-sm text-amber-900 shadow-xs">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
+            <Info className="h-4 w-4" />
+          </div>
+          <div>
+            <div className="font-semibold text-amber-800">Chế độ chỉ xem (Kế toán)</div>
+            <div className="text-xs text-amber-700 mt-0.5">
+              Tài khoản Kế toán có quyền tra cứu lịch ăn các lớp theo tuần nhưng không thể tạo mới, sao chép, chỉnh sửa hoặc xóa thời khóa biểu.
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Bộ chọn tuần */}
       <Card className="mb-6">
         <CardContent className="pt-6">
@@ -339,31 +363,33 @@ export default function SchedulePage() {
               )}
             </div>
             
-            <div className="flex gap-2 items-center flex-wrap pt-7">
-              <Button onClick={copyFromPrevWeek} variant="outline" className="h-10">
-                <Copy className="h-4 w-4 mr-1" />
-                Copy từ tuần trước
-              </Button>
-              <Button 
-                onClick={saveSchedules} 
-                disabled={saving || (!hasChanges && !saved)} 
-                className={`h-10 ${hasChanges ? "bg-amber-600 hover:bg-amber-700 text-white" : ""}`}
-              >
-                {saving ? (
-                  <Loader2 className="h-4 w-4 animate-spin mr-1" />
-                ) : saved ? (
-                  <CheckCircle className="h-4 w-4 mr-1" />
-                ) : (
-                  <Save className="h-4 w-4 mr-1" />
+            {!isAccountant && (
+              <div className="flex gap-2 items-center flex-wrap pt-7">
+                <Button onClick={copyFromPrevWeek} variant="outline" className="h-10">
+                  <Copy className="h-4 w-4 mr-1" />
+                  Copy từ tuần trước
+                </Button>
+                <Button 
+                  onClick={saveSchedules} 
+                  disabled={saving || (!hasChanges && !saved)} 
+                  className={`h-10 ${hasChanges ? "bg-amber-600 hover:bg-amber-700 text-white" : ""}`}
+                >
+                  {saving ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                  ) : saved ? (
+                    <CheckCircle className="h-4 w-4 mr-1" />
+                  ) : (
+                    <Save className="h-4 w-4 mr-1" />
+                  )}
+                  {saved ? "Đã lưu!" : hasChanges ? "Lưu TKB *" : "Lưu TKB"}
+                </Button>
+                {hasChanges && (
+                  <span className="text-sm font-medium text-amber-600 animate-pulse">
+                    ⚠️ Có thay đổi chưa lưu
+                  </span>
                 )}
-                {saved ? "Đã lưu!" : hasChanges ? "Lưu TKB *" : "Lưu TKB"}
-              </Button>
-              {hasChanges && (
-                <span className="text-sm font-medium text-amber-600 animate-pulse">
-                  ⚠️ Có thay đổi chưa lưu
-                </span>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -373,7 +399,7 @@ export default function SchedulePage() {
         <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <CardTitle className="flex items-center gap-4">
             <span>Lịch ăn bán trú - Tuần {currentWeek} / {currentYear}</span>
-            {schedules.length > 0 && !loading && (
+            {schedules.length > 0 && !loading && !isAccountant && (
               <Button 
                 variant="outline" 
                 size="sm" 
@@ -444,7 +470,7 @@ export default function SchedulePage() {
                     <TableHead className="text-center group">
                       <div className="flex items-center justify-center gap-1">
                         Thứ 2
-                        {isDayClearable("monday") && (
+                        {!isAccountant && isDayClearable("monday") && (
                           <button onClick={() => clearDay("monday", "Thứ 2")} className="text-red-500 hover:bg-red-50 rounded p-0.5" title="Xóa toàn bộ Thứ 2">
                             <X className="h-3.5 w-3.5" />
                           </button>
@@ -457,7 +483,7 @@ export default function SchedulePage() {
                     <TableHead className="text-center group">
                       <div className="flex items-center justify-center gap-1">
                         Thứ 3
-                        {isDayClearable("tuesday") && (
+                        {!isAccountant && isDayClearable("tuesday") && (
                           <button onClick={() => clearDay("tuesday", "Thứ 3")} className="text-red-500 hover:bg-red-50 rounded p-0.5" title="Xóa toàn bộ Thứ 3">
                             <X className="h-3.5 w-3.5" />
                           </button>
@@ -470,7 +496,7 @@ export default function SchedulePage() {
                     <TableHead className="text-center group">
                       <div className="flex items-center justify-center gap-1">
                         Thứ 4
-                        {isDayClearable("wednesday") && (
+                        {!isAccountant && isDayClearable("wednesday") && (
                           <button onClick={() => clearDay("wednesday", "Thứ 4")} className="text-red-500 hover:bg-red-50 rounded p-0.5" title="Xóa toàn bộ Thứ 4">
                             <X className="h-3.5 w-3.5" />
                           </button>
@@ -483,7 +509,7 @@ export default function SchedulePage() {
                     <TableHead className="text-center group">
                       <div className="flex items-center justify-center gap-1">
                         Thứ 5
-                        {isDayClearable("thursday") && (
+                        {!isAccountant && isDayClearable("thursday") && (
                           <button onClick={() => clearDay("thursday", "Thứ 5")} className="text-red-500 hover:bg-red-50 rounded p-0.5" title="Xóa toàn bộ Thứ 5">
                             <X className="h-3.5 w-3.5" />
                           </button>
@@ -496,7 +522,7 @@ export default function SchedulePage() {
                     <TableHead className="text-center group">
                       <div className="flex items-center justify-center gap-1">
                         Thứ 6
-                        {isDayClearable("friday") && (
+                        {!isAccountant && isDayClearable("friday") && (
                           <button onClick={() => clearDay("friday", "Thứ 6")} className="text-red-500 hover:bg-red-50 rounded p-0.5" title="Xóa toàn bộ Thứ 6">
                             <X className="h-3.5 w-3.5" />
                           </button>
@@ -509,7 +535,7 @@ export default function SchedulePage() {
                     <TableHead className="text-center group">
                       <div className="flex items-center justify-center gap-1">
                         Thứ 7
-                        {isDayClearable("saturday") && (
+                        {!isAccountant && isDayClearable("saturday") && (
                           <button onClick={() => clearDay("saturday", "Thứ 7")} className="text-red-500 hover:bg-red-50 rounded p-0.5" title="Xóa toàn bộ Thứ 7">
                             <X className="h-3.5 w-3.5" />
                           </button>
@@ -533,8 +559,8 @@ export default function SchedulePage() {
                         (day) => (
                           <TableCell
                             key={day}
-                            className="text-center"
-                            onClick={() => toggleDay(s.classId, day)}
+                            className={`text-center ${isAccountant ? "cursor-default" : "cursor-pointer"}`}
+                            onClick={() => !isAccountant && toggleDay(s.classId, day)}
                           >
                             {dayLabel(s[day])}
                           </TableCell>
@@ -547,10 +573,12 @@ export default function SchedulePage() {
                     <TableCell colSpan={4 + visibleDays.length} className="text-center py-12">
                       <div className="flex flex-col items-center justify-center gap-4">
                         <p className="text-gray-500 font-medium">Tuần này chưa có Thời khóa biểu Bán trú.</p>
-                        <Button onClick={createNewSchedule} className="bg-blue-600 hover:bg-blue-700">
-                          <CalendarDays className="h-4 w-4 mr-2" />
-                          Tạo thời khóa biểu mới
-                        </Button>
+                        {!isAccountant && (
+                          <Button onClick={createNewSchedule} className="bg-blue-600 hover:bg-blue-700">
+                            <CalendarDays className="h-4 w-4 mr-2" />
+                            Tạo thời khóa biểu mới
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -559,7 +587,9 @@ export default function SchedulePage() {
             </Table>
           )}
           <p className="text-xs text-gray-500 mt-3">
-            💡 Bấm vào ô Trống/Tiết 4/Tiết 5 để chuyển đổi lịch ra về. Sau khi chỉnh sửa xong, bấm Lưu TKB.
+            {!isAccountant
+              ? "💡 Bấm vào ô Trống/Tiết 4/Tiết 5 để chuyển đổi lịch ra về. Sau khi chỉnh sửa xong, bấm Lưu TKB."
+              : "💡 Bạn đang ở chế độ xem thời khóa biểu (Kế toán)."}
           </p>
         </CardContent>
       </Card>

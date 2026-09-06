@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
       };
 
       // Nếu không phải Admin thì chỉ xem của chính mình
-      if (!isFullAdmin && session.user.role !== "BOARDING_MANAGER") {
+      if (!isFullAdmin && session.user.role !== "BOARDING_MANAGER" && session.user.role !== "ACCOUNTANT") {
         where.cashierId = session.user.id;
       } else if (cashierId && cashierId !== "all") {
         where.cashierId = cashierId;
@@ -203,7 +203,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const session = await auth();
-    if (!session?.user || !["ADMIN", "BOARDING_MANAGER", "BOARDING_STAFF", "CASHIER"].includes(session.user.role)) {
+    if (!session?.user || !["ADMIN", "BOARDING_MANAGER", "BOARDING_STAFF", "CASHIER", "ACCOUNTANT"].includes(session.user.role)) {
       return NextResponse.json({ error: "Bạn không có quyền lập biên bản bàn giao tiền mặt" }, { status: 403 });
     }
 
@@ -323,6 +323,7 @@ export async function PUT(request: NextRequest) {
     // Kiểm tra quyền Kế toán / Admin
     const isAccountantOrAdmin =
       session.user.role === "ADMIN" ||
+      session.user.role === "ACCOUNTANT" ||
       hasPermission(session.user.permissions || [], "MANAGE_FINANCE");
 
     if (!isAccountantOrAdmin) {

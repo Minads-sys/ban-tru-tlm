@@ -6,6 +6,9 @@ import { logAudit, AUDIT_ACTIONS, AUDIT_MODULES } from "@/lib/audit-log";
 
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
+  if (session?.user?.role === "ACCOUNTANT") {
+    return NextResponse.json({ error: "Tài khoản Kế toán không có quyền chỉnh sửa lớp học" }, { status: 403 });
+  }
   if (!session?.user || (!hasPermission(session.user.permissions || [], "MANAGE_STUDENTS") && session.user.role !== "ADMIN")) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
@@ -46,6 +49,9 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
+  if (session?.user?.role === "ACCOUNTANT") {
+    return NextResponse.json({ error: "Tài khoản Kế toán không có quyền xóa lớp học" }, { status: 403 });
+  }
   if (!session?.user || (!hasPermission(session.user.permissions || [], "MANAGE_STUDENTS") && session.user.role !== "ADMIN")) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }

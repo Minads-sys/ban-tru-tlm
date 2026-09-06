@@ -2,12 +2,16 @@ import React from 'react';
 import prisma from '@/lib/db';
 import { ClipboardList } from 'lucide-react';
 import { RealtimeRefresher } from '@/components/realtime-refresher';
+import { auth } from '@/lib/auth';
 import { MealCancelManager, CancellationItem } from '@/components/admin/meal-cancel-manager';
 import { autoApproveExpiredCancellations } from '@/app/admin/meal-cancel/actions';
 
 export const dynamic = 'force-dynamic';
 
 export default async function AdminMealCancelPage() {
+  const session = await auth();
+  const isAccountant = session?.user?.role === 'ACCOUNTANT';
+
   // 1. Tự động kiểm tra duyệt tự động (Lazy Trigger) nếu đã quá giờ chốt sáng
   await autoApproveExpiredCancellations();
 
@@ -71,6 +75,15 @@ export default async function AdminMealCancelPage() {
     take: 500,
   });
 
+  // 5. Lấy danh sách lớp học phục vụ Cắt suất & Đổi món hàng loạt
+  const classes = await prisma.class.findMany({
+    select: {
+      id: true,
+      name: true,
+    },
+    orderBy: { id: 'asc' },
+  });
+
   return (
     <div className="min-h-screen bg-slate-50/50 p-4 sm:p-6 lg:p-8">
       {/* Realtime: tự cập nhật khi có đơn cắt suất mới hoặc trạng thái thay đổi */}
@@ -84,10 +97,12 @@ export default async function AdminMealCancelPage() {
             </div>
             <div>
               <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
-                Quản lý &amp; Duyệt yêu cầu cắt suất
+                {isAccountant ? "Tra cứu & Lịch sử cắt suất" : "Quản lý & Duyệt yêu cầu cắt suất"}
               </h1>
               <p className="text-xs sm:text-sm text-muted-foreground">
-                Xét duyệt các đơn xin cắt suất ăn bán trú, hỗ trợ duyệt hàng loạt và đối soát lịch sử minh bạch
+                {isAccountant 
+                  ? "Theo dõi các đơn xin cắt suất ăn bán trú và đối soát dữ liệu lịch sử minh bạch"
+                  : "Xét duyệt các đơn xin cắt suất ăn bán trú, hỗ trợ duyệt hàng loạt và đối soát lịch sử minh bạch"}
               </p>
             </div>
           </div>
@@ -98,6 +113,8 @@ export default async function AdminMealCancelPage() {
           initialPending={pendingCancellations as unknown as CancellationItem[]}
           initialHistory={historyCancellations as unknown as CancellationItem[]}
           cutoffTime={cutoffTime}
+          classes={classes}
+          isAccountant={isAccountant}
         />
       </div>
     </div>

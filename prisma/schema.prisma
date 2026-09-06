@@ -34,6 +34,7 @@ enum UserRole {
   BOARDING_MANAGER
   BOARDING_STAFF
   CASHIER
+  ACCOUNTANT
 }
 
 model User {

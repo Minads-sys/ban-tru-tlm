@@ -45,6 +45,7 @@ const ROLE_LABELS: Record<string, string> = {
   ADMIN: "Quản trị viên",
   TEACHER: "Giáo viên",
   BOARDING_MANAGER: "Quản lý bán trú",
+  ACCOUNTANT: "Kế toán",
   BOARDING_STAFF: "Nhân viên bán trú",
   CASHIER: "Thu ngân",
 };
@@ -221,6 +222,8 @@ export default function UsersPage() {
                               ? "bg-purple-50 text-purple-700 border-purple-200 font-semibold"
                               : u.role === "CASHIER"
                               ? "bg-emerald-50 text-emerald-700 border-emerald-200 font-semibold"
+                              : u.role === "ACCOUNTANT"
+                              ? "bg-amber-50 text-amber-700 border-amber-200 font-semibold"
                               : u.role === "BOARDING_MANAGER"
                               ? "bg-blue-50 text-blue-700 border-blue-200 font-semibold"
                               : "bg-slate-50 text-slate-700 border-slate-200"
@@ -357,6 +360,7 @@ export default function UsersPage() {
                   <SelectContent>
                     <SelectItem value="ADMIN">Quản trị viên (Toàn quyền)</SelectItem>
                     <SelectItem value="BOARDING_MANAGER">Quản lý bán trú</SelectItem>
+                    <SelectItem value="ACCOUNTANT">Kế toán</SelectItem>
                     <SelectItem value="BOARDING_STAFF">Nhân viên bán trú</SelectItem>
                     <SelectItem value="CASHIER">Thu ngân</SelectItem>
                     <SelectItem value="TEACHER">Giáo viên</SelectItem>

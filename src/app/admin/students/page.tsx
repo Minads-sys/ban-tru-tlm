@@ -27,7 +27,9 @@ import {
   Trash2,
   Download,
   KeyRound,
+  Eye,
 } from 'lucide-react';
+import { useSession } from 'next-auth/react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import {
   Table,
@@ -99,6 +101,9 @@ function formatCurrency(amount: number | string): string {
 }
 
 export default function AdminStudentsPage() {
+  const { data: session } = useSession();
+  const isAccountant = session?.user?.role === 'ACCOUNTANT';
+
   const [students, setStudents] = useState<StudentItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -650,16 +655,18 @@ export default function AdminStudentsPage() {
             <span className="hidden sm:inline">Xuất Excel</span>
             <span className="sm:hidden">Excel</span>
           </Button>
-          <Button
-            variant="default"
-            size="sm"
-            onClick={() => setCreatingStudent(true)}
-            className="gap-2 bg-red-600 hover:bg-red-700 text-white shadow-xs cursor-pointer"
-          >
-            <UserPlus className="h-4 w-4" />
-            <span className="hidden sm:inline">Đăng ký mới</span>
-            <span className="sm:hidden">Mới</span>
-          </Button>
+          {!isAccountant && (
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => setCreatingStudent(true)}
+              className="gap-2 bg-red-600 hover:bg-red-700 text-white shadow-xs cursor-pointer"
+            >
+              <UserPlus className="h-4 w-4" />
+              <span className="hidden sm:inline">Đăng ký mới</span>
+              <span className="sm:hidden">Mới</span>
+            </Button>
+          )}
         </div>
       </div>
 
@@ -987,76 +994,91 @@ export default function AdminStudentsPage() {
                       {/* Thao tác Buttons */}
                       <TableCell className="text-center">
                         <div className="flex items-center justify-center gap-1.5">
-                          {student.boardingStatus === 'ACTIVE' ? (
+                          {isAccountant ? (
                             <Button
                               type="button"
                               size="sm"
                               variant="outline"
-                              onClick={() => {
-                                setCancellingStudent(student);
-                                setCancelReason('');
-                              }}
-                              className="h-8 px-2.5 text-xs font-medium border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300 gap-1.5 shadow-2xs cursor-pointer"
-                            >
-                              <UserMinus className="h-3.5 w-3.5" />
-                              <span className="hidden xl:inline">Hủy bán trú</span>
-                            </Button>
-                          ) : student.boardingStatus === 'CANCELLED' ? (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              onClick={() => setActivatingStudent(student)}
-                              className="h-8 px-2.5 text-xs font-medium border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 hover:border-emerald-300 gap-1.5 shadow-2xs cursor-pointer"
-                            >
-                              <UserPlus className="h-3.5 w-3.5" />
-                              <span className="hidden xl:inline">Mở lại</span>
-                            </Button>
-                          ) : (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              onClick={() => setActivatingStudent(student)}
+                              onClick={() => setViewingStudent(student)}
                               className="h-8 px-2.5 text-xs font-medium border-blue-200 text-blue-700 hover:bg-blue-50 gap-1.5 shadow-2xs cursor-pointer"
                             >
-                              <RefreshCw className="h-3.5 w-3.5" />
-                              <span className="hidden xl:inline">Kích hoạt</span>
+                              <Eye className="h-3.5 w-3.5" />
+                              <span>Xem</span>
                             </Button>
-                          )}
-                          
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="outline"
-                            title="Sửa thông tin"
-                            onClick={() => handleEditClick(student)}
-                            className="h-8 w-8 text-slate-500 hover:text-blue-600 hover:bg-blue-50 border-slate-200 shadow-2xs cursor-pointer shrink-0"
-                          >
-                            <Edit className="h-3.5 w-3.5" />
-                          </Button>
-                          
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="outline"
-                            title="Khôi phục mật khẩu (Ngày sinh)"
-                            onClick={() => setResettingPasswordStudent(student)}
-                            className="h-8 w-8 text-slate-500 hover:text-amber-600 hover:bg-amber-50 border-slate-200 shadow-2xs cursor-pointer shrink-0"
-                          >
-                            <KeyRound className="h-3.5 w-3.5" />
-                          </Button>
+                          ) : (
+                            <>
+                              {student.boardingStatus === 'ACTIVE' ? (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setCancellingStudent(student);
+                                    setCancelReason('');
+                                  }}
+                                  className="h-8 px-2.5 text-xs font-medium border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300 gap-1.5 shadow-2xs cursor-pointer"
+                                >
+                                  <UserMinus className="h-3.5 w-3.5" />
+                                  <span className="hidden xl:inline">Hủy bán trú</span>
+                                </Button>
+                              ) : student.boardingStatus === 'CANCELLED' ? (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => setActivatingStudent(student)}
+                                  className="h-8 px-2.5 text-xs font-medium border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 hover:border-emerald-300 gap-1.5 shadow-2xs cursor-pointer"
+                                >
+                                  <UserPlus className="h-3.5 w-3.5" />
+                                  <span className="hidden xl:inline">Mở lại</span>
+                                </Button>
+                              ) : (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => setActivatingStudent(student)}
+                                  className="h-8 px-2.5 text-xs font-medium border-blue-200 text-blue-700 hover:bg-blue-50 gap-1.5 shadow-2xs cursor-pointer"
+                                >
+                                  <RefreshCw className="h-3.5 w-3.5" />
+                                  <span className="hidden xl:inline">Kích hoạt</span>
+                                </Button>
+                              )}
+                              
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="outline"
+                                title="Sửa thông tin"
+                                onClick={() => handleEditClick(student)}
+                                className="h-8 w-8 text-slate-500 hover:text-blue-600 hover:bg-blue-50 border-slate-200 shadow-2xs cursor-pointer shrink-0"
+                              >
+                                <Edit className="h-3.5 w-3.5" />
+                              </Button>
+                              
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="outline"
+                                title="Khôi phục mật khẩu (Ngày sinh)"
+                                onClick={() => setResettingPasswordStudent(student)}
+                                className="h-8 w-8 text-slate-500 hover:text-amber-600 hover:bg-amber-50 border-slate-200 shadow-2xs cursor-pointer shrink-0"
+                              >
+                                <KeyRound className="h-3.5 w-3.5" />
+                              </Button>
 
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="outline"
-                            title="Xóa học sinh"
-                            onClick={() => setDeletingStudent(student)}
-                            className="h-8 w-8 text-slate-500 hover:text-red-600 hover:bg-red-50 border-slate-200 shadow-2xs cursor-pointer shrink-0"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="outline"
+                                title="Xóa học sinh"
+                                onClick={() => setDeletingStudent(student)}
+                                className="h-8 w-8 text-slate-500 hover:text-red-600 hover:bg-red-50 border-slate-200 shadow-2xs cursor-pointer shrink-0"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>

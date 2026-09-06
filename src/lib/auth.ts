@@ -137,7 +137,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async session({ session, token }) {
       if (token && session.user) {
         session.user.id = token.id as string;
-        session.user.role = token.role as 'ADMIN' | 'TEACHER' | 'STUDENT' | 'BOARDING_MANAGER' | 'BOARDING_STAFF' | 'CASHIER';
+        session.user.role = token.role as 'ADMIN' | 'TEACHER' | 'STUDENT' | 'BOARDING_MANAGER' | 'BOARDING_STAFF' | 'CASHIER' | 'ACCOUNTANT';
         session.user.permissions = token.permissions as string[];
         session.user.studentId = token.studentId as string | undefined;
         session.user.studentCode = token.studentCode as string | undefined;
