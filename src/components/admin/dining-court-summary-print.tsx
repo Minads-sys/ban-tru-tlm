@@ -90,7 +90,7 @@ export function DiningCourtSummaryPrint({
   const showTiet5 = activeShiftFilter === 'ALL' || activeShiftFilter === 'TIET_5';
 
   return (
-    <div className="flex flex-col h-full max-h-[92vh] bg-slate-100 text-slate-900 rounded-lg overflow-hidden">
+    <div className="flex flex-col h-full max-h-[92vh] bg-slate-100 text-slate-900 rounded-lg overflow-hidden print:h-auto print:max-h-none print:overflow-visible print:bg-white print:rounded-none print:shadow-none">
       {/* CSS in ấn chuẩn khổ A4 */}
       <style
         dangerouslySetInnerHTML={{
@@ -100,28 +100,56 @@ export function DiningCourtSummaryPrint({
                 size: A4 portrait;
                 margin: 8mm 10mm;
               }
-              body {
+              html, body {
                 margin: 0 !important;
                 padding: 0 !important;
-                background: #fff !important;
-                color: #000 !important;
+                background: #ffffff !important;
+                color: #000000 !important;
+                height: auto !important;
+                overflow: visible !important;
               }
-              .no-print, .no-print * {
+              /* Ẩn toàn bộ DOM phía dưới trừ Dialog Portal */
+              body > *:not([data-radix-portal]) {
                 display: none !important;
+              }
+              .no-print,
+              .no-print *,
+              [data-radix-dialog-overlay],
+              div[data-state][class*="bg-black"],
+              div[class*="bg-black/"] {
+                display: none !important;
+                opacity: 0 !important;
+                background: transparent !important;
+              }
+              /* Căn chỉnh lại Dialog khi in ấn */
+              [role="dialog"] {
+                position: static !important;
+                transform: none !important;
+                left: auto !important;
+                top: auto !important;
+                width: 100% !important;
+                max-width: 100% !important;
+                height: auto !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                box-shadow: none !important;
+                border: none !important;
+                background: #ffffff !important;
+                overflow: visible !important;
               }
               .printable-court-summary {
                 display: block !important;
-                position: absolute !important;
-                left: 0 !important;
-                top: 0 !important;
+                position: static !important;
+                left: auto !important;
+                top: auto !important;
                 width: 100% !important;
                 max-width: 100% !important;
                 padding: 0 !important;
                 margin: 0 !important;
-                background: #fff !important;
+                background: #ffffff !important;
                 box-shadow: none !important;
                 border: none !important;
-                z-index: 999999 !important;
+                color: #000000 !important;
               }
               * {
                 -webkit-print-color-adjust: exact !important;
@@ -216,10 +244,10 @@ export function DiningCourtSummaryPrint({
       </div>
 
       {/* KHUNG XEM TRƯỚC BẢN IN (CHUẨN KHỔ A4) */}
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6 flex justify-center bg-slate-200/70">
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6 flex justify-center bg-slate-200/70 print:p-0 print:m-0 print:overflow-visible print:bg-white print:block">
         <div
           id="print-court-summary"
-          className="printable-court-summary w-full max-w-[210mm] min-h-[297mm] bg-white p-8 sm:p-10 shadow-lg text-slate-900 text-[13px] leading-normal"
+          className="printable-court-summary w-full max-w-[210mm] min-h-[297mm] bg-white p-8 sm:p-10 shadow-lg text-slate-900 text-[13px] leading-normal print:p-0 print:m-0 print:shadow-none print:border-none print:w-full print:max-w-none print:min-h-0"
         >
           {/* 1. Header Văn bản */}
           <div className="flex justify-between items-start pb-3 border-b-2 border-slate-800">
@@ -300,33 +328,13 @@ export function DiningCourtSummaryPrint({
                 </span>
               </div>
 
-              {/* Dòng tóm tắt nhanh theo yêu cầu người dùng */}
-              <div className="bg-orange-50/70 border-x border-b border-orange-200 p-2.5 space-y-1 text-xs text-orange-950 font-medium mb-3">
-                {tiet4Courts.length === 0 ? (
-                  <p className="italic text-slate-500">Không có lớp nào ăn bán trú Tiết 4.</p>
-                ) : (
-                  tiet4Courts.map((court) => {
-                    const classesStr = court.classes.map((c) => c.className).join(' + ');
-                    return (
-                      <div key={`t4-summary-${court.courtNumber}`} className="flex items-start gap-1.5">
-                        <span className="text-orange-700 font-bold shrink-0">•</span>
-                        <span>
-                          <strong className="text-slate-900 font-bold">{court.courtName}</strong>{' '}
-                          <strong className="text-orange-700 font-extrabold">{court.totalMeals} suất</strong>:{' '}
-                          <span className="font-semibold text-blue-900">{classesStr}</span> gồm{' '}
-                          mặn <strong className="text-slate-900">{court.manCount}</strong>, chay{' '}
-                          <strong className="text-emerald-700">{court.chayCount}</strong>, cháo{' '}
-                          <strong className="text-amber-700">{court.chaoCount}</strong>
-                        </span>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-
-              {/* Bảng kẻ ô chi tiết bàn giao */}
-              {tiet4Courts.length > 0 && (
-                <div className="overflow-x-auto border border-slate-300 rounded-md">
+              {tiet4Courts.length === 0 ? (
+                <div className="p-3 bg-orange-50/50 border border-orange-200 border-t-0 rounded-b-md text-xs italic text-slate-500">
+                  Không có lớp nào ăn bán trú Tiết 4.
+                </div>
+              ) : (
+                /* Bảng kẻ ô chi tiết bàn giao */
+                <div className="overflow-x-auto border border-slate-300 border-t-0 rounded-b-md">
                   <table className="w-full text-xs text-left border-collapse">
                     <thead>
                       <tr className="bg-orange-100 text-slate-800 font-bold border-b border-slate-300">
@@ -414,33 +422,13 @@ export function DiningCourtSummaryPrint({
                 </span>
               </div>
 
-              {/* Dòng tóm tắt nhanh theo yêu cầu người dùng */}
-              <div className="bg-indigo-50/70 border-x border-b border-indigo-200 p-2.5 space-y-1 text-xs text-indigo-950 font-medium mb-3">
-                {tiet5Courts.length === 0 ? (
-                  <p className="italic text-slate-500">Không có lớp nào ăn bán trú Tiết 5.</p>
-                ) : (
-                  tiet5Courts.map((court) => {
-                    const classesStr = court.classes.map((c) => c.className).join(' + ');
-                    return (
-                      <div key={`t5-summary-${court.courtNumber}`} className="flex items-start gap-1.5">
-                        <span className="text-indigo-700 font-bold shrink-0">•</span>
-                        <span>
-                          <strong className="text-slate-900 font-bold">{court.courtName}</strong>{' '}
-                          <strong className="text-indigo-700 font-extrabold">{court.totalMeals} suất</strong>:{' '}
-                          <span className="font-semibold text-blue-900">{classesStr}</span> gồm{' '}
-                          mặn <strong className="text-slate-900">{court.manCount}</strong>, chay{' '}
-                          <strong className="text-emerald-700">{court.chayCount}</strong>, cháo{' '}
-                          <strong className="text-amber-700">{court.chaoCount}</strong>
-                        </span>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-
-              {/* Bảng kẻ ô chi tiết bàn giao */}
-              {tiet5Courts.length > 0 && (
-                <div className="overflow-x-auto border border-slate-300 rounded-md">
+              {tiet5Courts.length === 0 ? (
+                <div className="p-3 bg-indigo-50/50 border border-indigo-200 border-t-0 rounded-b-md text-xs italic text-slate-500">
+                  Không có lớp nào ăn bán trú Tiết 5.
+                </div>
+              ) : (
+                /* Bảng kẻ ô chi tiết bàn giao */
+                <div className="overflow-x-auto border border-slate-300 border-t-0 rounded-b-md">
                   <table className="w-full text-xs text-left border-collapse">
                     <thead>
                       <tr className="bg-indigo-100 text-slate-800 font-bold border-b border-slate-300">

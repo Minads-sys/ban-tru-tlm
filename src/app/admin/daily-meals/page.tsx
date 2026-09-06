@@ -396,7 +396,8 @@ export default function DailyMealsPage() {
       {/* ========================================================
           DEDICATED A4 PORTRAIT PRINT VOUCHER (MẪU PB-01/BT)
          ======================================================== */}
-      <div className="print-only font-sans text-black">
+      {activeMainTab === 'summary' && (
+        <div className="print-only font-sans text-black">
         {/* Header 2 cột: Đơn vị & Mẫu biểu */}
         <div className="flex justify-between items-start border-b-2 border-black pb-2 mb-3">
           <div>
@@ -574,6 +575,7 @@ export default function DailyMealsPage() {
           </div>
         </div>
       </div>
+      )}
 
       {/* ========================================================
           SCREEN UI: PAGE HEADER & ACTION CONTROLS (no-print)

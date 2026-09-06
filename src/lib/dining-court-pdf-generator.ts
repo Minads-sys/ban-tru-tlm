@@ -484,18 +484,7 @@ export async function generateDiningCourtsSummaryPdfBuffer(
           widths: [55, 160, 52, 40, 40, 40, "*"],
           body: t4Rows,
         },
-        margin: [0, 0, 0, 6],
-      });
-
-      // Dòng tóm tắt văn bản cụ thể theo yêu cầu người dùng
-      const t4SummaryLines = tiet4Courts.map((court) => {
-        const clsStr = court.classes.map((c) => c.className).join(" + ");
-        return `• ${court.courtName} ${court.totalMeals} suất: ${clsStr} gồm mặn ${court.manCount} chay ${court.chayCount} cháo ${court.chaoCount}`;
-      });
-
-      content.push({
-        stack: t4SummaryLines.map((line) => ({ text: line, fontSize: 8.5, margin: [2, 1, 0, 1] })),
-        margin: [0, 2, 0, 10],
+        margin: [0, 0, 0, 10],
       });
     }
   }
@@ -573,18 +562,7 @@ export async function generateDiningCourtsSummaryPdfBuffer(
           widths: [55, 160, 52, 40, 40, 40, "*"],
           body: t5Rows,
         },
-        margin: [0, 0, 0, 6],
-      });
-
-      // Dòng tóm tắt văn bản cụ thể
-      const t5SummaryLines = tiet5Courts.map((court) => {
-        const clsStr = court.classes.map((c) => c.className).join(" + ");
-        return `• ${court.courtName} ${court.totalMeals} suất: ${clsStr} gồm mặn ${court.manCount} chay ${court.chayCount} cháo ${court.chaoCount}`;
-      });
-
-      content.push({
-        stack: t5SummaryLines.map((line) => ({ text: line, fontSize: 8.5, margin: [2, 1, 0, 1] })),
-        margin: [0, 2, 0, 10],
+        margin: [0, 0, 0, 10],
       });
     }
   }

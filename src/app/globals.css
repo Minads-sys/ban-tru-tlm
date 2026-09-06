@@ -61,10 +61,19 @@ body {
 }
 
 @media print {
-  .no-print {
+  .no-print,
+  .no-print * {
     display: none !important;
   }
   .print-break {
     page-break-after: always;
   }
+  /* Bắt buộc ẩn overlay nền đen của dialog/modal khi in */
+  [data-radix-dialog-overlay],
+  div[data-state][class*="bg-black"] {
+    display: none !important;
+    background: transparent !important;
+    opacity: 0 !important;
+  }
 }
+
