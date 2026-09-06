@@ -210,3 +210,87 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+// DELETE: Xóa giao dịch SePay (chỉ áp dụng cho giao dịch UNMATCHED hoặc dọn dẹp GD 0đ rác)
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+    const cleanZero = searchParams.get('cleanZero') === 'true';
+    const cleanAllUnmatched = searchParams.get('cleanAllUnmatched') === 'true';
+
+    if (cleanZero) {
+      // Dọn dẹp tất cả giao dịch 0đ hoặc chưa khớp lỗi
+      const result = await prisma.paymentTransaction.deleteMany({
+        where: {
+          status: PaymentTransactionStatus.UNMATCHED,
+          OR: [
+            { amount: { lte: 0 } },
+            { content: 'Không có nội dung' },
+          ],
+        },
+      });
+
+      broadcastChange('payment_transactions', 'DELETE', { cleanedZero: true, count: result.count });
+
+      return NextResponse.json({
+        success: true,
+        message: `Đã dọn dẹp ${result.count} giao dịch 0đ không hợp lệ.`,
+        deletedCount: result.count,
+      });
+    }
+
+    if (cleanAllUnmatched) {
+      // Xóa tất cả giao dịch chưa khớp
+      const result = await prisma.paymentTransaction.deleteMany({
+        where: {
+          status: PaymentTransactionStatus.UNMATCHED,
+        },
+      });
+
+      broadcastChange('payment_transactions', 'DELETE', { cleanedAllUnmatched: true, count: result.count });
+
+      return NextResponse.json({
+        success: true,
+        message: `Đã xóa sạch ${result.count} giao dịch chưa khớp.`,
+        deletedCount: result.count,
+      });
+    }
+
+    if (!id) {
+      return NextResponse.json({ error: 'Thiếu transaction id để xóa' }, { status: 400 });
+    }
+
+    const tx = await prisma.paymentTransaction.findUnique({
+      where: { id },
+    });
+
+    if (!tx) {
+      return NextResponse.json({ error: 'Không tìm thấy giao dịch' }, { status: 404 });
+    }
+
+    if (tx.status === PaymentTransactionStatus.MATCHED || tx.status === PaymentTransactionStatus.MANUAL) {
+      return NextResponse.json(
+        { error: 'Không thể xóa giao dịch đã gạch nợ thành công cho hóa đơn.' },
+        { status: 400 }
+      );
+    }
+
+    await prisma.paymentTransaction.delete({
+      where: { id },
+    });
+
+    broadcastChange('payment_transactions', 'DELETE', { transactionId: id });
+
+    return NextResponse.json({
+      success: true,
+      message: 'Đã xóa giao dịch thành công.',
+    });
+  } catch (error) {
+    console.error('Error deleting SePay transaction:', error);
+    return NextResponse.json(
+      { error: 'Lỗi khi xóa giao dịch', details: String(error) },
+      { status: 500 }
+    );
+  }
+}

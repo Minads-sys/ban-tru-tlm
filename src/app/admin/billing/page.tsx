@@ -44,6 +44,7 @@ import {
   Banknote,
   FileCheck2,
   UtensilsCrossed,
+  Trash2,
 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useRealtime } from "@/hooks/use-realtime";
@@ -358,6 +359,62 @@ export default function BillingPage() {
       Swal.fire("Lỗi", "Lỗi kết nối khi đồng bộ SePay", "error");
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  // Dọn dẹp tất cả giao dịch 0đ rác
+  const handleCleanZeroTxs = async () => {
+    const confirm = await Swal.fire({
+      title: "Dọn dẹp giao dịch 0đ?",
+      text: "Hệ thống sẽ xóa tất cả các giao dịch 0đ chưa khớp (do đồng bộ nhầm trước đó). Bạn có chắc chắn muốn tiếp tục?",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Dọn dẹp ngay",
+      cancelButtonText: "Hủy",
+      confirmButtonColor: "#e11d48",
+    });
+
+    if (!confirm.isConfirmed) return;
+
+    try {
+      const res = await fetch("/api/sepay/transactions?cleanZero=true", { method: "DELETE" });
+      const data = await res.json();
+      if (res.ok) {
+        Swal.fire("Thành công", data.message, "success");
+        fetchTransactions(1);
+      } else {
+        Swal.fire("Lỗi", data.error || "Không thể dọn dẹp giao dịch", "error");
+      }
+    } catch {
+      Swal.fire("Lỗi", "Lỗi kết nối khi dọn dẹp giao dịch", "error");
+    }
+  };
+
+  // Xóa 1 giao dịch chưa khớp
+  const handleDeleteTx = async (txId: string) => {
+    const confirm = await Swal.fire({
+      title: "Xóa giao dịch này?",
+      text: "Giao dịch chưa khớp này sẽ bị xóa khỏi danh sách. Bạn có chắc chắn?",
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonText: "Xóa",
+      cancelButtonText: "Hủy",
+      confirmButtonColor: "#e11d48",
+    });
+
+    if (!confirm.isConfirmed) return;
+
+    try {
+      const res = await fetch(`/api/sepay/transactions?id=${txId}`, { method: "DELETE" });
+      const data = await res.json();
+      if (res.ok) {
+        Swal.fire("Đã xóa", data.message, "success");
+        fetchTransactions(txPage);
+      } else {
+        Swal.fire("Lỗi", data.error || "Không thể xóa giao dịch", "error");
+      }
+    } catch {
+      Swal.fire("Lỗi", "Lỗi kết nối khi xóa giao dịch", "error");
     }
   };
 
@@ -1237,10 +1294,18 @@ export default function BillingPage() {
 
                 <div className="flex items-center gap-2 w-full md:w-auto justify-end">
                   <Button
+                    onClick={handleCleanZeroTxs}
+                    variant="outline"
+                    className="border-rose-300 text-rose-700 hover:bg-rose-50 text-xs sm:text-sm"
+                  >
+                    <Trash2 className="h-4 w-4 mr-1.5 text-rose-600" />
+                    Dọn dẹp GD 0đ
+                  </Button>
+                  <Button
                     onClick={handleSyncSepay}
                     disabled={isSyncing}
                     variant="outline"
-                    className="border-blue-300 text-blue-700 hover:bg-blue-50"
+                    className="border-blue-300 text-blue-700 hover:bg-blue-50 text-xs sm:text-sm"
                   >
                     {isSyncing ? (
                       <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -1256,19 +1321,33 @@ export default function BillingPage() {
 
           {/* Bảng giao dịch SePay */}
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CreditCard className="h-5 w-5" />
-                Lịch sử biến động số dư SePay
-                {txTotalRecords > 0 && (
-                  <Badge variant="secondary" className="ml-2 text-xs">
-                    {txTotalRecords} giao dịch
-                  </Badge>
-                )}
-              </CardTitle>
-              <CardDescription>
-                Mọi giao dịch chuyển khoản vào tài khoản trường đều được tự động lưu lại và gạch nợ tức thì.
-              </CardDescription>
+            <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <CreditCard className="h-5 w-5 text-blue-600" />
+                  Lịch sử biến động số dư SePay
+                  {txTotalRecords > 0 && (
+                    <Badge variant="secondary" className="ml-2 text-xs">
+                      {txTotalRecords} giao dịch
+                    </Badge>
+                  )}
+                </CardTitle>
+                <CardDescription>
+                  Mọi giao dịch chuyển khoản vào tài khoản trường đều được tự động lưu lại và gạch nợ tức thì.
+                </CardDescription>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  onClick={handleCleanZeroTxs}
+                  variant="outline"
+                  size="sm"
+                  className="border-rose-300 text-rose-700 hover:bg-rose-50 hover:text-rose-800 text-xs font-semibold shadow-xs"
+                >
+                  <Trash2 className="h-4 w-4 mr-1.5 text-rose-600" />
+                  Dọn dẹp GD 0đ
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               <Table wrapperClassName="max-h-[60vh]">
@@ -1330,14 +1409,25 @@ export default function BillingPage() {
                       <TableCell>{txStatusBadge(tx.status)}</TableCell>
                       <TableCell className="text-center">
                         {tx.status === "UNMATCHED" ? (
-                          <Button
-                            size="sm"
-                            className="bg-amber-600 hover:bg-amber-700 text-white text-xs h-8"
-                            onClick={() => openManualMatchModal(tx)}
-                          >
-                            <UserCheck className="h-3.5 w-3.5 mr-1" />
-                            Gạch nợ tay
-                          </Button>
+                          <div className="flex items-center justify-center gap-1.5">
+                            <Button
+                              size="sm"
+                              className="bg-amber-600 hover:bg-amber-700 text-white text-xs h-8"
+                              onClick={() => openManualMatchModal(tx)}
+                            >
+                              <UserCheck className="h-3.5 w-3.5 mr-1" />
+                              Gạch nợ tay
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-rose-600 hover:text-rose-800 hover:bg-rose-50 h-8 w-8 p-0"
+                              title="Xóa giao dịch này"
+                              onClick={() => handleDeleteTx(tx.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         ) : (
                           <Badge variant="outline" className="text-gray-400 border-gray-200">
                             Đã hoàn tất
