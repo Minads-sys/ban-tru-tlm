@@ -6,6 +6,15 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import Swal from 'sweetalert2';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   Settings,
   Save,
@@ -20,6 +29,9 @@ import {
   CreditCard,
   Building,
   UserCheck,
+  AlertTriangle,
+  Trash2,
+  ShieldAlert,
 } from 'lucide-react';
 
 interface SettingsFormState {
@@ -104,6 +116,66 @@ export default function AdminSettingsPage() {
     type: 'success' | 'error';
     text: string;
   } | null>(null);
+
+  // States cho Modal Reset Database
+  const [showResetModal, setShowResetModal] = useState<boolean>(false);
+  const [resetPassword, setResetPassword] = useState<string>('');
+  const [resetConfirmText, setResetConfirmText] = useState<string>('');
+  const [deleteClasses, setDeleteClasses] = useState<boolean>(false);
+  const [isResetting, setIsResetting] = useState<boolean>(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+
+  const handleResetDatabase = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (resetConfirmText.trim().toUpperCase() !== 'RESET') {
+      setResetError('Vui lòng gõ chính xác từ khóa "RESET" để xác nhận.');
+      return;
+    }
+    if (!resetPassword) {
+      setResetError('Vui lòng nhập mật khẩu quản trị viên.');
+      return;
+    }
+
+    try {
+      setIsResetting(true);
+      setResetError(null);
+
+      const res = await fetch('/api/admin/reset-database', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          password: resetPassword,
+          confirmText: resetConfirmText.trim().toUpperCase(),
+          deleteClasses,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        setShowResetModal(false);
+        setResetPassword('');
+        setResetConfirmText('');
+        setDeleteClasses(false);
+
+        Swal.fire({
+          title: 'Đặt lại dữ liệu thành công!',
+          text: data.message || 'Cơ sở dữ liệu đã được làm mới, sẵn sàng cho năm học mới.',
+          icon: 'success',
+          confirmButtonText: 'Tải lại trang',
+          confirmButtonColor: '#2563eb',
+        }).then(() => {
+          window.location.reload();
+        });
+      } else {
+        setResetError(data.error || 'Có lỗi xảy ra khi đặt lại dữ liệu.');
+      }
+    } catch (err) {
+      setResetError('Lỗi kết nối mạng, vui lòng thử lại.');
+    } finally {
+      setIsResetting(false);
+    }
+  };
 
   useEffect(() => {
     async function loadSettings() {
@@ -582,8 +654,164 @@ export default function AdminSettingsPage() {
                 </Button>
               </CardFooter>
             </Card>
+
+            {/* CARD 5: KHU VỰC NGUY HIỂM - ĐẶT LẠI DỮ LIỆU HỆ THỐNG */}
+            <Card className="shadow-sm border-rose-200 bg-rose-50/20">
+              <CardHeader className="border-b border-rose-100 bg-rose-50/50">
+                <CardTitle className="text-lg font-semibold text-rose-800 flex items-center gap-2">
+                  <ShieldAlert className="h-5 w-5 text-rose-600" />
+                  Khu vực Nguy hiểm: Khởi tạo lại Dữ liệu (Reset Database)
+                </CardTitle>
+                <CardDescription className="text-rose-700/80">
+                  Dọn dẹp sạch toàn bộ dữ liệu phát sinh (học sinh, hóa đơn, lịch sử thu tiền, thời khóa biểu) để bắt đầu năm học mới.
+                </CardDescription>
+              </CardHeader>
+
+              <CardContent className="p-6 space-y-4">
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-xs sm:text-sm text-amber-900 space-y-2">
+                  <p className="font-semibold flex items-center gap-1.5 text-amber-800">
+                    <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
+                    Lưu ý đặc biệt quan trọng trước khi thực hiện:
+                  </p>
+                  <ul className="list-disc pl-5 space-y-1 text-slate-700">
+                    <li>
+                      <b className="text-rose-700">Dữ liệu sẽ bị xóa vĩnh viễn:</b> Tất cả hóa đơn tiền ăn, lịch sử giao dịch chuyển khoản & tiền mặt, các ca chốt tiền, yêu cầu cắt suất/đổi món, thời khóa biểu và toàn bộ danh sách học sinh.
+                    </li>
+                    <li>
+                      <b className="text-emerald-700">Dữ liệu được giữ nguyên:</b> Cài đặt hệ thống (tên trường, ngân hàng SePay/BIDV, đơn giá, giờ chốt...) và toàn bộ tài khoản Cán bộ quản lý (Admin, Thu ngân, Giáo viên...).
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2">
+                  <div>
+                    <h4 className="text-sm font-semibold text-slate-900">Đặt lại dữ liệu để chuẩn bị cho Năm học mới</h4>
+                    <p className="text-xs text-slate-500">Thao tác này yêu cầu xác thực bằng mật khẩu Admin và không thể hoàn tác.</p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={() => {
+                      setResetError(null);
+                      setResetPassword('');
+                      setResetConfirmText('');
+                      setDeleteClasses(false);
+                      setShowResetModal(true);
+                    }}
+                    className="bg-rose-600 hover:bg-rose-700 text-white shadow-xs shrink-0 font-medium"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Đặt lại dữ liệu hệ thống...
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           </form>
         )}
+
+        {/* DIALOG XÁC NHẬN RESET DATABASE */}
+        <Dialog open={showResetModal} onOpenChange={(open) => {
+          if (!isResetting) setShowResetModal(open);
+        }}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-rose-600 font-bold text-lg">
+                <ShieldAlert className="h-5 w-5" />
+                Xác nhận Đặt lại Dữ liệu Hệ thống
+              </DialogTitle>
+              <DialogDescription className="text-slate-600 text-xs">
+                Hành động này sẽ xóa sạch toàn bộ dữ liệu phát sinh trong cơ sở dữ liệu để đưa hệ thống về trạng thái ban đầu.
+              </DialogDescription>
+            </DialogHeader>
+
+            <form onSubmit={handleResetDatabase} className="space-y-4 py-2">
+              {resetError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-md text-xs text-rose-700 flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-rose-600" />
+                  <span>{resetError}</span>
+                </div>
+              )}
+
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-md text-xs space-y-1.5 text-slate-700">
+                <p className="font-semibold text-rose-600">⚠️ Thao tác này KHÔNG THỂ hoàn tác!</p>
+                <p>Toàn bộ học sinh, hóa đơn, lịch sử nạp tiền và báo cắt suất sẽ bị xóa vĩnh viễn.</p>
+              </div>
+
+              <div className="flex items-center space-x-2 bg-slate-100 p-2.5 rounded border border-slate-200">
+                <input
+                  type="checkbox"
+                  id="deleteClassesCheck"
+                  checked={deleteClasses}
+                  onChange={(e) => setDeleteClasses(e.target.checked)}
+                  className="rounded border-slate-300 text-rose-600 focus:ring-rose-500"
+                />
+                <label htmlFor="deleteClassesCheck" className="text-xs font-medium text-slate-800 cursor-pointer">
+                  Xóa luôn cả danh mục Lớp học (để nhập lại danh sách lớp mới)
+                </label>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="adminPasswordInput" className="text-xs font-semibold text-slate-800">
+                  1. Mật khẩu tài khoản Quản trị viên (Admin) <span className="text-rose-500">*</span>
+                </Label>
+                <Input
+                  id="adminPasswordInput"
+                  type="password"
+                  placeholder="Nhập mật khẩu Admin để xác nhận"
+                  value={resetPassword}
+                  onChange={(e) => setResetPassword(e.target.value)}
+                  required
+                  className="text-sm bg-white"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="confirmTextInput" className="text-xs font-semibold text-slate-800">
+                  2. Nhập chữ <span className="font-bold font-mono text-rose-600">RESET</span> vào ô dưới để xác nhận <span className="text-rose-500">*</span>
+                </Label>
+                <Input
+                  id="confirmTextInput"
+                  type="text"
+                  placeholder="Gõ chữ RESET"
+                  value={resetConfirmText}
+                  onChange={(e) => setResetConfirmText(e.target.value)}
+                  required
+                  className="font-mono uppercase text-sm bg-white"
+                />
+              </div>
+
+              <DialogFooter className="gap-2 sm:gap-0 pt-2 border-t mt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowResetModal(false)}
+                  disabled={isResetting}
+                  className="text-slate-600"
+                >
+                  Hủy bỏ
+                </Button>
+                <Button
+                  type="submit"
+                  variant="destructive"
+                  disabled={isResetting || resetConfirmText.trim().toUpperCase() !== 'RESET' || !resetPassword}
+                  className="bg-rose-600 hover:bg-rose-700 text-white font-medium"
+                >
+                  {isResetting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      Đang đặt lại dữ liệu...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Xác nhận Xóa Vĩnh Viễn
+                    </>
+                  )}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

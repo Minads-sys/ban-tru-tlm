@@ -8,6 +8,7 @@ async function resetDatabase() {
     // 1. Xóa các dữ liệu giao dịch và thanh toán
     console.log("- Đang xóa dữ liệu thanh toán...");
     await prisma.paymentTransaction.deleteMany();
+    await prisma.dailyCashClosing.deleteMany();
     await prisma.monthlyBill.deleteMany();
     await prisma.settlementRecord.deleteMany();
 
