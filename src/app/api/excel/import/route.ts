@@ -81,8 +81,35 @@ export async function POST(request: NextRequest) {
 
       const result = await parseStudentExcel(buffer, classIds, existingUsernames);
 
+      // Tra cứu các mã học sinh đã có trong hệ thống để phân loại THÊM MỚI hay CẬP NHẬT
+      const studentCodes = result.data.map((r) => r.maHocSinh);
+      const existingStudents = await prisma.student.findMany({
+        where: { studentCode: { in: studentCodes } },
+        select: { studentCode: true },
+      });
+      const existingCodeSet = new Set(existingStudents.map((s) => s.studentCode));
+
+      let newCount = 0;
+      let updateCount = 0;
+      const enrichedData = result.data.map((row) => {
+        const isUpdate = existingCodeSet.has(row.maHocSinh);
+        if (isUpdate) updateCount++;
+        else newCount++;
+        return {
+          ...row,
+          isUpdate,
+        };
+      });
+
+      const enrichedResult = {
+        ...result,
+        data: enrichedData,
+        newCount,
+        updateCount,
+      };
+
       if (action === "preview") {
-        return NextResponse.json(result);
+        return NextResponse.json(enrichedResult);
       }
 
       if (!result.isValid) {

@@ -39,6 +39,8 @@ import {
   Info,
   Check,
   X,
+  Plus,
+  RefreshCw,
 } from "lucide-react";
 
 // ==================== TYPES ====================
@@ -67,6 +69,7 @@ interface StudentRow {
   cheDoAn: "MAN" | "CHAY" | "CHAO";
   dangKyBanTru: "CO" | "KHONG";
   soDienThoaiPhuHuynh?: string;
+  isUpdate?: boolean;
 }
 
 interface ScheduleRow {
@@ -999,6 +1002,8 @@ function StudentPreviewTable({
   getRowErrors: (idx: number, stt: number, errors: ValidationError[]) => ValidationError[];
 }) {
   const hasErrors = errors.length > 0;
+  const updateCount = data.filter((r) => r.isUpdate).length;
+  const newCount = data.length - updateCount;
 
   const getMealBadge = (type: "MAN" | "CHAY" | "CHAO") => {
     switch (type) {
@@ -1014,12 +1019,24 @@ function StudentPreviewTable({
   return (
     <Card className="border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
       <CardHeader className="bg-slate-50/70 dark:bg-slate-900/70 border-b border-slate-200 dark:border-slate-800 py-3.5 px-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
             <CardTitle className="text-base font-semibold">Kết quả xem trước Học sinh</CardTitle>
             <Badge variant="outline" className="bg-white dark:bg-slate-800 font-mono text-xs">
               {data.length} học sinh
             </Badge>
+            {!hasErrors && newCount > 0 && (
+              <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white text-xs flex items-center gap-1">
+                <Plus className="h-3 w-3" />
+                {newCount} thêm mới
+              </Badge>
+            )}
+            {!hasErrors && updateCount > 0 && (
+              <Badge className="bg-amber-600 hover:bg-amber-600 text-white text-xs flex items-center gap-1">
+                <RefreshCw className="h-3 w-3" />
+                {updateCount} cập nhật
+              </Badge>
+            )}
           </div>
           <div>
             {hasErrors ? (
@@ -1114,10 +1131,15 @@ function StudentPreviewTable({
                             {rowErrs.map((e) => e.message).join(", ")}
                           </span>
                         </div>
+                      ) : row.isUpdate ? (
+                        <Badge className="bg-amber-100 text-amber-900 border border-amber-300 dark:bg-amber-950 dark:text-amber-200 flex items-center gap-1 ml-auto w-fit text-xs font-semibold">
+                          <RefreshCw className="h-3 w-3 text-amber-600" />
+                          Cập nhật
+                        </Badge>
                       ) : (
-                        <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300 flex items-center gap-1 ml-auto w-fit">
-                          <Check className="h-3 w-3" />
-                          Hợp lệ
+                        <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-950 dark:text-emerald-200 flex items-center gap-1 ml-auto w-fit text-xs font-semibold">
+                          <Plus className="h-3 w-3 text-emerald-600" />
+                          Thêm mới
                         </Badge>
                       )}
                     </TableCell>
