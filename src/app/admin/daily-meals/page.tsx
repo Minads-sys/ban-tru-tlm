@@ -1166,7 +1166,7 @@ export default function DailyMealsPage() {
           </TabsContent>
 
           <TabsContent value="dining-areas" className="no-print space-y-4 mt-4">
-            <DiningCourtTab cutoffTime={data?.lockTime2 || "07:00"} />
+            <DiningCourtTab cutoffTime={data?.lockTime2 || "07:00"} schoolName={schoolName} />
           </TabsContent>
         </Tabs>
       </div>

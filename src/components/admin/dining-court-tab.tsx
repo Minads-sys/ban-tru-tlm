@@ -21,21 +21,25 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { format, addDays } from 'date-fns';
 import { DiningAllocationResult, DiningCourt } from '@/lib/dining-court-service';
+import { DiningCourtSummaryPrint } from './dining-court-summary-print';
 import Swal from 'sweetalert2';
 
 interface DiningCourtTabProps {
   cutoffTime: string;
+  schoolName?: string;
 }
 
-export function DiningCourtTab({ cutoffTime }: DiningCourtTabProps) {
+export function DiningCourtTab({ cutoffTime, schoolName }: DiningCourtTabProps) {
   const [selectedDate, setSelectedDate] = useState<string>(() => format(new Date(), 'yyyy-MM-dd'));
   const [data, setData] = useState<DiningAllocationResult | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [activeShift, setActiveShift] = useState<'ALL' | 'TIET_4' | 'TIET_5'>('ALL');
   const [expandedCourtIds, setExpandedCourtIds] = useState<Set<string>>(new Set());
   const [isExporting, setIsExporting] = useState<boolean>(false);
+  const [isPrintSummaryOpen, setIsPrintSummaryOpen] = useState<boolean>(false);
 
   const fetchData = useCallback(async (dateStr: string) => {
     setLoading(true);
@@ -173,8 +177,18 @@ export function DiningCourtTab({ cutoffTime }: DiningCourtTabProps) {
               </Button>
             </div>
 
-            {/* Các nút xuất PDF hàng loạt */}
+            {/* Các nút in và xuất PDF hàng loạt */}
             <div className="flex flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                onClick={() => setIsPrintSummaryOpen(true)}
+                disabled={loading || !data || data.totalCourts === 0}
+                className="text-xs bg-blue-600 hover:bg-blue-700 text-white shadow-xs cursor-pointer gap-1.5 font-bold"
+              >
+                <Printer className="h-3.5 w-3.5" />
+                <span>In DS sân ({data?.totalCourts || 0} sân)</span>
+              </Button>
+
               <Button
                 size="sm"
                 variant="outline"
@@ -511,6 +525,20 @@ export function DiningCourtTab({ cutoffTime }: DiningCourtTabProps) {
           })}
         </div>
       )}
+
+      {/* DIALOG XEM TRƯỚC VÀ IN BẢNG TẬP KẾT SUẤT ĂN THEO SÂN */}
+      <Dialog open={isPrintSummaryOpen} onOpenChange={setIsPrintSummaryOpen}>
+        <DialogContent className="max-w-4xl p-0 overflow-hidden max-h-[95vh] border-none shadow-2xl">
+          {data && (
+            <DiningCourtSummaryPrint
+              data={data}
+              schoolName={schoolName}
+              onClose={() => setIsPrintSummaryOpen(false)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
+
