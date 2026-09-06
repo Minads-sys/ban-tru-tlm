@@ -32,7 +32,6 @@ import {
   AlertTriangle,
   Trash2,
   ShieldAlert,
-  Key,
 } from 'lucide-react';
 
 interface SettingsFormState {
@@ -486,63 +485,6 @@ export default function AdminSettingsPage() {
                     onChange={(e) => handleChange('BANK_ACCOUNT_NAME', e.target.value.toUpperCase())}
                     className="h-10 uppercase font-semibold"
                   />
-                </div>
-
-                {/* Số tài khoản SePay chính để lọc biến động */}
-                <div className="space-y-2 sm:col-span-2">
-                  <Label htmlFor="SEPAY_ACCOUNT_NO" className="flex items-center gap-2 text-sm font-medium">
-                    <CreditCard className="h-4 w-4 text-slate-500" />
-                    Số Tài Khoản Ngân Hàng Trên SePay (SEPAY_ACCOUNT_NO)
-                  </Label>
-                  <Input
-                    id="SEPAY_ACCOUNT_NO"
-                    type="text"
-                    placeholder="VD: 8833442251"
-                    value={formData.SEPAY_ACCOUNT_NO}
-                    onChange={(e) => handleChange('SEPAY_ACCOUNT_NO', e.target.value)}
-                    className="h-10 font-mono font-semibold"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Số tài khoản ngân hàng chính hiển thị trên SePay (ví dụ 8833442251). Khi bấm &quot;Đồng bộ từ SePay&quot;, hệ thống chỉ lấy giao dịch của đúng tài khoản này, tránh lấy nhầm tài khoản cá nhân khác.
-                  </p>
-                </div>
-
-                {/* SePay API Key */}
-                <div className="space-y-2">
-                  <Label htmlFor="SEPAY_API_KEY" className="flex items-center gap-2 text-sm font-medium">
-                    <Key className="h-4 w-4 text-slate-500" />
-                    SePay API Key (API Token)
-                  </Label>
-                  <Input
-                    id="SEPAY_API_KEY"
-                    type="password"
-                    placeholder="Nhập API Key từ my.sepay.vn"
-                    value={formData.SEPAY_API_KEY}
-                    onChange={(e) => handleChange('SEPAY_API_KEY', e.target.value)}
-                    className="h-10 font-mono"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Dùng khi bấm &quot;Đồng bộ từ SePay&quot; để chủ động tải danh sách giao dịch mới nhất.
-                  </p>
-                </div>
-
-                {/* SePay Webhook Secret */}
-                <div className="space-y-2">
-                  <Label htmlFor="SEPAY_WEBHOOK_SECRET" className="flex items-center gap-2 text-sm font-medium">
-                    <ShieldAlert className="h-4 w-4 text-slate-500" />
-                    SePay Webhook Secret (Bảo mật Webhook)
-                  </Label>
-                  <Input
-                    id="SEPAY_WEBHOOK_SECRET"
-                    type="password"
-                    placeholder="Khóa xác thực Webhook SePay"
-                    value={formData.SEPAY_WEBHOOK_SECRET}
-                    onChange={(e) => handleChange('SEPAY_WEBHOOK_SECRET', e.target.value)}
-                    className="h-10 font-mono"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Xác thực tính hợp lệ khi SePay tự động bắn biến động số dư tức thì về hệ thống.
-                  </p>
                 </div>
               </CardContent>
             </Card>

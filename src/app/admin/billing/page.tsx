@@ -1367,7 +1367,7 @@ export default function BillingPage() {
 
           {/* Bảng giao dịch SePay */}
           <Card>
-            <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <CardHeader>
               <div>
                 <CardTitle className="flex items-center gap-2">
                   <CreditCard className="h-5 w-5 text-blue-600" />
@@ -1381,18 +1381,6 @@ export default function BillingPage() {
                 <CardDescription>
                   Mọi giao dịch chuyển khoản vào tài khoản trường đều được tự động lưu lại và gạch nợ tức thì.
                 </CardDescription>
-              </div>
-
-              <div className="flex items-center gap-2 shrink-0">
-                <Button
-                  onClick={handleCleanZeroTxs}
-                  variant="outline"
-                  size="sm"
-                  className="border-rose-300 text-rose-700 hover:bg-rose-50 hover:text-rose-800 text-xs font-semibold shadow-xs"
-                >
-                  <Trash2 className="h-4 w-4 mr-1.5 text-rose-600" />
-                  Xóa tất cả chưa khớp
-                </Button>
               </div>
             </CardHeader>
             <CardContent>
