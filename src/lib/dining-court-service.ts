@@ -1,12 +1,14 @@
 import prisma from "@/lib/db";
 import { BoardingStatus, CancellationStatus } from "@prisma/client";
-import { getWeekNumber, getVietnamTodayUTC, isPastCutoffTime } from "@/lib/utils";
+import { getWeekNumber, getVietnamTodayUTC, isPastCutoffTime, splitVietnameseName, compareVietnameseNames } from "@/lib/utils";
 
 export interface StudentMealInfo {
   id: string;
   studentCode: string;
   boardingCode: string;
   fullName: string;
+  lastName?: string; // Họ và tên đệm (VD: "ĐÀO QUỐC")
+  firstName?: string; // Tên chính (VD: "ANH")
   className: string;
   mealType: "MAN" | "CHAY" | "CHAO";
 }
@@ -362,10 +364,11 @@ export function pairClassesIntoCourts(
   courts.forEach((court, idx) => {
     court.courtNumber = idx + 1;
     court.courtName = `Sân ${idx + 1}`;
-    // Sắp xếp danh sách học sinh theo lớp rồi theo tên
+    // Sắp xếp danh sách học sinh theo Phương án A: Toàn bộ học sinh trong sân theo TÊN ABC (A - Z)
     court.students.sort((a, b) => {
-      if (a.className !== b.className) return a.className.localeCompare(b.className, "vi");
-      return a.fullName.localeCompare(b.fullName, "vi");
+      const cmp = compareVietnameseNames(a.fullName, b.fullName);
+      if (cmp !== 0) return cmp;
+      return a.className.localeCompare(b.className, "vi");
     });
   });
 
@@ -501,11 +504,16 @@ export async function getDiningCourtAllocation(dateStr: string): Promise<DiningA
       else if (finalMealType === "CHAY") chayCount++;
       else if (finalMealType === "CHAO") chaoCount++;
 
+      const fullName = s.user?.fullName || "Chưa có tên";
+      const { lastName, firstName } = splitVietnameseName(fullName);
+
       return {
         id: s.id,
         studentCode: s.studentCode,
         boardingCode: s.boardingCode || "—",
-        fullName: s.user?.fullName || "Chưa có tên",
+        fullName,
+        lastName,
+        firstName,
         className: schedule.class.name,
         mealType: finalMealType,
       };

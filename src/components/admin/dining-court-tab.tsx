@@ -25,6 +25,7 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { format, addDays } from 'date-fns';
 import { DiningAllocationResult, DiningCourt } from '@/lib/dining-court-service';
 import { DiningCourtSummaryPrint } from './dining-court-summary-print';
+import { splitVietnameseName } from '@/lib/utils';
 import Swal from 'sweetalert2';
 
 interface DiningCourtTabProps {
@@ -483,38 +484,49 @@ export function DiningCourtTab({ cutoffTime, schoolName }: DiningCourtTabProps) 
                         <TableHeader className="bg-slate-50 sticky top-0">
                           <TableRow>
                             <TableHead className="w-8 text-center p-1">#</TableHead>
-                            <TableHead className="p-1">Mã bán trú</TableHead>
-                            <TableHead className="p-1">Họ tên</TableHead>
-                            <TableHead className="w-12 text-center p-1">Lớp</TableHead>
+                            <TableHead className="p-1 w-20">Mã bán trú</TableHead>
+                            <TableHead className="p-1">Họ và đệm</TableHead>
+                            <TableHead className="p-1 font-bold text-slate-900 w-24">Tên</TableHead>
+                            <TableHead className="w-14 text-center p-1">Lớp</TableHead>
                             <TableHead className="w-14 text-center p-1">Suất</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {court.students.map((st, sIdx) => (
-                            <TableRow key={st.id} className="hover:bg-slate-50/80">
-                              <TableCell className="text-center font-medium text-slate-500 p-1">
-                                {sIdx + 1}
-                              </TableCell>
-                              <TableCell className="p-1 text-blue-700 font-semibold font-mono text-[11px]">
-                                {st.boardingCode || "—"}
-                              </TableCell>
-                              <TableCell className="p-1 font-semibold text-slate-900">
-                                {st.fullName}
-                              </TableCell>
-                              <TableCell className="text-center p-1 font-medium text-slate-700">
-                                {st.className}
-                              </TableCell>
-                              <TableCell className="text-center p-1 font-semibold">
-                                {st.mealType === 'CHAY' ? (
-                                  <span className="text-emerald-700">Chay</span>
-                                ) : st.mealType === 'CHAO' ? (
-                                  <span className="text-amber-700">Cháo</span>
-                                ) : (
-                                  <span className="text-slate-800">Mặn</span>
-                                )}
-                              </TableCell>
-                            </TableRow>
-                          ))}
+                          {court.students.map((st, sIdx) => {
+                            const { lastName, firstName } =
+                              st.firstName && st.lastName
+                                ? { lastName: st.lastName, firstName: st.firstName }
+                                : splitVietnameseName(st.fullName);
+
+                            return (
+                              <TableRow key={st.id} className="hover:bg-slate-50/80">
+                                <TableCell className="text-center font-medium text-slate-500 p-1">
+                                  {sIdx + 1}
+                                </TableCell>
+                                <TableCell className="p-1 text-blue-700 font-semibold font-mono text-[11px]">
+                                  {st.boardingCode || "—"}
+                                </TableCell>
+                                <TableCell className="p-1 text-slate-700">
+                                  {lastName}
+                                </TableCell>
+                                <TableCell className="p-1 font-bold text-slate-900">
+                                  {firstName}
+                                </TableCell>
+                                <TableCell className="text-center p-1 font-medium text-slate-700">
+                                  {st.className}
+                                </TableCell>
+                                <TableCell className="text-center p-1 font-semibold">
+                                  {st.mealType === 'CHAY' ? (
+                                    <span className="text-emerald-700">Chay</span>
+                                  ) : st.mealType === 'CHAO' ? (
+                                    <span className="text-amber-700">Cháo</span>
+                                  ) : (
+                                    <span className="text-slate-800">Mặn</span>
+                                  )}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
                         </TableBody>
                       </Table>
                     </div>

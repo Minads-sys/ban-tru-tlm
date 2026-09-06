@@ -89,6 +89,42 @@ export function removeVietnameseTones(str: string): string {
 }
 
 /**
+ * Tách họ tên tiếng Việt thành Họ & đệm và Tên chính
+ * VD: "ĐÀO QUỐC ANH" -> { lastName: "ĐÀO QUỐC", firstName: "ANH" }
+ * VD: "AN" -> { lastName: "", firstName: "AN" }
+ */
+export function splitVietnameseName(fullName: string): { lastName: string; firstName: string } {
+  if (!fullName) return { lastName: "", firstName: "" };
+  const clean = fullName.trim().replace(/\s+/g, " ");
+  const lastSpaceIdx = clean.lastIndexOf(" ");
+  if (lastSpaceIdx === -1) {
+    return { lastName: "", firstName: clean };
+  }
+  return {
+    lastName: clean.slice(0, lastSpaceIdx),
+    firstName: clean.slice(lastSpaceIdx + 1),
+  };
+}
+
+/**
+ * So sánh 2 tên tiếng Việt theo chuẩn ABC:
+ * - Ưu tiên 1: So sánh TÊN chính trước (A - Z)
+ * - Ưu tiên 2: Nếu trùng tên, so sánh HỌ và TÊN ĐỆM
+ */
+export function compareVietnameseNames(fullNameA: string, fullNameB: string): number {
+  const nameA = splitVietnameseName(fullNameA);
+  const nameB = splitVietnameseName(fullNameB);
+
+  // 1. So sánh Tên trước (theo bảng chữ cái tiếng Việt)
+  const cmpFirst = nameA.firstName.localeCompare(nameB.firstName, "vi", { sensitivity: "base" });
+  if (cmpFirst !== 0) return cmpFirst;
+
+  // 2. Nếu trùng Tên, so sánh Họ và tên đệm
+  return nameA.lastName.localeCompare(nameB.lastName, "vi", { sensitivity: "base" });
+}
+
+
+/**
  * Format ngày thành ddmmyyyy (VD: 15/08/2018 -> "15082018")
  */
 export function formatDateDDMMYYYY(date: Date | string): string {

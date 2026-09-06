@@ -1,4 +1,5 @@
 import { DiningCourt, DiningAllocationResult } from "@/lib/dining-court-service";
+import { splitVietnameseName } from "@/lib/utils";
 
 // Lấy pdfmake và vfs_fonts (hỗ trợ đầy đủ tiếng Việt unicode)
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -177,11 +178,13 @@ export async function generateDiningCourtsPdfBuffer(
     });
 
     // 4. Bảng danh sách học sinh
+    // 4. Bảng danh sách học sinh (Tách riêng cột Họ và đệm + Tên)
     const tableBody: any[] = [
       [
         { text: "STT", bold: true, alignment: "center", fillColor: "#f1f5f9" },
         { text: "Mã bán trú", bold: true, alignment: "center", fillColor: "#f1f5f9" },
-        { text: "Họ và tên học sinh", bold: true, alignment: "left", fillColor: "#f1f5f9" },
+        { text: "Họ và đệm", bold: true, alignment: "left", fillColor: "#f1f5f9" },
+        { text: "Tên", bold: true, alignment: "left", fillColor: "#f1f5f9" },
         { text: "Lớp", bold: true, alignment: "center", fillColor: "#f1f5f9" },
         { text: "Suất ăn", bold: true, alignment: "center", fillColor: "#f1f5f9" },
         { text: "Điểm danh nhận cơm", bold: true, alignment: "center", fillColor: "#f1f5f9" },
@@ -200,10 +203,16 @@ export async function generateDiningCourtsPdfBuffer(
         mealColor = "#d97706";
       }
 
+      const { lastName, firstName } =
+        student.firstName && student.lastName
+          ? { lastName: student.lastName, firstName: student.firstName }
+          : splitVietnameseName(student.fullName);
+
       tableBody.push([
         { text: String(sIdx + 1), alignment: "center", fontSize: 9 },
         { text: student.boardingCode || "—", alignment: "center", fontSize: 8.5, bold: true, color: "#1d4ed8" },
-        { text: student.fullName, alignment: "left", bold: true, fontSize: 9 },
+        { text: lastName, alignment: "left", fontSize: 9 },
+        { text: firstName, alignment: "left", bold: true, fontSize: 9.5, color: "#0f172a" },
         { text: student.className, alignment: "center", fontSize: 9 },
         { text: mealText, alignment: "center", bold: student.mealType !== "MAN", color: mealColor, fontSize: 9 },
         { text: "[    ]", alignment: "center", fontSize: 10, color: "#64748b" }, // Ô điểm danh cho GV tích
@@ -214,7 +223,7 @@ export async function generateDiningCourtsPdfBuffer(
     content.push({
       table: {
         headerRows: 1,
-        widths: [25, 65, "*", 45, 50, 80, 55],
+        widths: [22, 60, "*", 52, 42, 48, 75, 50],
         body: tableBody,
       },
       margin: [0, 0, 0, 15],
