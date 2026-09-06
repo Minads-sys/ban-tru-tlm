@@ -31,6 +31,7 @@ export interface PaymentBillData {
     unitPrice?: number;
     previousDeduction?: number;
     previousAddition?: number;
+    paymentStatus?: string;
   };
   bankInfo?: {
     bankName?: string;
@@ -72,7 +73,12 @@ export function PaymentBillPrint({ data, onClose, defaultFormat = "K80" }: Props
       ? "Cháo"
       : "Mặn";
 
-  const isPartial = (data.bill.paidAmount || 0) > 0 && data.bill.remainingDebt > 0;
+  const isPaid =
+    data.bill.paymentStatus === "PAID" ||
+    (data.bill.remainingDebt <= 0 && Number(data.bill.finalAmount) > 0);
+  const isPartial =
+    !isPaid &&
+    ((data.bill.paidAmount || 0) > 0 || data.bill.paymentStatus === "PARTIAL");
 
   return (
     <div className="bg-white text-slate-900">
@@ -145,7 +151,7 @@ export function PaymentBillPrint({ data, onClose, defaultFormat = "K80" }: Props
             className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs h-9 px-4"
           >
             <Printer className="h-4 w-4 mr-1.5" />
-            In Phiếu Thanh Toán
+            {isPaid ? "In Biên Nhận Thu Tiền" : "In Phiếu Thanh Toán"}
           </Button>
           {onClose && (
             <Button
@@ -175,11 +181,20 @@ export function PaymentBillPrint({ data, onClose, defaultFormat = "K80" }: Props
               <div className="text-[11px] text-slate-600 mt-0.5">{schoolAddress}</div>
               <div className="text-[11px] text-slate-600">Hotline: {schoolPhone}</div>
               <div className="font-black text-[15px] mt-2 text-slate-900 tracking-wide uppercase">
-                PHIẾU THANH TOÁN TIỀN ĂN
+                {isPaid
+                  ? "BIÊN NHẬN THU TIỀN ĂN"
+                  : isPartial
+                  ? "PHIẾU BÁO TIỀN ĂN (CÒN NỢ)"
+                  : "PHIẾU THANH TOÁN TIỀN ĂN"}
               </div>
               <div className="text-[12px] font-bold text-blue-800 mt-0.5">
                 Tháng {String(data.bill.month).padStart(2, "0")}/{data.bill.year}
               </div>
+              {isPaid && (
+                <div className="mt-1.5 inline-block border-2 border-emerald-600 text-emerald-700 font-extrabold text-[12px] px-2.5 py-0.5 rounded tracking-wider">
+                  ✓ ĐÃ THANH TOÁN
+                </div>
+              )}
             </div>
 
             {/* Thông tin học sinh */}
@@ -225,14 +240,18 @@ export function PaymentBillPrint({ data, onClose, defaultFormat = "K80" }: Props
                       </span>
                     </div>
                   )}
-                  {data.bill.previousDeduction !== undefined && data.bill.previousDeduction > 0 && (
-                    <div className="flex justify-between">
-                      <span>Trừ tiền tháng trước:</span>
-                      <span className="font-semibold text-slate-900">
+                  <div className="flex justify-between">
+                    <span>Trừ tiền tháng trước:</span>
+                    {data.bill.previousDeduction !== undefined && data.bill.previousDeduction > 0 ? (
+                      <span className="font-semibold text-rose-600">
                         -{formatCurrency(data.bill.previousDeduction)}
                       </span>
-                    </div>
-                  )}
+                    ) : (
+                      <span className="text-slate-600">
+                        {data.bill.month === 9 ? "0đ (Đầu năm học)" : "0đ"}
+                      </span>
+                    )}
+                  </div>
                   {((data.bill.previousAddition !== undefined && data.bill.previousAddition > 0) || (data.bill.extraMealDays ?? 0) > 0) && (
                     <div className="flex justify-between text-emerald-700">
                       <span>Ăn thêm tháng trước:</span>
@@ -252,75 +271,124 @@ export function PaymentBillPrint({ data, onClose, defaultFormat = "K80" }: Props
 
             {/* Khung số tiền thanh toán */}
             <div className="py-2.5 border-b border-dashed border-slate-400 space-y-1">
-              {isPartial && (
-                <div className="text-[11px] text-slate-600 space-y-0.5 pb-1 border-b border-dotted border-slate-300">
-                  <div className="flex justify-between">
-                    <span>Tổng hóa đơn:</span>
-                    <span>{formatCurrency(data.bill.finalAmount)}</span>
+              {isPaid ? (
+                <>
+                  <div className="flex justify-between items-baseline">
+                    <span className="font-extrabold text-slate-900 text-xs uppercase">
+                      SỐ TIỀN ĐÃ NỘP:
+                    </span>
+                    <span className="text-base font-black text-emerald-700">
+                      {formatCurrency(data.bill.finalAmount)}
+                    </span>
                   </div>
-                  <div className="flex justify-between text-emerald-700">
-                    <span>Đã nộp:</span>
-                    <span>-{formatCurrency(data.bill.paidAmount || 0)}</span>
+                  <div className="flex justify-between items-baseline pt-0.5 text-xs">
+                    <span className="font-bold text-slate-600">SỐ TIỀN CÒN NỢ:</span>
+                    <span className="font-bold text-emerald-600">0đ (Đã nộp đủ)</span>
                   </div>
-                </div>
+                  <div className="text-[11px] text-slate-600 italic leading-snug">
+                    (Bằng chữ: {numberToVietnameseWords(data.bill.finalAmount)})
+                  </div>
+                </>
+              ) : isPartial ? (
+                <>
+                  <div className="text-[11px] text-slate-600 space-y-0.5 pb-1 border-b border-dotted border-slate-300">
+                    <div className="flex justify-between">
+                      <span>Tổng hóa đơn:</span>
+                      <span>{formatCurrency(data.bill.finalAmount)}</span>
+                    </div>
+                    <div className="flex justify-between text-emerald-700">
+                      <span>Đã nộp:</span>
+                      <span>-{formatCurrency(data.bill.paidAmount || 0)}</span>
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-baseline pt-1">
+                    <span className="font-extrabold text-slate-900 text-xs uppercase">
+                      SỐ TIỀN CÒN NỢ:
+                    </span>
+                    <span className="text-base font-black text-rose-700">
+                      {formatCurrency(data.bill.remainingDebt)}
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-slate-600 italic leading-snug">
+                    (Bằng chữ: {numberToVietnameseWords(data.bill.remainingDebt)})
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex justify-between items-baseline pt-1">
+                    <span className="font-extrabold text-slate-900 text-xs uppercase">
+                      SỐ TIỀN CẦN NỘP:
+                    </span>
+                    <span className="text-base font-black text-rose-700">
+                      {formatCurrency(data.bill.finalAmount)}
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-slate-600 italic leading-snug">
+                    (Bằng chữ: {numberToVietnameseWords(data.bill.finalAmount)})
+                  </div>
+                </>
               )}
-
-              <div className="flex justify-between items-baseline pt-1">
-                <span className="font-extrabold text-slate-900 text-xs uppercase">
-                  {isPartial ? "SỐ TIỀN CÒN NỢ:" : "SỐ TIỀN CẦN NỘP:"}
-                </span>
-                <span className="text-base font-black text-rose-700">
-                  {formatCurrency(data.bill.remainingDebt)}
-                </span>
-              </div>
-              <div className="text-[11px] text-slate-600 italic leading-snug">
-                (Bằng chữ: {numberToVietnameseWords(data.bill.remainingDebt)})
-              </div>
             </div>
 
-            {/* MÃ VIETQR THANH TOÁN */}
-            <div className="py-3 text-center space-y-2">
-              <div className="font-extrabold text-[12px] text-blue-900 uppercase tracking-wide">
-                QUÉT MÃ VIETQR ĐỂ THANH TOÁN
-              </div>
-
-              {/* Ảnh mã VietQR động */}
-              {data.qrCodeDataUrl && (
-                <div className="flex justify-center p-1 bg-white inline-block rounded border border-slate-300">
-                  <img
-                    src={data.qrCodeDataUrl}
-                    alt="VietQR Code"
-                    className="w-[45mm] h-[45mm] object-contain mx-auto"
-                  />
-                </div>
-              )}
-
-              {/* Cú pháp chuyển khoản */}
-              <div className="bg-slate-50 p-2 rounded border border-slate-300 text-left text-[11px] space-y-1">
-                <div>
-                  <span className="text-slate-500 block text-[10px]">Nội dung chuyển khoản (bắt buộc):</span>
-                  <span className="font-mono font-black text-[12px] text-blue-900 block tracking-wide">
-                    {data.transferContent}
-                  </span>
-                </div>
-                <div className="pt-1 border-t border-slate-200 flex justify-between text-[10.5px]">
-                  <span className="text-slate-500">Ngân hàng:</span>
-                  <span className="font-bold text-slate-800">{bankName}</span>
-                </div>
-                <div className="flex justify-between text-[10.5px]">
-                  <span className="text-slate-500">Số tài khoản:</span>
-                  <span className="font-mono font-bold text-slate-800">{accountNo}</span>
-                </div>
-                <div className="flex justify-between text-[10.5px]">
-                  <span className="text-slate-500">Chủ tài khoản:</span>
-                  <span className="font-semibold text-slate-800">{accountName}</span>
+            {/* MÃ VIETQR THANH TOÁN HOẶC XÁC NHẬN ĐÃ NỘP */}
+            {isPaid ? (
+              <div className="py-3 text-center space-y-1.5">
+                <div className="border border-emerald-500 bg-emerald-50/50 p-2.5 rounded text-center space-y-1">
+                  <div className="font-extrabold text-[12px] text-emerald-800 uppercase">
+                    ✓ ĐÃ HOÀN TẤT THANH TOÁN
+                  </div>
+                  <p className="text-[11px] text-slate-700">
+                    Học sinh đã hoàn tất đóng đủ 100% tiền ăn bán trú Tháng {data.bill.month}/{data.bill.year}.
+                  </p>
+                  <p className="text-[10px] italic text-emerald-700 font-semibold">
+                    Phiếu có giá trị biên nhận. Cảm ơn Quý Phụ huynh & Học sinh!
+                  </p>
                 </div>
               </div>
+            ) : (
+              <div className="py-3 text-center space-y-2">
+                <div className="font-extrabold text-[12px] text-blue-900 uppercase tracking-wide">
+                  QUÉT MÃ VIETQR ĐỂ THANH TOÁN
+                </div>
 
-              <p className="text-[10px] text-slate-500 italic leading-tight pt-1">
-                * Quét bằng bất kỳ App Ngân hàng nào. Hệ thống tự động gạch nợ sau 1-3 giây!
-              </p>
-            </div>
+                {/* Ảnh mã VietQR động */}
+                {data.qrCodeDataUrl && (
+                  <div className="flex justify-center p-1 bg-white inline-block rounded border border-slate-300">
+                    <img
+                      src={data.qrCodeDataUrl}
+                      alt="VietQR Code"
+                      className="w-[45mm] h-[45mm] object-contain mx-auto"
+                    />
+                  </div>
+                )}
+
+                {/* Cú pháp chuyển khoản */}
+                <div className="bg-slate-50 p-2 rounded border border-slate-300 text-left text-[11px] space-y-1">
+                  <div>
+                    <span className="text-slate-500 block text-[10px]">Nội dung chuyển khoản (bắt buộc):</span>
+                    <span className="font-mono font-black text-[12px] text-blue-900 block tracking-wide">
+                      {data.transferContent}
+                    </span>
+                  </div>
+                  <div className="pt-1 border-t border-slate-200 flex justify-between text-[10.5px]">
+                    <span className="text-slate-500">Ngân hàng:</span>
+                    <span className="font-bold text-slate-800">{bankName}</span>
+                  </div>
+                  <div className="flex justify-between text-[10.5px]">
+                    <span className="text-slate-500">Số tài khoản:</span>
+                    <span className="font-mono font-bold text-slate-800">{accountNo}</span>
+                  </div>
+                  <div className="flex justify-between text-[10.5px]">
+                    <span className="text-slate-500">Chủ tài khoản:</span>
+                    <span className="font-semibold text-slate-800">{accountName}</span>
+                  </div>
+                </div>
+
+                <p className="text-[10px] text-slate-500 italic leading-tight pt-1">
+                  * Quét bằng bất kỳ App Ngân hàng nào. Hệ thống tự động gạch nợ sau 1-3 giây!
+                </p>
+              </div>
+            )}
 
             <div className="text-center pt-2 text-[10px] text-slate-500 border-t border-dashed border-slate-300">
               Vui lòng giữ lại phiếu để đối chiếu. Cảm ơn Quý Phụ huynh!
@@ -354,10 +422,21 @@ export function PaymentBillPrint({ data, onClose, defaultFormat = "K80" }: Props
 
             {/* Tiêu đề phiếu */}
             <div className="text-center my-2">
-              <h2 className="text-[16px] font-bold uppercase tracking-wide">
-                PHIẾU THANH TOÁN SUẤT ĂN BÁN TRÚ
-              </h2>
-              <p className="text-[12px] italic">
+              <div className="flex items-center justify-center gap-3">
+                <h2 className="text-[16px] font-bold uppercase tracking-wide">
+                  {isPaid
+                    ? "BIÊN NHẬN THU TIỀN ĂN BÁN TRÚ"
+                    : isPartial
+                    ? "PHIẾU BÁO TIỀN ĂN (CÒN NỢ)"
+                    : "PHIẾU THANH TOÁN SUẤT ĂN BÁN TRÚ"}
+                </h2>
+                {isPaid && (
+                  <span className="border-2 border-black px-2 py-0.5 font-bold text-[11px] tracking-wider">
+                    ĐÃ THANH TOÁN
+                  </span>
+                )}
+              </div>
+              <p className="text-[12px] italic mt-0.5">
                 Tháng {data.bill.month} / {data.bill.year}
               </p>
             </div>
@@ -407,11 +486,19 @@ export function PaymentBillPrint({ data, onClose, defaultFormat = "K80" }: Props
                   <div className="flex">
                     <span className="font-bold w-36 shrink-0">Trừ tiền tháng trước:</span>
                     <div className="flex flex-col">
-                      <span>{formatCurrency(data.bill.previousDeduction || 0)}</span>
-                      <span className="text-[10px] italic text-slate-600">
-                        (Khấu trừ của tháng {data.bill.month === 1 ? 12 : data.bill.month - 1}/
-                        {data.bill.month === 1 ? data.bill.year - 1 : data.bill.year})
-                      </span>
+                      {data.bill.previousDeduction !== undefined && data.bill.previousDeduction > 0 ? (
+                        <>
+                          <span className="font-semibold text-rose-700">-{formatCurrency(data.bill.previousDeduction)}</span>
+                          <span className="text-[10px] italic text-slate-600">
+                            (Khấu trừ của tháng {data.bill.month === 1 ? 12 : data.bill.month - 1}/
+                            {data.bill.month === 1 ? data.bill.year - 1 : data.bill.year})
+                          </span>
+                        </>
+                      ) : (
+                        <span>
+                          {data.bill.month === 9 ? "0đ (Đầu năm học)" : "0đ"}
+                        </span>
+                      )}
                     </div>
                   </div>
                   {((data.bill.previousAddition !== undefined && data.bill.previousAddition > 0) || (data.bill.extraMealDays ?? 0) > 0) && (
@@ -436,52 +523,90 @@ export function PaymentBillPrint({ data, onClose, defaultFormat = "K80" }: Props
 
             {/* Khung số tiền nộp */}
             <div className="border-[1.5px] border-black p-2 my-2 text-center bg-slate-50/50">
-              {isPartial && (
-                <div className="text-[11px] text-slate-700 mb-0.5">
-                  Tổng hóa đơn: {formatCurrency(data.bill.finalAmount)} | Đã nộp:{" "}
-                  <span className="text-emerald-700 font-bold">{formatCurrency(data.bill.paidAmount || 0)}</span>
-                </div>
+              {isPaid ? (
+                <>
+                  <p className="text-[15px] font-extrabold uppercase text-slate-900">
+                    SỐ TIỀN ĐÃ THANH TOÁN: {formatCurrency(data.bill.finalAmount)}
+                  </p>
+                  <p className="text-[11px] italic mt-0.5">
+                    (Bằng chữ: {numberToVietnameseWords(data.bill.finalAmount)})
+                  </p>
+                  <p className="text-[12px] font-bold text-black mt-1">
+                    SỐ TIỀN CÒN NỢ: 0đ (ĐÃ NỘP ĐỦ)
+                  </p>
+                </>
+              ) : isPartial ? (
+                <>
+                  <div className="text-[11px] text-slate-700 mb-0.5">
+                    Tổng hóa đơn: {formatCurrency(data.bill.finalAmount)} | Đã nộp:{" "}
+                    <span className="text-emerald-700 font-bold">{formatCurrency(data.bill.paidAmount || 0)}</span>
+                  </div>
+                  <p className="text-[15px] font-extrabold uppercase">
+                    SỐ TIỀN CÒN NỢ CẦN NỘP:{" "}
+                    <span className="text-rose-700">{formatCurrency(data.bill.remainingDebt)}</span>
+                  </p>
+                  <p className="text-[11px] italic mt-0.5">
+                    (Bằng chữ: {numberToVietnameseWords(data.bill.remainingDebt)})
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-[15px] font-extrabold uppercase">
+                    SỐ TIỀN CẦN NỘP:{" "}
+                    <span className="text-rose-700">{formatCurrency(data.bill.finalAmount)}</span>
+                  </p>
+                  <p className="text-[11px] italic mt-0.5">
+                    (Bằng chữ: {numberToVietnameseWords(data.bill.finalAmount)})
+                  </p>
+                </>
               )}
-              <p className="text-[15px] font-extrabold uppercase">
-                {isPartial ? "SỐ TIỀN CÒN NỢ CẦN NỘP:" : "SỐ TIỀN CẦN NỘP:"}{" "}
-                <span className="text-rose-700">{formatCurrency(data.bill.remainingDebt)}</span>
-              </p>
-              <p className="text-[11px] italic mt-0.5">
-                (Bằng chữ: {numberToVietnameseWords(data.bill.remainingDebt)})
-              </p>
             </div>
 
-            {/* Khung VietQR và hướng dẫn */}
-            <div className="border-[1.5px] border-dashed border-black p-2.5 flex items-center gap-3">
-              {data.qrCodeDataUrl && (
-                <div className="shrink-0 border border-black p-1 bg-white">
-                  <img
-                    src={data.qrCodeDataUrl}
-                    alt="Mã QR thanh toán"
-                    className="w-[110px] h-[110px] object-contain"
-                  />
-                </div>
-              )}
-
-              <div className="flex-1 text-[11px] space-y-1">
-                <p className="font-bold text-[12px] uppercase">
-                  1. Quét mã QR để thanh toán (Khuyến khích)
+            {/* Khung VietQR và hướng dẫn HOẶC Xác nhận đã hoàn tất */}
+            {isPaid ? (
+              <div className="border-[1.5px] border-dashed border-black p-3 text-center rounded-sm space-y-1">
+                <p className="font-bold text-[13px] uppercase">
+                  XÁC NHẬN ĐÃ HOÀN TẤT THANH TOÁN TIỀN ĂN BÁN TRÚ
                 </p>
-                <p className="text-[10.5px]">
-                  2. Hoặc chuyển khoản thủ công và <b>BẮT BUỘC</b> nhập đúng nội dung sau:
+                <p className="text-[11.5px]">
+                  Học sinh <b>{data.student.fullName}</b> (Mã bán trú: {data.student.boardingCode || data.student.studentCode}) đã hoàn tất nộp đủ tiền ăn bán trú Tháng {data.bill.month}/{data.bill.year}.
                 </p>
-                <div className="inline-block px-2.5 py-1 border-[1.5px] border-black bg-slate-100 font-mono font-bold text-[13px]">
-                  {data.transferContent}
-                </div>
-                <div className="text-[10px] text-slate-700 pt-0.5 flex gap-3">
-                  <span>STK: <b>{accountNo}</b> ({bankName})</span>
-                  <span>Chủ TK: <b>{accountName}</b></span>
-                </div>
-                <p className="text-[10px] italic text-slate-600">
-                  * Hệ thống tự động gạch nợ sau 1-3 giây khi nhận được tiền.
+                <p className="text-[10.5px] italic text-slate-600">
+                  Phiếu này có giá trị làm biên nhận đã thu tiền. Chân thành cảm ơn Quý Phụ huynh và Học sinh!
                 </p>
               </div>
-            </div>
+            ) : (
+              <div className="border-[1.5px] border-dashed border-black p-2.5 flex items-center gap-3">
+                {data.qrCodeDataUrl && (
+                  <div className="shrink-0 border border-black p-1 bg-white">
+                    <img
+                      src={data.qrCodeDataUrl}
+                      alt="Mã QR thanh toán"
+                      className="w-[110px] h-[110px] object-contain"
+                    />
+                  </div>
+                )}
+
+                <div className="flex-1 text-[11px] space-y-1">
+                  <p className="font-bold text-[12px] uppercase">
+                    1. Quét mã QR để thanh toán (Khuyến khích)
+                  </p>
+                  <p className="text-[10.5px]">
+                    2. Hoặc chuyển khoản thủ công và <b>BẮT BUỘC</b> nhập đúng nội dung sau:
+                  </p>
+                  <div className="inline-block px-2.5 py-1 border-[1.5px] border-black bg-slate-100 font-mono font-bold text-[13px]">
+                    {data.transferContent}
+                  </div>
+                  <div className="text-[10px] text-slate-700 pt-0.5 flex gap-3">
+                    <span>STK: <b>{accountNo}</b> ({bankName})</span>
+                    <span>Chủ TK: <b>{accountName}</b></span>
+                  </div>
+                  <p className="text-[10px] italic text-slate-600">
+                    * Hệ thống tự động gạch nợ sau 1-3 giây khi nhận được tiền.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Chữ ký chân trang */}
             <div className="grid grid-cols-2 text-center text-[11px] mt-4 pt-1">

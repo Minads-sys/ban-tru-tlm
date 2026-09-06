@@ -85,6 +85,8 @@ export async function generateBillPdfBuffer(
       ? "Cơm chay"
       : "Cháo";
 
+  const isPaid = bill.paymentStatus === "PAID" || bill.finalAmount <= 0;
+
   // Cú pháp nội dung chuyển khoản chuẩn SePay
   const mm = String(bill.month).padStart(2, "0");
   const yy = String(bill.year).slice(-2);
@@ -94,24 +96,26 @@ export async function generateBillPdfBuffer(
   const accountName = settings.accountName || "HOANG KIM";
   const bankBin = settings.bankBin || "970418"; // BIDV
 
-  // Tạo mã QR VietQR chuẩn Napas 24/7 (EMVCo) để quét trực tiếp trên App Ngân hàng
-  const qrRawPayload = generateMealPaymentEMVCo(boardingCode, bill.month, bill.year, bill.finalAmount, {
-    bankBin,
-    bankName: settings.bankName,
-    accountNo,
-    accountName,
-  });
-  
-  // Tạo ảnh QR trực tiếp trong Node.js
+  // Tạo mã QR VietQR chuẩn Napas 24/7 (EMVCo) để quét trực tiếp trên App Ngân hàng (chỉ khi chưa thanh toán)
   let qrDataUrl = "";
-  try {
-    qrDataUrl = await QRCode.toDataURL(qrRawPayload, {
-      margin: 1,
-      width: 260,
-      errorCorrectionLevel: "M",
+  if (!isPaid) {
+    const qrRawPayload = generateMealPaymentEMVCo(boardingCode, bill.month, bill.year, bill.finalAmount, {
+      bankBin,
+      bankName: settings.bankName,
+      accountNo,
+      accountName,
     });
-  } catch (err) {
-    console.error("Lỗi sinh QR code:", err);
+    
+    // Tạo ảnh QR trực tiếp trong Node.js
+    try {
+      qrDataUrl = await QRCode.toDataURL(qrRawPayload, {
+        margin: 1,
+        width: 260,
+        errorCorrectionLevel: "M",
+      });
+    } catch (err) {
+      console.error("Lỗi sinh QR code:", err);
+    }
   }
 
   // Danh sách các ngày duyệt cắt suất
@@ -155,16 +159,18 @@ export async function generateBillPdfBuffer(
 
       // Tiêu đề phiếu
       {
-        text: "PHIẾU THANH TOÁN SUẤT ĂN BÁN TRÚ",
+        text: isPaid ? "BIÊN NHẬN THU TIỀN ĂN BÁN TRÚ" : "PHIẾU THANH TOÁN SUẤT ĂN BÁN TRÚ",
         fontSize: 13,
         bold: true,
         alignment: "center",
         margin: [0, 2, 0, 1],
       },
       {
-        text: `Tháng ${bill.month} / ${bill.year}`,
+        text: isPaid ? `Tháng ${bill.month} / ${bill.year} (ĐÃ THANH TOÁN ĐỦ)` : `Tháng ${bill.month} / ${bill.year}`,
         fontSize: 10,
-        italics: true,
+        italics: !isPaid,
+        bold: isPaid,
+        color: isPaid ? "#15803d" : "#000",
         alignment: "center",
         margin: [0, 0, 0, 6],
       },
@@ -241,7 +247,15 @@ export async function generateBillPdfBuffer(
                   {
                     text: [
                       { text: "Trừ tiền tháng trước: ", bold: true, fontSize: 9 },
-                      { text: `-${formatVND(bill.previousDeduction)}`, fontSize: 9, color: bill.previousDeduction > 0 ? "#d97706" : "#000" },
+                      {
+                        text: bill.previousDeduction > 0
+                          ? `-${formatVND(bill.previousDeduction)}`
+                          : bill.month === 9
+                          ? "0đ (Đầu năm học)"
+                          : "0đ",
+                        fontSize: 9,
+                        color: bill.previousDeduction > 0 ? "#d97706" : "#000",
+                      },
                     ],
                     margin: [0, 1.5, 0, 1.5],
                   },
@@ -302,23 +316,25 @@ export async function generateBillPdfBuffer(
           }
         : { text: "", margin: [0, 0, 0, 2] },
 
-      // Khung TỔNG TIỀN CẦN NỘP NỔI BẬT
+      // Khung TỔNG TIỀN NỔI BẬT
       {
         table: {
           widths: ["*"],
           body: [
             [
               {
-                fillColor: "#f1f5f9",
-                borderColor: ["#0f172a", "#0f172a", "#0f172a", "#0f172a"],
+                fillColor: isPaid ? "#f0fdf4" : "#f1f5f9",
+                borderColor: [isPaid ? "#16a34a" : "#0f172a", isPaid ? "#16a34a" : "#0f172a", isPaid ? "#16a34a" : "#0f172a", isPaid ? "#16a34a" : "#0f172a"],
                 border: [true, true, true, true],
                 alignment: "center",
                 stack: [
                   {
-                    text: `SỐ TIỀN CẦN NỘP: ${formatVND(bill.finalAmount)}`,
+                    text: isPaid
+                      ? `SỐ TIỀN ĐÃ THANH TOÁN: ${formatVND(bill.finalAmount)}`
+                      : `SỐ TIỀN CẦN NỘP: ${formatVND(bill.finalAmount)}`,
                     fontSize: 13,
                     bold: true,
-                    color: "#b91c1c",
+                    color: isPaid ? "#15803d" : "#b91c1c",
                     margin: [0, 2, 0, 1],
                   },
                   {
@@ -326,8 +342,19 @@ export async function generateBillPdfBuffer(
                     fontSize: 8.5,
                     italics: true,
                     color: "#334155",
-                    margin: [0, 0, 0, 2],
+                    margin: [0, 0, 0, 1],
                   },
+                  ...(isPaid
+                    ? [
+                        {
+                          text: "SỐ TIỀN CÒN NỢ: 0đ (ĐÃ NỘP ĐỦ 100%)",
+                          fontSize: 9,
+                          bold: true,
+                          color: "#166534",
+                          margin: [0, 1, 0, 2],
+                        },
+                      ]
+                    : []),
                 ],
               },
             ],
@@ -336,82 +363,142 @@ export async function generateBillPdfBuffer(
         margin: [0, 3, 0, 7],
       },
 
-      // Khung thanh toán VietQR
-      {
-        table: {
-          widths: qrDataUrl ? [95, "*"] : ["*"],
-          body: [
-            [
-              ...(qrDataUrl
-                ? [
-                    {
-                      border: [true, true, true, true],
-                      borderColor: ["#cbd5e1", "#cbd5e1", "#cbd5e1", "#cbd5e1"],
-                      alignment: "center",
-                      stack: [
-                        { image: qrDataUrl, width: 85, height: 85, alignment: "center" },
-                        { text: "Quét bằng App Ngân hàng", fontSize: 7, color: "#2563eb", bold: true, alignment: "center" },
-                      ],
-                    },
-                  ]
-                : []),
-              {
-                border: [true, true, true, true],
-                borderColor: ["#cbd5e1", "#cbd5e1", "#cbd5e1", "#cbd5e1"],
-                stack: [
-                  { text: "HƯỚNG DẪN CHUYỂN KHOẢN TỰ ĐỘNG GẠCH NỢ", fontSize: 9, bold: true, color: "#0f172a" },
+      // Khung thanh toán VietQR HOẶC Xác nhận đã thu tiền
+      isPaid
+        ? {
+            table: {
+              widths: ["*"],
+              body: [
+                [
                   {
-                    text: [
-                      { text: "1. Ngân hàng nhận: ", bold: true, fontSize: 8 },
-                      { text: "BIDV", fontSize: 8 },
-                      { text: "  —  Chủ TK: ", bold: true, fontSize: 8 },
-                      { text: accountName, fontSize: 8 },
+                    fillColor: "#f0fdf4",
+                    borderColor: ["#86efac", "#86efac", "#86efac", "#86efac"],
+                    border: [true, true, true, true],
+                    alignment: "center",
+                    stack: [
+                      {
+                        text: `XÁC NHẬN ĐÃ HOÀN TẤT THANH TOÁN TIỀN ĂN THÁNG ${bill.month}/${bill.year}`,
+                        fontSize: 11,
+                        bold: true,
+                        color: "#166534",
+                        margin: [0, 4, 0, 2],
+                      },
+                      {
+                        text: `Học sinh ${bill.student.fullName} (${boardingCode}) đã hoàn tất nộp đủ 100% tiền ăn bán trú.`,
+                        fontSize: 9,
+                        color: "#1e293b",
+                        margin: [0, 1, 0, 2],
+                      },
+                      {
+                        text: "Biên nhận trích xuất từ Hệ thống Quản lý Bán trú. Xin chân thành cảm ơn Quý Phụ huynh và Học sinh!",
+                        fontSize: 8,
+                        italics: true,
+                        color: "#15803d",
+                        margin: [0, 0, 0, 4],
+                      },
                     ],
-                    margin: [0, 1.5, 0, 1],
-                  },
-                  {
-                    text: [
-                      { text: "2. Số tài khoản: ", bold: true, fontSize: 8 },
-                      { text: accountNo, fontSize: 8.5, bold: true, color: "#0f172a" },
-                    ],
-                    margin: [0, 1, 0, 1.5],
-                  },
-                  {
-                    text: "3. Cú pháp chuyển khoản BẮT BUỘC:",
-                    fontSize: 8,
-                    bold: true,
-                    color: "#b45309",
-                  },
-                  {
-                    table: {
-                      widths: ["*"],
-                      body: [
-                        [
-                          {
-                            fillColor: "#fef3c7",
-                            borderColor: ["#f59e0b", "#f59e0b", "#f59e0b", "#f59e0b"],
-                            alignment: "center",
-                            text: transferContent,
-                            fontSize: 10,
-                            bold: true,
-                            color: "#1d4ed8",
-                          },
-                        ],
-                      ],
-                    },
-                    margin: [0, 1, 0, 2],
-                  },
-                  {
-                    text: "⚡ Hệ thống tự động nhận diện và gạch nợ sau 1-3 giây khi nhận được tiền.",
-                    fontSize: 7.5,
-                    italics: true,
-                    color: "#059669",
                   },
                 ],
-              },
+              ],
+            },
+            margin: [0, 2, 0, 6],
+          }
+        : {
+            table: {
+              widths: qrDataUrl ? [95, "*"] : ["*"],
+              body: [
+                [
+                  ...(qrDataUrl
+                    ? [
+                        {
+                          border: [true, true, true, true],
+                          borderColor: ["#cbd5e1", "#cbd5e1", "#cbd5e1", "#cbd5e1"],
+                          alignment: "center",
+                          stack: [
+                            { image: qrDataUrl, width: 85, height: 85, alignment: "center" },
+                            { text: "Quét bằng App Ngân hàng", fontSize: 7, color: "#2563eb", bold: true, alignment: "center" },
+                          ],
+                        },
+                      ]
+                    : []),
+                  {
+                    border: [true, true, true, true],
+                    borderColor: ["#cbd5e1", "#cbd5e1", "#cbd5e1", "#cbd5e1"],
+                    stack: [
+                      { text: "HƯỚNG DẪN CHUYỂN KHOẢN TỰ ĐỘNG GẠCH NỢ", fontSize: 9, bold: true, color: "#0f172a" },
+                      {
+                        text: [
+                          { text: "1. Ngân hàng nhận: ", bold: true, fontSize: 8 },
+                          { text: "BIDV", fontSize: 8 },
+                          { text: "  —  Chủ TK: ", bold: true, fontSize: 8 },
+                          { text: accountName, fontSize: 8 },
+                        ],
+                        margin: [0, 1.5, 0, 1],
+                      },
+                      {
+                        text: [
+                          { text: "2. Số tài khoản: ", bold: true, fontSize: 8 },
+                          { text: accountNo, fontSize: 8.5, bold: true, color: "#0f172a" },
+                        ],
+                        margin: [0, 1, 0, 1.5],
+                      },
+                      {
+                        text: "3. Cú pháp chuyển khoản BẮT BUỘC:",
+                        fontSize: 8,
+                        bold: true,
+                        color: "#b45309",
+                      },
+                      {
+                        table: {
+                          widths: ["*"],
+                          body: [
+                            [
+                              {
+                                fillColor: "#fef3c7",
+                                borderColor: ["#f59e0b", "#f59e0b", "#f59e0b", "#f59e0b"],
+                                alignment: "center",
+                                text: transferContent,
+                                fontSize: 10,
+                                bold: true,
+                                color: "#1d4ed8",
+                              },
+                            ],
+                          ],
+                        },
+                        margin: [0, 1, 0, 2],
+                      },
+                      {
+                        text: "⚡ Hệ thống tự động nhận diện và gạch nợ sau 1-3 giây khi nhận được tiền.",
+                        fontSize: 7.5,
+                        italics: true,
+                        color: "#059669",
+                      },
+                    ],
+                  },
+                ],
+              ],
+            },
+          },
+
+      // Chữ ký chân trang
+      {
+        columns: [
+          {
+            width: "*",
+            stack: [
+              { text: "Người nộp tiền", bold: true, fontSize: 9, alignment: "center" },
+              { text: "(Ký, ghi rõ họ tên)", fontSize: 7.5, italics: true, color: "#64748b", alignment: "center", margin: [0, 2, 0, 0] },
             ],
-          ],
-        },
+          },
+          {
+            width: "*",
+            stack: [
+              { text: "Người lập phiếu (Thu ngân)", bold: true, fontSize: 9, alignment: "center" },
+              { text: "(Ký, ghi rõ họ tên)", fontSize: 7.5, italics: true, color: "#64748b", alignment: "center", margin: [0, 2, 0, 0] },
+            ],
+          },
+        ],
+        margin: [0, 14, 0, 0],
       },
     ],
     defaultStyle: {

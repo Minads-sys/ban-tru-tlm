@@ -1173,7 +1173,7 @@ export default function BillingPage() {
                       <TableCell className="text-center">
                         <div className="flex items-center justify-center gap-1.5">
                           <Button variant="outline" size="sm" onClick={() => printSingleBill(bill.id)}>
-                            In phiếu
+                            {bill.paymentStatus === "PAID" ? "In biên nhận" : "In phiếu"}
                           </Button>
                           <Button variant="outline" size="sm" onClick={() => openEditModal(bill)}>
                             Sửa
@@ -2105,163 +2105,246 @@ export default function BillingPage() {
         />
         {bills
           .filter((b) => printBillId === "ALL" || b.id === printBillId)
-          .map((bill, idx, arr) => (
-            <div
-              key={bill.id}
-              className={`w-full max-w-[148mm] mx-auto p-4 print:p-0 flex flex-col ${idx < arr.length - 1 ? "print-break" : ""}`}
-            >
-              <div className="flex justify-between items-start mb-1">
-                <div className="pr-2">
-                  <h1 className="text-[15px] font-bold uppercase leading-tight">
-                    {settings.SCHOOL_NAME || "TRƯỜNG TIỂU HỌC BAN TRÚ"}
-                  </h1>
-                  {settings.SCHOOL_ADDRESS && <p className="text-[11px] mt-1">{settings.SCHOOL_ADDRESS}</p>}
-                </div>
-                <div className="flex flex-col items-end shrink-0">
-                  <Barcode
-                    value={`PT${bill.month}${bill.year}${bill.student.boardingCode || bill.student.studentCode}`}
-                    height={30}
-                    width={1.2}
-                    fontSize={10}
-                    margin={0}
-                    displayValue={true}
-                  />
-                </div>
-              </div>
+          .map((bill, idx, arr) => {
+            const isPaid = bill.paymentStatus === "PAID";
+            const paid = (bill.transactions || []).reduce((s: number, t: any) => s + Number(t.amount), 0);
+            const actualPaid = isPaid ? Number(bill.finalAmount) : paid;
+            const remaining = isPaid ? 0 : Math.max(0, Number(bill.finalAmount) - actualPaid);
+            const isPartial = !isPaid && actualPaid > 0 && remaining > 0;
 
-              <div className="border-t-[1.5px] border-black my-1"></div>
-
-              <div className="text-center mb-1">
-                <h2 className="text-[16px] font-bold mb-0.5">PHIẾU THANH TOÁN SUẤT ĂN BÁN TRÚ</h2>
-                <p className="text-[12px] italic">
-                  Tháng {bill.month} / {bill.year}
-                </p>
-              </div>
-
-              <div className="border-t-[1.5px] border-black my-1"></div>
-
-              <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[12px] mb-1 leading-relaxed">
-                <div className="space-y-1">
-                  <p className="flex">
-                    <span className="font-bold w-20 shrink-0">Mã Bán Trú:</span>{" "}
-                    <span>{bill.student.boardingCode || "Chưa cấp"}</span>
-                  </p>
-                  <p className="flex">
-                    <span className="font-bold w-20 shrink-0">Họ tên:</span>{" "}
-                    <span>{bill.student.user.fullName}</span>
-                  </p>
-                  <p className="flex">
-                    <span className="font-bold w-20 shrink-0">Lớp:</span>{" "}
-                    <span>{bill.student.class.name}</span>
-                  </p>
-                  <p className="flex">
-                    <span className="font-bold w-20 shrink-0">Loại suất:</span>{" "}
-                    <span>
-                      {bill.student.mealType === "MAN"
-                        ? "Mặn"
-                        : bill.student.mealType === "CHAY"
-                        ? "Chay"
-                        : "Cháo"}
-                    </span>
-                  </p>
-                </div>
-                <div className="space-y-1">
-                  <p className="flex">
-                    <span className="font-bold w-36 shrink-0">Số ngày ăn dự kiến:</span>{" "}
-                    <span>{bill.scheduleMealDays} ngày</span>
-                  </p>
-                  <p className="flex">
-                    <span className="font-bold w-36 shrink-0">Số ngày cắt suất:</span>{" "}
-                    <span>
-                      {bill.canceledDays} ngày
-                      {(bill.scheduleReducedDays ?? 0) > 0 && (
-                        <span className="text-[11px] text-gray-600 ml-1">
-                          (gồm {bill.canceledDays - (bill.scheduleReducedDays ?? 0)} cắt + {bill.scheduleReducedDays} trường hủy)
-                        </span>
-                      )}
-                    </span>
-                  </p>
-                  <div className="flex">
-                    <span className="font-bold w-36 shrink-0">Trừ tiền tháng trước:</span>
-                    <div className="flex flex-col">
-                      <span>{formatVND(bill.previousDeduction)}</span>
-                      <span className="text-[11px] italic text-gray-700">
-                        (Khấu trừ của tháng {bill.month === 1 ? 12 : bill.month - 1}/
-                        {bill.month === 1 ? bill.year - 1 : bill.year})
-                      </span>
-                    </div>
+            return (
+              <div
+                key={bill.id}
+                className={`w-full max-w-[148mm] mx-auto p-4 print:p-0 flex flex-col ${idx < arr.length - 1 ? "print-break" : ""}`}
+              >
+                <div className="flex justify-between items-start mb-1">
+                  <div className="pr-2">
+                    <h1 className="text-[15px] font-bold uppercase leading-tight">
+                      {settings.SCHOOL_NAME || "TRƯỜNG TIỂU HỌC BAN TRÚ"}
+                    </h1>
+                    {settings.SCHOOL_ADDRESS && <p className="text-[11px] mt-1">{settings.SCHOOL_ADDRESS}</p>}
                   </div>
-                  {(parseInt(bill.previousAddition || "0") > 0 || (bill.extraMealDays ?? 0) > 0) && (
-                    <div className="flex">
-                      <span className="font-bold w-36 shrink-0">Ăn thêm tháng trước:</span>
-                      <div className="flex flex-col">
-                        <span className="text-emerald-700 font-bold">+{formatVND(bill.previousAddition || 0)}</span>
-                        <span className="text-[11px] italic text-gray-700">
-                          (Lịch TKB phát sinh {bill.extraMealDays} ngày tháng {bill.month === 1 ? 12 : bill.month - 1}/
-                          {bill.month === 1 ? bill.year - 1 : bill.year})
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                  <p className="flex">
-                    <span className="font-bold w-36 shrink-0">Đơn giá:</span>{" "}
-                    <span>{formatVND(bill.unitPrice)}/suất</span>
-                  </p>
-                </div>
-              </div>
-
-              <div className="border-t-[1.5px] border-black my-1"></div>
-
-              {bill.student.mealCancellations && bill.student.mealCancellations.length > 0 ? (
-                <div className="mb-1 text-[11px] border border-black p-1 rounded-sm print:rounded-none">
-                  <p className="font-bold mb-0.5">Chi tiết các ngày đã duyệt cắt suất:</p>
-                  <div className="flex flex-wrap gap-1">
-                    {bill.student.mealCancellations.map((c, i) => (
-                      <span key={i} className="px-1 py-0.5 border border-black rounded-sm print:rounded-none">
-                        {new Date(c.cancelDate).toLocaleDateString("vi-VN")}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="mb-1"></div>
-              )}
-
-              <div className="border-[1.5px] border-black py-1 my-1 text-center">
-                <p className="text-[16px] font-bold mb-0">
-                  SỐ TIỀN CẦN NỘP: {formatVND(bill.finalAmount)}
-                </p>
-                <p className="text-[11px] italic">
-                  (Bằng chữ: {numberToVietnameseWords(Number(bill.finalAmount))})
-                </p>
-              </div>
-
-              <div className="mt-1 pt-1.5 border-2 border-dashed border-black p-1.5 flex items-center shrink-0 rounded-sm print:rounded-none">
-                {bill.qrCodeUrl && (
-                  <div className="shrink-0 mr-3 border border-black p-1">
-                    <img
-                      src={bill.qrCodeUrl}
-                      alt={`QR thanh toán ${bill.student.boardingCode || bill.student.studentCode}`}
-                      className="w-[115px] h-[115px] object-contain"
-                      loading="eager"
+                  <div className="flex flex-col items-end shrink-0">
+                    <Barcode
+                      value={`PT${bill.month}${bill.year}${bill.student.boardingCode || bill.student.studentCode}`}
+                      height={30}
+                      width={1.2}
+                      fontSize={10}
+                      margin={0}
+                      displayValue={true}
                     />
                   </div>
-                )}
-                <div className="flex-1">
-                  <p className="text-[14px] font-bold mb-1 uppercase">1. Quét mã QR để thanh toán (Khuyến khích)</p>
-                  <p className="text-[11px] mb-2">
-                    2. Nếu không quét được QR, vui lòng chuyển khoản thủ công và <b>BẮT BUỘC</b> nhập đúng nội dung sau:
-                  </p>
-                  <span className="font-bold text-[15px] inline-block px-3 py-1.5 border-[2px] border-black bg-gray-100 print:bg-transparent">
-                    BSTLM {bill.student.boardingCode || bill.student.studentCode} T{String(bill.month).padStart(2, '0')}{String(bill.year).slice(-2)}
-                  </span>
-                  <p className="text-[11px] italic mt-1.5">
-                    Hệ thống tự động gạch nợ sau 1-3 giây khi nhận được tiền.
+                </div>
+
+                <div className="border-t-[1.5px] border-black my-1"></div>
+
+                <div className="text-center mb-1">
+                  <div className="flex items-center justify-center gap-3">
+                    <h2 className="text-[16px] font-bold mb-0.5">
+                      {isPaid
+                        ? "BIÊN NHẬN THU TIỀN ĂN BÁN TRÚ"
+                        : isPartial
+                        ? "PHIẾU BÁO TIỀN ĂN (CÒN NỢ)"
+                        : "PHIẾU THANH TOÁN SUẤT ĂN BÁN TRÚ"}
+                    </h2>
+                    {isPaid && (
+                      <span className="border-2 border-black px-2 py-0.5 text-[11px] font-bold tracking-wider">
+                        ĐÃ THANH TOÁN
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[12px] italic">
+                    Tháng {bill.month} / {bill.year}
                   </p>
                 </div>
+
+                <div className="border-t-[1.5px] border-black my-1"></div>
+
+                <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[12px] mb-1 leading-relaxed">
+                  <div className="space-y-1">
+                    <p className="flex">
+                      <span className="font-bold w-20 shrink-0">Mã Bán Trú:</span>{" "}
+                      <span>{bill.student.boardingCode || "Chưa cấp"}</span>
+                    </p>
+                    <p className="flex">
+                      <span className="font-bold w-20 shrink-0">Họ tên:</span>{" "}
+                      <span>{bill.student.user.fullName}</span>
+                    </p>
+                    <p className="flex">
+                      <span className="font-bold w-20 shrink-0">Lớp:</span>{" "}
+                      <span>{bill.student.class.name}</span>
+                    </p>
+                    <p className="flex">
+                      <span className="font-bold w-20 shrink-0">Loại suất:</span>{" "}
+                      <span>
+                        {bill.student.mealType === "MAN"
+                          ? "Mặn"
+                          : bill.student.mealType === "CHAY"
+                          ? "Chay"
+                          : "Cháo"}
+                      </span>
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="flex">
+                      <span className="font-bold w-36 shrink-0">Số ngày ăn dự kiến:</span>{" "}
+                      <span>{bill.scheduleMealDays} ngày</span>
+                    </p>
+                    <p className="flex">
+                      <span className="font-bold w-36 shrink-0">Số ngày cắt suất:</span>{" "}
+                      <span>
+                        {bill.canceledDays} ngày
+                        {(bill.scheduleReducedDays ?? 0) > 0 && (
+                          <span className="text-[11px] text-gray-600 ml-1">
+                            (gồm {bill.canceledDays - (bill.scheduleReducedDays ?? 0)} cắt + {bill.scheduleReducedDays} trường hủy)
+                          </span>
+                        )}
+                      </span>
+                    </p>
+                    <div className="flex">
+                      <span className="font-bold w-36 shrink-0">Trừ tiền tháng trước:</span>
+                      <div className="flex flex-col">
+                        {parseInt(bill.previousDeduction || "0") > 0 ? (
+                          <>
+                            <span className="font-semibold text-rose-600">-{formatVND(bill.previousDeduction)}</span>
+                            <span className="text-[11px] italic text-gray-700">
+                              (Khấu trừ của tháng {bill.month === 1 ? 12 : bill.month - 1}/
+                              {bill.month === 1 ? bill.year - 1 : bill.year})
+                            </span>
+                          </>
+                        ) : (
+                          <span>
+                            {bill.month === 9 ? "0đ (Đầu năm học)" : "0đ"}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    {(parseInt(bill.previousAddition || "0") > 0 || (bill.extraMealDays ?? 0) > 0) && (
+                      <div className="flex">
+                        <span className="font-bold w-36 shrink-0">Ăn thêm tháng trước:</span>
+                        <div className="flex flex-col">
+                          <span className="text-emerald-700 font-bold">+{formatVND(bill.previousAddition || 0)}</span>
+                          <span className="text-[11px] italic text-gray-700">
+                            (Lịch TKB phát sinh {bill.extraMealDays} ngày tháng {bill.month === 1 ? 12 : bill.month - 1}/
+                            {bill.month === 1 ? bill.year - 1 : bill.year})
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                    <p className="flex">
+                      <span className="font-bold w-36 shrink-0">Đơn giá:</span>{" "}
+                      <span>{formatVND(bill.unitPrice)}/suất</span>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="border-t-[1.5px] border-black my-1"></div>
+
+                {bill.student.mealCancellations && bill.student.mealCancellations.length > 0 ? (
+                  <div className="mb-1 text-[11px] border border-black p-1 rounded-sm print:rounded-none">
+                    <p className="font-bold mb-0.5">Chi tiết các ngày đã duyệt cắt suất:</p>
+                    <div className="flex flex-wrap gap-1">
+                      {bill.student.mealCancellations.map((c, i) => (
+                        <span key={i} className="px-1 py-0.5 border border-black rounded-sm print:rounded-none">
+                          {new Date(c.cancelDate).toLocaleDateString("vi-VN")}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mb-1"></div>
+                )}
+
+                <div className="border-[1.5px] border-black py-1.5 my-1 text-center bg-gray-50/50 print:bg-transparent">
+                  {isPaid ? (
+                    <>
+                      <p className="text-[16px] font-bold mb-0">
+                        SỐ TIỀN ĐÃ THANH TOÁN: {formatVND(bill.finalAmount)}
+                      </p>
+                      <p className="text-[11px] italic">
+                        (Bằng chữ: {numberToVietnameseWords(Number(bill.finalAmount))})
+                      </p>
+                      <p className="text-[12px] font-bold text-black mt-0.5">
+                        SỐ TIỀN CÒN NỢ: 0đ (ĐÃ NỘP ĐỦ)
+                      </p>
+                    </>
+                  ) : isPartial ? (
+                    <>
+                      <p className="text-[12px] text-gray-700 mb-0.5">
+                        Tổng hóa đơn: {formatVND(bill.finalAmount)} | Đã nộp: {formatVND(actualPaid)}
+                      </p>
+                      <p className="text-[16px] font-bold mb-0">
+                        SỐ TIỀN CÒN NỢ CẦN NỘP: {formatVND(remaining)}
+                      </p>
+                      <p className="text-[11px] italic">
+                        (Bằng chữ: {numberToVietnameseWords(remaining)})
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-[16px] font-bold mb-0">
+                        SỐ TIỀN CẦN NỘP: {formatVND(bill.finalAmount)}
+                      </p>
+                      <p className="text-[11px] italic">
+                        (Bằng chữ: {numberToVietnameseWords(Number(bill.finalAmount))})
+                      </p>
+                    </>
+                  )}
+                </div>
+
+                {isPaid ? (
+                  <div className="mt-1 pt-2 pb-2 border-2 border-dashed border-black p-2 text-center rounded-sm print:rounded-none">
+                    <p className="text-[14px] font-bold uppercase mb-1">
+                      XÁC NHẬN ĐÃ HOÀN TẤT THANH TOÁN TIỀN ĂN
+                    </p>
+                    <p className="text-[12px]">
+                      Học sinh <b>{bill.student.user.fullName}</b> ({bill.student.boardingCode || bill.student.studentCode}) đã nộp đủ tiền ăn bán trú Tháng {bill.month}/{bill.year}.
+                    </p>
+                    <p className="text-[11px] italic mt-1">
+                      Biên nhận này xác nhận học sinh đã hoàn tất nộp tiền. Chân thành cảm ơn Quý Phụ huynh và Học sinh!
+                    </p>
+                  </div>
+                ) : (
+                  <div className="mt-1 pt-1.5 border-2 border-dashed border-black p-1.5 flex items-center shrink-0 rounded-sm print:rounded-none">
+                    {bill.qrCodeUrl && (
+                      <div className="shrink-0 mr-3 border border-black p-1">
+                        <img
+                          src={bill.qrCodeUrl}
+                          alt={`QR thanh toán ${bill.student.boardingCode || bill.student.studentCode}`}
+                          className="w-[115px] h-[115px] object-contain"
+                          loading="eager"
+                        />
+                      </div>
+                    )}
+                    <div className="flex-1">
+                      <p className="text-[14px] font-bold mb-1 uppercase">1. Quét mã QR để thanh toán (Khuyến khích)</p>
+                      <p className="text-[11px] mb-2">
+                        2. Nếu không quét được QR, vui lòng chuyển khoản thủ công và <b>BẮT BUỘC</b> nhập đúng nội dung sau:
+                      </p>
+                      <span className="font-bold text-[15px] inline-block px-3 py-1.5 border-[2px] border-black bg-gray-100 print:bg-transparent">
+                        BSTLM {bill.student.boardingCode || bill.student.studentCode} T{String(bill.month).padStart(2, '0')}{String(bill.year).slice(-2)}
+                      </span>
+                      <p className="text-[11px] italic mt-1.5">
+                        Hệ thống tự động gạch nợ sau 1-3 giây khi nhận được tiền.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Chữ ký chân trang */}
+                <div className="grid grid-cols-2 text-center text-[11px] mt-4 pt-1">
+                  <div>
+                    <div className="font-bold">Người nộp tiền</div>
+                    <div className="text-[10px] italic text-gray-500">(Ký, họ tên)</div>
+                  </div>
+                  <div>
+                    <div className="font-bold">Người lập phiếu (Thu ngân)</div>
+                    <div className="text-[10px] italic text-gray-500">(Ký, họ tên)</div>
+                  </div>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
       </div>
     </>
   )}

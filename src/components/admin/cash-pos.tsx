@@ -245,79 +245,87 @@ export function CashPos({ currentUser }: { currentUser: any }) {
     return Math.max(0, bill.finalAmount - paid);
   };
 
-  // Mở popup In Phiếu Thanh Toán có mã VietQR (hỗ trợ khổ K80 & A5)
+  // Mở popup In Phiếu Thanh Toán / Biên Nhận Thu Tiền
   const handleOpenPrintBill = async (bill: BillItem) => {
     if (!selectedStudent) return;
+    const isPaid = bill.paymentStatus === "PAID";
     const debt = getBillRemainingDebt(bill);
     const code = selectedStudent.boardingCode || selectedStudent.studentCode;
-    const payAmount = debt > 0 ? debt : bill.finalAmount;
 
-    const bankBin = settings.BANK_BIN || "970418";
-    const accountNo = settings.BANK_ACCOUNT_NO || "96247BANTRUTLM08";
-    const accountName = settings.BANK_ACCOUNT_NAME || "HOANG KIM";
-    const bankName = settings.BANK_NAME || "BIDV";
+    const paid = (bill.transactions || [])
+      .filter((t) => !t.isVoided)
+      .reduce((sum, t) => sum + Number(t.amount), 0);
 
-    const emvcoPayload = generateMealPaymentEMVCo(code, bill.month, bill.year, payAmount, {
-      bankBin,
-      accountNo,
-      accountName,
-      bankName,
+    const actualPaid = isPaid ? Number(bill.finalAmount) : paid;
+    const actualRemaining = isPaid ? 0 : Math.max(0, Number(bill.finalAmount) - actualPaid);
+
+    let dataUrl = "";
+    // Chỉ tạo mã QR khi còn nợ tiền
+    if (!isPaid && actualRemaining > 0) {
+      const bankBin = settings.BANK_BIN || "970418";
+      const accountNo = settings.BANK_ACCOUNT_NO || "96247BANTRUTLM08";
+      const accountName = settings.BANK_ACCOUNT_NAME || "HOANG KIM";
+      const bankName = settings.BANK_NAME || "BIDV";
+
+      const emvcoPayload = generateMealPaymentEMVCo(code, bill.month, bill.year, actualRemaining, {
+        bankBin,
+        accountNo,
+        accountName,
+        bankName,
+      });
+
+      try {
+        dataUrl = await QRCode.toDataURL(emvcoPayload, {
+          margin: 1,
+          width: 360,
+          errorCorrectionLevel: "M",
+        });
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    const mm = String(bill.month).padStart(2, "0");
+    const yy = String(bill.year).slice(-2);
+    const content = `BSTLM ${code} T${mm}${yy}`;
+
+    setPrintBillData({
+      schoolName: settings.SCHOOL_NAME || "TRƯỜNG BÁN TRÚ TIỂU HỌC & THCS THĂNG LONG",
+      schoolAddress: settings.SCHOOL_ADDRESS || "Hà Nội",
+      schoolPhone: settings.SCHOOL_PHONE || "(024) 3888.xxxx",
+      student: {
+        fullName: selectedStudent.user?.fullName || "Học sinh",
+        studentCode: selectedStudent.studentCode,
+        boardingCode: selectedStudent.boardingCode,
+        className: selectedStudent.class?.name || selectedStudent.classId,
+        mealType: bill.student?.mealType,
+      },
+      bill: {
+        id: bill.id,
+        month: bill.month,
+        year: bill.year,
+        finalAmount: bill.finalAmount,
+        paidAmount: actualPaid,
+        remainingDebt: actualRemaining,
+        paymentStatus: bill.paymentStatus,
+        scheduleMealDays: bill.scheduleMealDays,
+        canceledDays: bill.canceledDays,
+        scheduleReducedDays: bill.scheduleReducedDays,
+        extraMealDays: bill.extraMealDays,
+        unitPrice: bill.unitPrice,
+        previousDeduction: bill.previousDeduction,
+        previousAddition: bill.previousAddition,
+      },
+      bankInfo: {
+        bankName: settings.BANK_NAME || "BIDV",
+        accountNo: settings.BANK_ACCOUNT_NO || "96247BANTRUTLM08",
+        accountName: settings.BANK_ACCOUNT_NAME || "HOANG KIM",
+      },
+      qrCodeDataUrl: dataUrl,
+      transferContent: content,
     });
 
-    try {
-      const dataUrl = await QRCode.toDataURL(emvcoPayload, {
-        margin: 1,
-        width: 360,
-        errorCorrectionLevel: "M",
-      });
-      const mm = String(bill.month).padStart(2, "0");
-      const yy = String(bill.year).slice(-2);
-      const content = `BSTLM ${code} T${mm}${yy}`;
-
-      const paid = (bill.transactions || [])
-        .filter((t) => !t.isVoided)
-        .reduce((sum, t) => sum + Number(t.amount), 0);
-
-      setPrintBillData({
-        schoolName: settings.SCHOOL_NAME || "TRƯỜNG BÁN TRÚ TIỂU HỌC & THCS THĂNG LONG",
-        schoolAddress: settings.SCHOOL_ADDRESS || "Hà Nội",
-        schoolPhone: settings.SCHOOL_PHONE || "(024) 3888.xxxx",
-        student: {
-          fullName: selectedStudent.user?.fullName || "Học sinh",
-          studentCode: selectedStudent.studentCode,
-          boardingCode: selectedStudent.boardingCode,
-          className: selectedStudent.class?.name || selectedStudent.classId,
-          mealType: bill.student?.mealType,
-        },
-        bill: {
-          id: bill.id,
-          month: bill.month,
-          year: bill.year,
-          finalAmount: bill.finalAmount,
-          paidAmount: paid,
-          remainingDebt: payAmount,
-          scheduleMealDays: bill.scheduleMealDays,
-          canceledDays: bill.canceledDays,
-          scheduleReducedDays: bill.scheduleReducedDays,
-          extraMealDays: bill.extraMealDays,
-          unitPrice: bill.unitPrice,
-          previousDeduction: bill.previousDeduction,
-          previousAddition: bill.previousAddition,
-        },
-        bankInfo: {
-          bankName,
-          accountNo,
-          accountName,
-        },
-        qrCodeDataUrl: dataUrl,
-        transferContent: content,
-      });
-
-      setOpenPrintBillModal(true);
-    } catch (err) {
-      console.error(err);
-      Swal.fire("Lỗi", "Không thể tạo phiếu thanh toán có mã QR", "error");
-    }
+    setOpenPrintBillModal(true);
   };
 
   // Xác nhận thu tiền mặt
@@ -641,10 +649,10 @@ export function CashPos({ currentUser }: { currentUser: any }) {
                                     handleOpenPrintBill(b);
                                   }}
                                   className="h-7 px-2.5 text-[11px] font-semibold text-blue-700 border-blue-300 hover:bg-blue-50 hover:text-blue-800 shadow-2xs"
-                                  title="In phiếu thanh toán kèm mã QR (Khổ K80 hoặc A5)"
+                                  title={b.paymentStatus === "PAID" ? "In biên nhận thu tiền ăn (K80 hoặc A5)" : "In phiếu thanh toán kèm mã QR (Khổ K80 hoặc A5)"}
                                 >
                                   <Printer className="h-3.5 w-3.5 mr-1 text-blue-600" />
-                                  In phiếu
+                                  {b.paymentStatus === "PAID" ? "In biên nhận" : "In phiếu"}
                                 </Button>
                               </TableCell>
                             </TableRow>
