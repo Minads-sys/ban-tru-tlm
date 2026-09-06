@@ -150,6 +150,17 @@ export default function DailyMealsPage() {
     text: string;
   } | null>(null);
 
+  // Read URL query parameter for tab selection (e.g. ?tab=dining-areas)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get('tab');
+      if (tabParam === 'dining-areas' || tabParam === 'summary') {
+        setActiveMainTab(tabParam);
+      }
+    }
+  }, []);
+
   // Fetch school settings
   useEffect(() => {
     async function loadSettings() {

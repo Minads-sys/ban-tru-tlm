@@ -27,6 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import Link from "next/link";
 import {
   Receipt,
   Printer,
@@ -42,6 +43,7 @@ import {
   UserCheck,
   Banknote,
   FileCheck2,
+  UtensilsCrossed,
 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useRealtime } from "@/hooks/use-realtime";
@@ -723,14 +725,27 @@ export default function BillingPage() {
           )}
         </div>
 
-        {/* Cụm thông tin tài khoản BIDV */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-2.5 px-4 flex items-center gap-3 text-xs text-blue-900">
-          <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm shrink-0">
-            BIDV
-          </div>
-          <div>
-            <p className="font-semibold text-[13px]">STK: {settings.BANK_ACCOUNT_NO || "96247BANTRUTLM08"}</p>
-            <p className="text-slate-600">Chủ TK: {settings.BANK_ACCOUNT_NAME || "HOANG KIM"} (SePay)</p>
+        {/* Cụm thông tin tài khoản BIDV & Nút chuyển nhanh */}
+        <div className="flex flex-wrap items-center gap-3">
+          {isCashier && (
+            <Link href="/admin/daily-meals?tab=dining-areas">
+              <Button
+                variant="outline"
+                className="gap-2 border-blue-300 text-blue-700 hover:bg-blue-50 hover:text-blue-900 cursor-pointer shadow-2xs font-semibold"
+              >
+                <UtensilsCrossed className="h-4 w-4 text-blue-600" />
+                Chia Sân & Xuất PDF
+              </Button>
+            </Link>
+          )}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-2.5 px-4 flex items-center gap-3 text-xs text-blue-900">
+            <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm shrink-0">
+              BIDV
+            </div>
+            <div>
+              <p className="font-semibold text-[13px]">STK: {settings.BANK_ACCOUNT_NO || "96247BANTRUTLM08"}</p>
+              <p className="text-slate-600">Chủ TK: {settings.BANK_ACCOUNT_NAME || "HOANG KIM"} (SePay)</p>
+            </div>
           </div>
         </div>
       </div>

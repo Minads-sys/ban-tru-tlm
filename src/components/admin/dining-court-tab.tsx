@@ -387,7 +387,7 @@ export function DiningCourtTab({ cutoffTime }: DiningCourtTabProps) {
                       </Badge>
                     ) : (
                       <Badge variant="outline" className="text-[11px] bg-white text-blue-700 border-blue-200">
-                        Ghép 2 lớp
+                        Ghép {court.classes.length} lớp
                       </Badge>
                     )}
                   </div>

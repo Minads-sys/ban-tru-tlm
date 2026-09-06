@@ -268,7 +268,65 @@ export function pairClassesIntoCourts(
     }
   }
 
-  // 4. Giới hạn tối đa 16 sân trong 1 tiết ăn:
+  // 4. BƯỚC TỐI ƯU HÓA: Tự động gộp các sân dưới chuẩn (< 40 suất) nếu tổng <= 55 suất
+  // Đặc biệt ưu tiên đưa tổng suất về khoảng lý tưởng [40, 55] (Ví dụ: 36 suất + 13 suất = 49 suất)
+  let canMergeMore = true;
+  while (canMergeMore) {
+    canMergeMore = false;
+    let bestI = -1;
+    let bestJ = -1;
+    let bestScore = -1;
+
+    for (let i = 0; i < courts.length; i++) {
+      for (let j = i + 1; j < courts.length; j++) {
+        const sum = courts[i].totalMeals + courts[j].totalMeals;
+        // Chỉ gộp khi tổng không vượt quá 55 suất và có ít nhất 1 sân đang dưới 40 suất
+        if (sum <= 55 && (courts[i].totalMeals < 40 || courts[j].totalMeals < 40)) {
+          let score = 0;
+          if (sum >= 40 && sum <= 55) {
+            // Rất ưu tiên vì đưa cả 2 sân vào khoảng chuẩn lý tưởng [40, 55]
+            score = 1000 - Math.abs(sum - 48) * 10;
+          } else {
+            // Tổng vẫn < 40 nhưng gộp 2 sân lẻ lại vẫn tốt hơn để rời rạc
+            score = 500 + sum;
+          }
+
+          if (score > bestScore) {
+            bestScore = score;
+            bestI = i;
+            bestJ = j;
+          }
+        }
+      }
+    }
+
+    if (bestI !== -1 && bestJ !== -1) {
+      const c1 = courts[bestI];
+      const c2 = courts[bestJ];
+      const mergedTotalMeals = c1.totalMeals + c2.totalMeals;
+      const mergedClasses = [...c1.classes, ...c2.classes];
+
+      const mergedCourt: DiningCourt = {
+        courtNumber: 0,
+        courtName: "",
+        shift,
+        classes: mergedClasses,
+        totalMeals: mergedTotalMeals,
+        manCount: c1.manCount + c2.manCount,
+        chayCount: c1.chayCount + c2.chayCount,
+        chaoCount: c1.chaoCount + c2.chaoCount,
+        isSingleClass: mergedClasses.length === 1,
+        isInIdealRange: mergedTotalMeals >= 40 && mergedTotalMeals <= 55,
+        students: [...c1.students, ...c2.students],
+      };
+
+      courts.splice(bestJ, 1);
+      courts.splice(bestI, 1, mergedCourt);
+      canMergeMore = true;
+    }
+  }
+
+  // 5. Giới hạn tối đa 16 sân trong 1 tiết ăn:
   // Nếu số sân vượt quá 16, tiến hành gộp các sân có số suất nhỏ nhất lại với nhau
   while (courts.length > MAX_COURTS_PER_SHIFT) {
     // Sắp xếp tìm 2 sân có tổng suất nhỏ nhất để gộp
@@ -280,17 +338,18 @@ export function pairClassesIntoCourts(
     const mergedMan = smallest1.manCount + smallest2.manCount;
     const mergedChay = smallest1.chayCount + smallest2.chayCount;
     const mergedChao = smallest1.chaoCount + smallest2.chaoCount;
+    const mergedClasses = [...smallest1.classes, ...smallest2.classes];
 
     const mergedCourt: DiningCourt = {
       courtNumber: 0,
       courtName: "",
       shift,
-      classes: [...smallest1.classes, ...smallest2.classes],
+      classes: mergedClasses,
       totalMeals: mergedTotalMeals,
       manCount: mergedMan,
       chayCount: mergedChay,
       chaoCount: mergedChao,
-      isSingleClass: false,
+      isSingleClass: mergedClasses.length === 1,
       isInIdealRange: mergedTotalMeals >= 40 && mergedTotalMeals <= 55,
       students: [...smallest1.students, ...smallest2.students],
     };

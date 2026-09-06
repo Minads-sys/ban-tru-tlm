@@ -175,7 +175,13 @@ export function SidebarNav({ user }: SidebarNavProps) {
             if (item.adminOnly && user?.role !== "ADMIN") return false;
             if (!item.permission) return true;
             if (user?.role === "ADMIN") return true;
-            if (user?.role === "CASHIER" && item.href === "/admin/billing") return true;
+            if (user?.role === "CASHIER") {
+              const cashierAllowedPaths = [
+                "/admin/billing",
+                "/admin/daily-meals",
+              ];
+              if (cashierAllowedPaths.includes(item.href)) return true;
+            }
             if (user?.role === "ACCOUNTANT") {
               const accountantAllowedPaths = [
                 "/admin",
@@ -194,10 +200,14 @@ export function SidebarNav({ user }: SidebarNavProps) {
           }).map((item) => {
             const Icon = item.icon;
             const active = isLinkActive(item.href);
+            const targetHref =
+              user?.role === "CASHIER" && item.href === "/admin/daily-meals"
+                ? "/admin/daily-meals?tab=dining-areas"
+                : item.href;
             return (
               <Link
                 key={item.href}
-                href={item.href}
+                href={targetHref}
                 onClick={() => setIsOpen(false)}
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150",
@@ -215,6 +225,8 @@ export function SidebarNav({ user }: SidebarNavProps) {
                 <span className="truncate">
                   {user?.role === "CASHIER" && item.href === "/admin/billing"
                     ? "Quầy Thu Ngân"
+                    : user?.role === "CASHIER" && item.href === "/admin/daily-meals"
+                    ? "Chia Sân & Chốt Suất"
                     : user?.role === "ACCOUNTANT" && item.href === "/admin/meal-cancel"
                     ? "Lịch sử & Cắt suất"
                     : item.title}
