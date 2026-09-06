@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SearchableClassSelect } from '@/components/admin/searchable-class-select';
 import {
   CalendarX,
   AlertTriangle,
@@ -83,6 +84,7 @@ export function BulkMealCancelDialog({
     let isMounted = true;
     setIsLoadingStatus(true);
     setStatusData(null);
+    setSelectedStudentIds(new Set());
 
     getBulkActionStudentStatus(selectedClassId, cancelDate)
       .then((res) => {
@@ -90,11 +92,8 @@ export function BulkMealCancelDialog({
         setIsLoadingStatus(false);
         if (res.success && res.data) {
           setStatusData(res.data);
-          // By default, select all active students who are not already cancelled
-          const eligibleIds = res.data.students
-            .filter((s: any) => !s.cancellation || s.cancellation.status === 'REJECTED')
-            .map((s: any) => s.id);
-          setSelectedStudentIds(new Set(eligibleIds));
+          // Mặc định khi mở popup hoặc đổi lớp/ngày là KHÔNG tích chọn tất cả
+          setSelectedStudentIds(new Set());
         } else {
           setStatusData(null);
         }
@@ -109,6 +108,15 @@ export function BulkMealCancelDialog({
       isMounted = false;
     };
   }, [open, selectedClassId, cancelDate]);
+
+  // Reset trạng thái khi đóng popup
+  useEffect(() => {
+    if (!open) {
+      setSelectedStudentIds(new Set());
+      setSearchQuery('');
+      setBypassCutoff(false);
+    }
+  }, [open]);
 
   // Filter students by search
   const filteredStudents = useMemo(() => {
@@ -176,10 +184,11 @@ export function BulkMealCancelDialog({
     }
 
     if (statusData?.isPastMorningCutoff && !bypassCutoff) {
+      const cutoffStr = statusData.cutoffTime || statusData.cutoffMorning;
       Swal.fire({
         icon: 'warning',
-        title: 'Đã quá giờ chốt sổ',
-        text: `Thời điểm này đã quá giờ chốt sáng (${statusData.cutoffMorning}) hoặc ngày đã qua. Vui lòng tích chọn "Xác nhận duyệt ngoại lệ" để tiếp tục.`,
+        title: 'Đã quá giờ khóa sổ',
+        text: `Thời điểm này đã quá giờ khóa sổ chính thức (${cutoffStr}) hoặc ngày đã qua. Vui lòng tích chọn "Xác nhận duyệt ngoại lệ" để tiếp tục.`,
       });
       return;
     }
@@ -261,18 +270,12 @@ export function BulkMealCancelDialog({
               <label className="text-xs font-semibold text-slate-700 block mb-1.5">
                 Chọn Lớp học: <span className="text-rose-500">*</span>
               </label>
-              <Select value={selectedClassId} onValueChange={setSelectedClassId}>
-                <SelectTrigger className="w-full bg-white h-9 text-xs">
-                  <SelectValue placeholder="Chọn lớp..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {classes.map((c) => (
-                    <SelectItem key={c.id} value={c.id} className="text-xs">
-                      Lớp {c.name} ({c.id})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableClassSelect
+                classes={classes}
+                value={selectedClassId}
+                onChange={setSelectedClassId}
+                placeholder="Chọn hoặc gõ tìm lớp..."
+              />
             </div>
 
             <div>
@@ -328,10 +331,10 @@ export function BulkMealCancelDialog({
                   <Clock className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
                   <div className="flex-1">
                     <div className="font-semibold">
-                      Đã quá giờ chốt sáng ({statusData.cutoffMorning}) hoặc ngày đã qua!
+                      Đã quá giờ khóa sổ ({statusData.cutoffTime || statusData.cutoffMorning}) hoặc ngày đã qua!
                     </div>
                     <p className="text-[11px] text-amber-700 mt-0.5">
-                      Thao tác sau giờ chốt cần xác nhận duyệt ngoại lệ để phục vụ đối soát.
+                      Thao tác sau giờ khóa sổ cần xác nhận duyệt ngoại lệ để phục vụ đối soát.
                     </p>
                     <label className="flex items-center gap-2 mt-2 cursor-pointer font-medium text-amber-900">
                       <input
@@ -340,7 +343,7 @@ export function BulkMealCancelDialog({
                         onChange={(e) => setBypassCutoff(e.target.checked)}
                         className="rounded text-amber-600 focus:ring-amber-500 h-4 w-4"
                       />
-                      <span>Xác nhận duyệt ngoại lệ sau giờ chốt sổ</span>
+                      <span>Xác nhận duyệt ngoại lệ sau giờ khóa sổ</span>
                     </label>
                   </div>
                 </div>

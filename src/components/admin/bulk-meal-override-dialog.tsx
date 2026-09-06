@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SearchableClassSelect } from '@/components/admin/searchable-class-select';
 import {
   RefreshCw,
   AlertTriangle,
@@ -195,10 +196,11 @@ export function BulkMealOverrideDialog({
     }
 
     if (statusData?.isPastAfternoonCutoff && !bypassCutoff) {
+      const cutoffStr = statusData.cutoffTime || statusData.cutoffAfternoon || statusData.cutoffMorning;
       Swal.fire({
         icon: 'warning',
         title: 'Đã quá giờ khóa sổ đổi món',
-        text: `Thời điểm này đã quá giờ khóa sổ chiều (${statusData.cutoffAfternoon}) hoặc là ngày hôm nay/quá khứ. Vui lòng tích chọn "Xác nhận đổi món ngoại lệ" để tiếp tục.`,
+        text: `Thời điểm này đã quá giờ khóa sổ chính thức (${cutoffStr}) hoặc ngày đã qua. Vui lòng tích chọn "Xác nhận đổi món ngoại lệ" để tiếp tục.`,
       });
       return;
     }
@@ -279,18 +281,12 @@ export function BulkMealOverrideDialog({
               <label className="text-xs font-semibold text-slate-700 block mb-1.5">
                 Chọn Lớp học: <span className="text-rose-500">*</span>
               </label>
-              <Select value={selectedClassId} onValueChange={setSelectedClassId}>
-                <SelectTrigger className="w-full bg-white h-9 text-xs">
-                  <SelectValue placeholder="Chọn lớp..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {classes.map((c) => (
-                    <SelectItem key={c.id} value={c.id} className="text-xs">
-                      Lớp {c.name} ({c.id})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableClassSelect
+                classes={classes}
+                value={selectedClassId}
+                onChange={setSelectedClassId}
+                placeholder="Chọn hoặc gõ tìm lớp..."
+              />
             </div>
 
             <div>
@@ -346,7 +342,7 @@ export function BulkMealOverrideDialog({
                   <Clock className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
                   <div className="flex-1">
                     <div className="font-semibold">
-                      Đã qua giờ khóa sổ chiều ({statusData.cutoffAfternoon}) hoặc ngày đã qua!
+                      Đã quá giờ khóa sổ chính thức ({statusData.cutoffTime || statusData.cutoffAfternoon || statusData.cutoffMorning}) hoặc ngày đã qua!
                     </div>
                     <p className="text-[11px] text-amber-700 mt-0.5">
                       Thao tác đổi món sau giờ chốt cần sự xác nhận ngoại lệ của Quản lý / Giáo viên.

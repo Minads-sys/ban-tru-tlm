@@ -82,6 +82,7 @@ interface DailyMealsResponse {
   totalSummary?: TotalSummary;
   classSummaries?: ClassSummary[];
   isFullyLocked?: boolean;
+  isAfterLockTime?: boolean;
   isExpectedLocked?: boolean;
   message?: string;
   error?: string;
@@ -129,7 +130,6 @@ export default function DailyMealsPage() {
     type: 'success' | 'error' | 'info';
     text: string;
   } | null>(null);
-  const [ignoreLockTime, setIgnoreLockTime] = useState(false);
 
   // Fetch school settings
   useEffect(() => {
@@ -198,9 +198,18 @@ export default function DailyMealsPage() {
     onChanged: () => fetchData(selectedDate, false),
   });
 
+  // Định kỳ tự động đồng bộ khi xem ngày hôm nay để cập nhật trạng thái chốt tức thì khi đến giờ
+  useEffect(() => {
+    if (selectedDate !== getTodayDateString()) return;
+    const interval = setInterval(() => {
+      fetchData(selectedDate, false);
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [selectedDate, fetchData]);
+
   // Helper check if report is past lock time 2 (chốt chính thức)
   const isPastLockTime2 = useCallback(() => {
-    if (ignoreLockTime) return true;
+    if (data?.isAfterLockTime !== undefined) return data.isAfterLockTime;
     if (!data || !data.date || !data.lockTime2) return false;
     const now = new Date();
     const vnTimeStr = now.toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" });
@@ -212,8 +221,8 @@ export default function DailyMealsPage() {
     
     const today = new Date(vnNow.getFullYear(), vnNow.getMonth(), vnNow.getDate());
     
-    if (rDate < today) return true; // Quá khứ
-    if (rDate > today) return false; // Tương lai
+    if (rDate.getTime() < today.getTime()) return true; // Quá khứ
+    if (rDate.getTime() > today.getTime()) return false; // Tương lai
     
     // Hôm nay, so sánh giờ phút
     const [hours, minutes] = data.lockTime2.split(":").map(Number);
@@ -221,7 +230,7 @@ export default function DailyMealsPage() {
     if (vnNow.getHours() === hours && vnNow.getMinutes() >= minutes) return true;
     
     return false;
-  }, [data, ignoreLockTime]);
+  }, [data]);
 
   // Handle lock meals
   const handleLockMeals = async () => {
@@ -508,19 +517,6 @@ export default function DailyMealsPage() {
                     className="h-9 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-900 shadow-xs focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
                 </div>
-                
-                <div className="flex items-center gap-2 bg-amber-50 px-2.5 py-1.5 rounded border border-amber-200">
-                  <input
-                    type="checkbox"
-                    id="ignoreLockTime"
-                    checked={ignoreLockTime}
-                    onChange={(e) => setIgnoreLockTime(e.target.checked)}
-                    className="rounded border-amber-300 text-amber-600 focus:ring-amber-500 cursor-pointer h-4 w-4"
-                  />
-                  <label htmlFor="ignoreLockTime" className="text-xs font-medium text-amber-800 cursor-pointer">
-                    Bỏ qua giờ chốt (Test)
-                  </label>
-                </div>
                 <div className="flex items-center gap-1.5">
                   <Button
                     type="button"
@@ -559,20 +555,20 @@ export default function DailyMealsPage() {
                     <AlertCircle className="h-4 w-4 text-slate-400" />
                     <span>Không có dữ liệu</span>
                   </Badge>
-                ) : isFullyLocked ? (
+                ) : (isFullyLocked || isPastLockTime2()) ? (
                   <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-100 px-3 py-1.5 text-xs font-medium gap-1.5 shadow-xs">
                     <ShieldCheck className="h-4 w-4 text-emerald-600" />
-                    <span>Đã chốt sổ ngày ăn</span>
+                    <span>ĐÃ CHỐT SỐ BÁO BẾP</span>
                   </Badge>
                 ) : isExpectedLocked ? (
                   <Badge className="bg-blue-100 text-blue-800 border-blue-300 hover:bg-blue-100 px-3 py-1.5 text-xs font-medium gap-1.5 shadow-xs">
                     <Clock className="h-4 w-4 text-blue-600" />
-                    <span>Đã chốt suất dự kiến đi chợ</span>
+                    <span>Đã chốt suất dự kiến</span>
                   </Badge>
                 ) : (
-                  <Badge className="bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-100 px-3 py-1.5 text-xs font-medium gap-1.5 shadow-xs">
-                    <Clock className="h-4 w-4 text-amber-600" />
-                    <span>Chưa chốt số liệu</span>
+                  <Badge className="bg-rose-100 text-rose-800 border-rose-300 hover:bg-rose-100 px-3 py-1.5 text-xs font-medium gap-1.5 shadow-xs">
+                    <Clock className="h-4 w-4 text-rose-600" />
+                    <span>Số liệu chưa chốt</span>
                   </Badge>
                 )}
               </div>
@@ -777,20 +773,23 @@ export default function DailyMealsPage() {
                 Vui lòng kiểm tra lại thời khóa biểu tuần của các lớp hoặc chọn một ngày học khác.
               </p>
             </div>
-          ) : (!isFullyLocked && !isPastLockTime2()) ? (
-            <div className="flex flex-col items-center justify-center py-16 px-4 text-center border-2 border-dashed border-amber-200 bg-amber-50 m-4 rounded-xl">
-              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-100 text-amber-500 mb-3 shadow-inner">
-                <AlertTriangle className="h-7 w-7" />
-              </div>
-              <h3 className="text-base font-semibold text-amber-800 mb-1">
-                Đang chờ chốt số liệu thực tế
-              </h3>
-              <p className="text-sm text-amber-700/80 max-w-md">
-                Bảng chia thức ăn chi tiết của từng lớp đang bị ẩn để tránh sai sót. Dữ liệu sẽ tự động mở khóa sau thời gian chốt chính thức lúc <strong className="text-amber-900">{data?.lockTime2}</strong>.
-              </p>
-            </div>
           ) : (
             <>
+              {/* CẢNH BÁO TRẠNG THÁI CHỐT SỔ */}
+              {(isFullyLocked || isPastLockTime2()) ? (
+                <div className="bg-emerald-600 text-white font-bold py-2.5 px-4 text-center text-sm sm:text-base flex items-center justify-center gap-2 shadow-xs uppercase tracking-wide">
+                  <ShieldCheck className="h-5 w-5 shrink-0" />
+                  <span>ĐÃ CHỐT SỐ BÁO BẾP</span>
+                </div>
+              ) : (
+                <div className="bg-red-600 text-white font-bold py-2.5 px-4 text-center text-sm sm:text-base flex items-center justify-center gap-2 shadow-xs tracking-wide">
+                  <AlertTriangle className="h-5 w-5 shrink-0" />
+                  <span>Số liệu chưa chốt</span>
+                  <span className="text-xs font-normal opacity-90">
+                    (Giờ chốt tự động trong cài đặt: {data?.lockTime2 || "07:00"})
+                  </span>
+                </div>
+              )}
               <Table className="print-table" wrapperClassName="max-h-[65vh]">
                 <TableHeader className="sticky top-0 z-10 bg-slate-50 text-xs shadow-sm shadow-slate-200">
                   <TableRow>
@@ -990,32 +989,41 @@ export default function DailyMealsPage() {
       {/* ========================================================
           BIG ACTION LOCK BUTTON (no-print)
          ======================================================== */}
-      {!isFullyLocked && (
-        <div className="no-print pt-2 flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-100/60 p-4 rounded-xl border border-slate-200">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-100 text-red-600">
-              <Lock className="h-5 w-5" />
+      {classSummaries.length > 0 && (
+        <div className="no-print pt-2">
+          {(isFullyLocked || isPastLockTime2()) ? (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-emerald-50 p-4 rounded-xl border border-emerald-200">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600">
+                  <ShieldCheck className="h-5 w-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-emerald-900">
+                    Đã chốt số báo bếp ngày {formatDateDDMMYYYY(selectedDate)}
+                  </h4>
+                  <p className="text-xs text-emerald-700">
+                    Dữ liệu đã tự động khóa theo giờ chốt ({data?.lockTime2 || "07:00"}). Nếu cần chốt bổ sung hoặc điều chỉnh, admin chỉ cần chỉnh sửa giờ chốt trong Cài đặt hệ thống.
+                  </p>
+                </div>
+              </div>
             </div>
-            <div>
-              <h4 className="text-sm font-bold text-slate-900">
-                Khóa sổ dữ liệu ngày {formatDateDDMMYYYY(selectedDate)}
-              </h4>
-              <p className="text-xs text-slate-500">
-                Sau khi chốt, dữ liệu sẽ được lưu cố định vào bảng tổng hợp và gửi số lượng sang nhà bếp.
-              </p>
+          ) : (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-amber-50 p-4 rounded-xl border border-amber-200">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+                  <Clock className="h-5 w-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-amber-900">
+                    Số liệu chưa chốt - Tự động chốt sổ lúc {data?.lockTime2 || "07:00"}
+                  </h4>
+                  <p className="text-xs text-amber-700">
+                    Hệ thống sẽ tự động chốt sổ và khóa dữ liệu báo bếp sau giờ quy định mà không cần bấm nút chốt suất. Thao tác báo cắt và đổi món vẫn đang được tiếp nhận.
+                  </p>
+                </div>
+              </div>
             </div>
-          </div>
-
-          <Button
-            type="button"
-            size="lg"
-            onClick={() => { setLockType("FINAL"); setIsConfirmOpen(true); }}
-            disabled={isLoading || isLocking || classSummaries.length === 0 || !isPastLockTime2()}
-            className="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white font-bold px-6 py-2.5 shadow-md hover:shadow-lg transition-all text-sm gap-2 cursor-pointer"
-          >
-            <Lock className="h-4 w-4" />
-            <span>CHỐT SUẤT ĂN NGÀY {formatDateDDMMYYYY(selectedDate)}</span>
-          </Button>
+          )}
         </div>
       )}
 

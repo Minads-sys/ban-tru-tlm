@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
 // POST: Gửi yêu cầu cắt suất mới
 export async function POST(request: NextRequest) {
   try {
-    const { studentId, cancelDate, reason, ignoreCutoff } = await request.json();
+    const { studentId, cancelDate, reason } = await request.json();
 
     if (!studentId || !cancelDate || !reason) {
       return NextResponse.json(
@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
 
     if (requestDate.getTime() === localToday.getTime()) {
       // Nếu cắt cho ngày hôm nay thì kiểm tra giờ khóa sổ MEAL_LOCK_TIME_2
-      if (!ignoreCutoff && isPastCutoffTime(lockTime2Setting)) {
+      if (isPastCutoffTime(lockTime2Setting)) {
         return NextResponse.json(
           {
             error: `Đã quá giờ chốt chính thức (${lockTime2Setting}). Không thể cắt suất cho ngày hôm nay nữa.`,

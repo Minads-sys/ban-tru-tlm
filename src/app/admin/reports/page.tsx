@@ -37,6 +37,7 @@ import {
   Users,
   TrendingUp,
   AlertTriangle,
+  ShieldCheck,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 
@@ -53,6 +54,7 @@ export default function ReportsPage() {
     date: string;
     lockTime2: string;
     isFullyLocked: boolean;
+    isAfterLockTime?: boolean;
     isExpectedLocked: boolean;
     totalSummary: {
       totalRegistered: number;
@@ -86,6 +88,7 @@ export default function ReportsPage() {
 
   // Helper check if report is past lock time 2 (chốt chính thức)
   const isPastLockTime2 = () => {
+    if (dailyReport?.isAfterLockTime !== undefined) return dailyReport.isAfterLockTime;
     if (!dailyReport) return false;
     const now = new Date();
     const vnTimeStr = now.toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" });
@@ -97,8 +100,8 @@ export default function ReportsPage() {
     
     const today = new Date(vnNow.getFullYear(), vnNow.getMonth(), vnNow.getDate());
     
-    if (rDate < today) return true; // Quá khứ
-    if (rDate > today) return false; // Tương lai
+    if (rDate.getTime() < today.getTime()) return true; // Quá khứ
+    if (rDate.getTime() > today.getTime()) return false; // Tương lai
     
     // Hôm nay, so sánh giờ phút
     const [hours, minutes] = dailyReport.lockTime2.split(":").map(Number);
@@ -364,18 +367,22 @@ export default function ReportsPage() {
                 <CardHeader>
                   <CardTitle>Chi tiết theo lớp - Ngày {formatDate(reportDate)}</CardTitle>
                 </CardHeader>
-                <CardContent>
-                  {/* Kiểm tra nếu chưa qua giờ chốt và chưa khóa thì ẩn chi tiết */}
-                  {(!dailyReport.isFullyLocked && !isPastLockTime2()) ? (
-                    <div className="py-12 text-center border-2 border-dashed border-yellow-200 bg-yellow-50 rounded-lg">
-                      <AlertTriangle className="h-10 w-10 text-yellow-500 mx-auto mb-3" />
-                      <h3 className="text-lg font-semibold text-yellow-700 mb-1">Đang chờ chốt số liệu thực tế</h3>
-                      <p className="text-yellow-600 max-w-md mx-auto">
-                        Bảng chia thức ăn chi tiết của từng lớp đang bị ẩn để tránh sai sót. Dữ liệu sẽ tự động mở khóa sau thời gian chốt chính thức lúc <strong>{dailyReport.lockTime2}</strong>.
-                      </p>
+                <CardContent className="space-y-4">
+                  {(dailyReport.isFullyLocked || isPastLockTime2()) ? (
+                    <div className="bg-emerald-600 text-white font-bold py-2.5 px-4 text-center text-sm rounded flex items-center justify-center gap-2 shadow-xs uppercase tracking-wide">
+                      <ShieldCheck className="h-5 w-5 shrink-0" />
+                      <span>ĐÃ CHỐT SỐ BÁO BẾP</span>
                     </div>
                   ) : (
-                    <Table>
+                    <div className="bg-red-600 text-white font-bold py-2.5 px-4 text-center text-sm rounded flex items-center justify-center gap-2 shadow-xs tracking-wide">
+                      <AlertTriangle className="h-5 w-5 shrink-0" />
+                      <span>Số liệu chưa chốt</span>
+                      <span className="text-xs font-normal opacity-90">
+                        (Giờ chốt tự động trong cài đặt: {dailyReport.lockTime2 || "07:00"})
+                      </span>
+                    </div>
+                  )}
+                  <Table>
                       <TableHeader>
                         <TableRow>
                           <TableHead>Lớp</TableHead>
@@ -411,7 +418,6 @@ export default function ReportsPage() {
                         ))}
                       </TableBody>
                     </Table>
-                  )}
                 </CardContent>
               </Card>
             </>

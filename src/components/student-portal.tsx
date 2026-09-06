@@ -157,7 +157,6 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
   // States for Cancel Form
   const [cancelDate, setCancelDate] = useState<string>("");
   const [reason, setReason] = useState<string>("");
-  const [ignoreCutoff, setIgnoreCutoff] = useState<boolean>(false);
   const [submittingCancel, setSubmittingCancel] = useState<boolean>(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [cancelSuccess, setCancelSuccess] = useState<string | null>(null);
@@ -336,7 +335,6 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
           studentId,
           cancelDate,
           reason,
-          ignoreCutoff,
         }),
       });
 
@@ -690,20 +688,6 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                         onChange={(e) => setReason(e.target.value)}
                         required
                       />
-                    </div>
-                    
-                    {/* Nút ẩn bỏ qua giờ chốt (dành cho Test) */}
-                    <div className="flex items-center space-x-2 bg-amber-50 p-2 rounded border border-amber-200">
-                      <input 
-                        type="checkbox" 
-                        id="ignoreCutoffCancel" 
-                        checked={ignoreCutoff}
-                        onChange={(e) => setIgnoreCutoff(e.target.checked)}
-                        className="rounded border-amber-300 text-amber-600 focus:ring-amber-500"
-                      />
-                      <label htmlFor="ignoreCutoffCancel" className="text-xs font-medium text-amber-800 cursor-pointer">
-                        Bỏ qua giờ chốt (Dành cho Test)
-                      </label>
                     </div>
 
                     <Button

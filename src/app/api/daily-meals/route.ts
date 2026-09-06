@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db";
 import { CancellationStatus, BoardingStatus } from "@prisma/client";
 import { broadcastChange } from "@/lib/realtime-hub";
-import { getWeekNumber } from "@/lib/utils";
+import { getWeekNumber, getVietnamTodayUTC, isPastCutoffTime } from "@/lib/utils";
 import { auth } from "@/lib/auth";
 import { logAudit, AUDIT_ACTIONS, AUDIT_MODULES } from "@/lib/audit-log";
 
@@ -79,14 +79,108 @@ export async function GET(request: NextRequest) {
   });
   const overrideMap = new Map(mealOverrides.map(o => [o.studentId, o.mealType]));
 
+  // Lấy cấu hình hệ thống giờ chốt
+  const settings = await prisma.systemSetting.findMany({
+    where: { key: { in: ["MEAL_LOCK_TIME_2", "CUTOFF_TIME"] } }
+  });
+  const lockTime2 = settings.find(s => s.key === "MEAL_LOCK_TIME_2")?.value 
+                 || settings.find(s => s.key === "CUTOFF_TIME")?.value 
+                 || "07:00";
+
+  // Kiểm tra thời gian chốt sổ của ngày ăn:
+  // - Ngày quá khứ: đã qua giờ chốt
+  // - Hôm nay: so sánh với lockTime2 (MEAL_LOCK_TIME_2)
+  // - Ngày tương lai: chưa tới giờ chốt
+  const localToday = getVietnamTodayUTC();
+  const isPastDate = date < localToday;
+  const isToday = date.getTime() === localToday.getTime();
+  const isAfterLockTime = isToday ? isPastCutoffTime(lockTime2) : isPastDate;
+
   // Kiểm tra đã chốt chưa và lấy số dự kiến
-  const existingSummaries = await prisma.dailyMealSummary.findMany({
+  let existingSummaries = await prisma.dailyMealSummary.findMany({
     where: { summaryDate: date },
   });
-  const existingSummaryMap = new Map(existingSummaries.map(s => [s.classId, s]));
   const lockedClasses = new Set(
     existingSummaries.filter((s) => s.isLocked).map((s) => s.classId)
   );
+
+  // Tự động chốt sổ khi đã qua giờ chốt MEAL_LOCK_TIME_2
+  if (isAfterLockTime && schedules.length > 0) {
+    const unLockedSchedules = schedules.filter(s => !lockedClasses.has(s.classId));
+    if (unLockedSchedules.length > 0) {
+      const now = new Date();
+      for (const schedule of unLockedSchedules) {
+        const students = schedule.class.students;
+        const activeStudents = students.filter((s) => !cancelledStudentIds.has(s.id));
+
+        let man = 0;
+        let chay = 0;
+        let chao = 0;
+
+        activeStudents.forEach(s => {
+          const finalMealType = overrideMap.get(s.id) || s.mealType;
+          if (finalMealType === "MAN") man++;
+          else if (finalMealType === "CHAY") chay++;
+          else if (finalMealType === "CHAO") chao++;
+        });
+
+        await prisma.dailyMealSummary.upsert({
+          where: {
+            summaryDate_classId: {
+              summaryDate: date,
+              classId: schedule.classId,
+            },
+          },
+          update: {
+            totalScheduleRegistered: students.length,
+            totalCanceled: students.length - activeStudents.length,
+            finalMan: man,
+            finalChay: chay,
+            finalChao: chao,
+            isLocked: true,
+            lockedAt: now,
+          },
+          create: {
+            summaryDate: date,
+            classId: schedule.classId,
+            totalScheduleRegistered: students.length,
+            totalCanceled: students.length - activeStudents.length,
+            finalMan: man,
+            finalChay: chay,
+            finalChao: chao,
+            isLocked: true,
+            lockedAt: now,
+          },
+        });
+        lockedClasses.add(schedule.classId);
+      }
+      // Nạp lại danh sách summaries sau khi auto-lock
+      existingSummaries = await prisma.dailyMealSummary.findMany({
+        where: { summaryDate: date },
+      });
+    }
+  } else if (!isAfterLockTime) {
+    // Nếu chưa tới giờ chốt (hoặc admin đã gia hạn MEAL_LOCK_TIME_2 sang giờ muộn hơn),
+    // tự động mở khóa các lớp đã chốt trước đó để admin/giáo viên có thể báo cắt hoặc đổi món
+    const lockedInDb = existingSummaries.filter(s => s.isLocked);
+    if (lockedInDb.length > 0) {
+      await prisma.dailyMealSummary.updateMany({
+        where: {
+          summaryDate: date,
+          isLocked: true,
+        },
+        data: {
+          isLocked: false,
+        },
+      });
+      lockedClasses.clear();
+      existingSummaries = await prisma.dailyMealSummary.findMany({
+        where: { summaryDate: date },
+      });
+    }
+  }
+
+  const existingSummaryMap = new Map(existingSummaries.map(s => [s.classId, s]));
 
   // Tổng hợp theo lớp
   const classSummaries = schedules.map((schedule) => {
@@ -143,19 +237,12 @@ export async function GET(request: NextRequest) {
     expectedTotal: classSummaries.reduce((sum, c) => sum + c.expectedTotal, 0),
   };
 
-  // Lấy cấu hình hệ thống giờ chốt
-  const settings = await prisma.systemSetting.findMany({
-    where: { key: { in: ["MEAL_LOCK_TIME_2", "CUTOFF_TIME"] } }
-  });
-  const lockTime2 = settings.find(s => s.key === "MEAL_LOCK_TIME_2")?.value 
-                 || settings.find(s => s.key === "CUTOFF_TIME")?.value 
-                 || "08:00";
-
   return NextResponse.json({
     date: dateStr,
     weekNumber,
     dayField,
     lockTime2,
+    isAfterLockTime,
     totalSummary,
     classSummaries,
     isFullyLocked: classSummaries.length > 0 && classSummaries.every((c) => c.isLocked),

@@ -250,10 +250,10 @@ export async function getBulkActionStudentStatus(classId: string, dateStr: strin
     });
     const startSetting = settings.find((s) => s.key === 'SCHOOL_YEAR_START')?.value;
     const endSetting = settings.find((s) => s.key === 'SCHOOL_YEAR_END')?.value;
-    const cutoffMorning = settings.find((s) => s.key === 'MEAL_LOCK_TIME_2')?.value 
-                       || settings.find((s) => s.key === 'CUTOFF_TIME')?.value 
-                       || '08:00';
-    const cutoffAfternoon = settings.find((s) => s.key === 'CUTOFF_TIME')?.value || '16:30';
+    // Giờ chốt chính thức của ngày ăn (ưu tiên MEAL_LOCK_TIME_2 từ cài đặt, fallback CUTOFF_TIME, mặc định 07:30)
+    const officialCutoff = settings.find((s) => s.key === 'MEAL_LOCK_TIME_2')?.value 
+                        || settings.find((s) => s.key === 'CUTOFF_TIME')?.value 
+                        || '07:30';
 
     let isOutOfSchoolYear = false;
     if (startSetting && endSetting) {
@@ -267,15 +267,16 @@ export async function getBulkActionStudentStatus(classId: string, dateStr: strin
     }
 
     // 2. Kiểm tra ngày quá khứ / hôm nay / quá giờ chốt
+    // Quy tắc: Giờ khóa sổ cắt suất và đổi món là giờ trong cài đặt của chính ngày ăn
     const localToday = getVietnamTodayUTC();
     const isPastDate = requestDate < localToday;
     const isToday = requestDate.getTime() === localToday.getTime();
-    const isPastMorningCutoff = isToday ? isPastCutoffTime(cutoffMorning) : isPastDate;
+    // Nếu là ngày hôm nay thì so sánh giờ hiện tại với giờ khóa sổ của ngày ăn; ngày quá khứ coi như đã qua; ngày tương lai chưa tới giờ khóa sổ
+    const isPastCutoff = isToday ? isPastCutoffTime(officialCutoff) : isPastDate;
 
     const tomorrow = new Date(localToday);
     tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
     const isTomorrow = requestDate.getTime() === tomorrow.getTime();
-    const isPastAfternoonCutoff = isTomorrow ? isPastCutoffTime(cutoffAfternoon) : requestDate < tomorrow;
 
     // 3. Kiểm tra Thời khóa biểu của Lớp
     let hasSchedule = false;
@@ -389,10 +390,12 @@ export async function getBulkActionStudentStatus(classId: string, dateStr: strin
         isPastDate,
         isToday,
         isTomorrow,
-        isPastMorningCutoff,
-        isPastAfternoonCutoff,
-        cutoffMorning,
-        cutoffAfternoon,
+        isPastCutoff,
+        isPastMorningCutoff: isPastCutoff,
+        isPastAfternoonCutoff: isPastCutoff,
+        cutoffTime: officialCutoff,
+        cutoffMorning: officialCutoff,
+        cutoffAfternoon: officialCutoff,
         students: studentData,
       },
     };
@@ -452,7 +455,7 @@ export async function bulkCreateAndApproveCancellations(params: {
     const endSetting = settings.find((s) => s.key === 'SCHOOL_YEAR_END')?.value;
     const cutoffTime = settings.find((s) => s.key === 'MEAL_LOCK_TIME_2')?.value 
                     || settings.find((s) => s.key === 'CUTOFF_TIME')?.value 
-                    || '08:00';
+                    || '07:30';
 
     if (startSetting && endSetting) {
       const [syY, syM, syD] = startSetting.split('-').map(Number);
@@ -475,7 +478,7 @@ export async function bulkCreateAndApproveCancellations(params: {
       if (isToday && isPastCutoffTime(cutoffTime)) {
         return { 
           success: false, 
-          error: `Đã quá giờ chốt sáng (${cutoffTime}). Cần xác nhận duyệt ngoại lệ để tiếp tục thao tác.` 
+          error: `Đã quá giờ khóa sổ trong ngày (${cutoffTime}). Cần xác nhận duyệt ngoại lệ để tiếp tục thao tác.` 
         };
       }
     }
@@ -626,13 +629,15 @@ export async function bulkOverrideMeals(params: {
       return { success: false, error: 'Không thể đổi món vào Chủ nhật (không có suất ăn bán trú)' };
     }
 
-    // 2. Kiểm tra Năm học
+    // 2. Kiểm tra Năm học & Cài đặt
     const settings = await prisma.systemSetting.findMany({
-      where: { key: { in: ['SCHOOL_YEAR_START', 'SCHOOL_YEAR_END', 'CUTOFF_TIME'] } },
+      where: { key: { in: ['SCHOOL_YEAR_START', 'SCHOOL_YEAR_END', 'MEAL_LOCK_TIME_2', 'CUTOFF_TIME'] } },
     });
     const startSetting = settings.find((s) => s.key === 'SCHOOL_YEAR_START')?.value;
     const endSetting = settings.find((s) => s.key === 'SCHOOL_YEAR_END')?.value;
-    const cutoffTime = settings.find((s) => s.key === 'CUTOFF_TIME')?.value || '16:30';
+    const cutoffTime = settings.find((s) => s.key === 'MEAL_LOCK_TIME_2')?.value 
+                    || settings.find((s) => s.key === 'CUTOFF_TIME')?.value 
+                    || '07:30';
 
     if (startSetting && endSetting) {
       const [syY, syM, syD] = startSetting.split('-').map(Number);
@@ -645,25 +650,23 @@ export async function bulkOverrideMeals(params: {
     }
 
     // 3. Kiểm tra Giờ chốt đổi món nếu không bypass
+    // Quy tắc: Giờ khóa sổ của ngày ăn là giờ trong cài đặt của chính ngày ăn đó
     const localToday = getVietnamTodayUTC();
-    const tomorrow = new Date(localToday);
-    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    const isPastDate = requestDate < localToday;
+    const isToday = requestDate.getTime() === localToday.getTime();
 
     if (!bypassCutoff) {
-      if (requestDate < tomorrow) {
-        if (requestDate.getTime() === tomorrow.getTime()) {
-          if (isPastCutoffTime(cutoffTime)) {
-            return {
-              success: false,
-              error: `Đã quá giờ khóa sổ đổi món (${cutoffTime}). Cần xác nhận duyệt ngoại lệ để tiếp tục.`,
-            };
-          }
-        } else {
-          return {
-            success: false,
-            error: 'Không thể đổi món cho ngày hôm nay hoặc ngày đã qua nếu không xác nhận ngoại lệ.',
-          };
-        }
+      if (isPastDate) {
+        return {
+          success: false,
+          error: 'Không thể đổi món cho ngày đã qua nếu không xác nhận ngoại lệ.',
+        };
+      }
+      if (isToday && isPastCutoffTime(cutoffTime)) {
+        return {
+          success: false,
+          error: `Đã quá giờ khóa sổ trong ngày (${cutoffTime}). Cần xác nhận đổi món ngoại lệ để tiếp tục.`,
+        };
       }
     }
 

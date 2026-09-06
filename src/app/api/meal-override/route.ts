@@ -46,18 +46,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Kiểm tra giờ khóa sổ
-    const cutoffSetting = await prisma.systemSetting.findUnique({
-      where: { key: "CUTOFF_TIME" },
+    // Kiểm tra giờ khóa sổ của ngày ăn
+    const settings = await prisma.systemSetting.findMany({
+      where: { key: { in: ["MEAL_LOCK_TIME_2", "CUTOFF_TIME"] } }
     });
-    const cutoffTime = cutoffSetting?.value || "16:30";
+    const cutoffTime = settings.find(s => s.key === "MEAL_LOCK_TIME_2")?.value 
+                    || settings.find(s => s.key === "CUTOFF_TIME")?.value 
+                    || "07:30";
 
     const [reqYear, reqMonth, reqDay] = date.split("-").map(Number);
     const requestDate = new Date(Date.UTC(reqYear, reqMonth - 1, reqDay));
     
     const localToday = getVietnamTodayUTC();
-    const tomorrow = new Date(localToday);
-    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
 
     // Kiểm tra nằm trong năm học
     const schoolSettings = await prisma.systemSetting.findMany({
@@ -80,19 +80,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (requestDate < tomorrow) {
-      if (requestDate.getTime() === tomorrow.getTime()) {
-        if (isPastCutoffTime(cutoffTime)) {
-          return NextResponse.json(
-            {
-              error: `Đã quá giờ khóa sổ (${cutoffTime}). Không thể đổi món cho ngày mai.`,
-            },
-            { status: 400 }
-          );
-        }
-      } else {
+    if (requestDate < localToday) {
+      return NextResponse.json(
+        { error: "Không thể đổi món cho ngày đã qua" },
+        { status: 400 }
+      );
+    }
+
+    if (requestDate.getTime() === localToday.getTime()) {
+      if (isPastCutoffTime(cutoffTime)) {
         return NextResponse.json(
-          { error: "Không thể đổi món cho ngày hôm nay hoặc ngày đã qua" },
+          {
+            error: `Đã quá giờ khóa sổ chính thức (${cutoffTime}). Không thể đổi món cho ngày hôm nay nữa.`,
+          },
           { status: 400 }
         );
       }
