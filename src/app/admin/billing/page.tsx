@@ -45,6 +45,7 @@ import {
   FileCheck2,
   UtensilsCrossed,
   Trash2,
+  RotateCcw,
 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useRealtime } from "@/hooks/use-realtime";
@@ -417,6 +418,61 @@ export default function BillingPage() {
       }
     } catch {
       Swal.fire("Lỗi", "Lỗi kết nối khi xóa giao dịch", "error");
+    }
+  };
+
+  // Hủy gạch nợ (Void) - Hoàn tác giao dịch đã khớp nhầm (như các giao dịch demo/test)
+  const handleVoidTransaction = async (txId: string, studentName?: string) => {
+    const confirm = await Swal.fire({
+      title: "Hủy gạch nợ giao dịch này?",
+      html: `
+        <div class="text-sm text-left space-y-3">
+          <p>Giao dịch đã gạch cho học sinh <b class="text-blue-700">${studentName || "này"}</b> sẽ bị hoàn tác.</p>
+          <p class="text-amber-700 font-medium">⚠️ Số tiền sẽ được trừ ra khỏi hóa đơn. Hóa đơn sẽ được cập nhật lại về trạng thái <b>Chưa thanh toán</b> (nếu không còn khoản đóng nào khác).</p>
+          <div class="pt-2 border-t border-gray-200">
+            <label class="flex items-center gap-2 cursor-pointer text-slate-800 text-xs font-semibold">
+              <input type="checkbox" id="swal-delete-tx" class="rounded text-rose-600 h-4 w-4" checked />
+              <span>Đồng thời xóa hẳn giao dịch test này khỏi hệ thống</span>
+            </label>
+            <p class="text-[11px] text-gray-500 mt-1 pl-6">Nếu bỏ chọn, giao dịch sẽ chuyển về trạng thái &quot;Chưa khớp&quot; để gạch tay lại.</p>
+          </div>
+        </div>
+      `,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Xác nhận hủy gạch nợ",
+      cancelButtonText: "Không hủy",
+      confirmButtonColor: "#e11d48",
+      preConfirm: () => {
+        const checkbox = document.getElementById("swal-delete-tx") as HTMLInputElement;
+        return { deleteTx: checkbox ? checkbox.checked : true };
+      },
+    });
+
+    if (!confirm.isConfirmed) return;
+
+    const deleteTx = confirm.value?.deleteTx ?? true;
+
+    try {
+      const res = await fetch("/api/sepay/transactions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transactionId: txId,
+          reason: "Hủy gạch nợ giao dịch demo/test",
+          deleteTx,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        Swal.fire("Thành công", data.message, "success");
+        fetchTransactions(txPage);
+        fetchBills(currentPage);
+      } else {
+        Swal.fire("Lỗi", data.error || "Không thể hủy gạch nợ", "error");
+      }
+    } catch {
+      Swal.fire("Lỗi", "Lỗi kết nối khi hủy gạch nợ", "error");
     }
   };
 
@@ -1296,17 +1352,13 @@ export default function BillingPage() {
 
                 <div className="flex items-center gap-2 w-full md:w-auto justify-end">
                   <Button
-                    onClick={handleSyncSepay}
-                    disabled={isSyncing}
+                    onClick={() => fetchTransactions(txPage)}
+                    disabled={txLoading}
                     variant="outline"
-                    className="border-blue-300 text-blue-700 hover:bg-blue-50 text-xs sm:text-sm"
+                    className="border-slate-300 text-slate-700 hover:bg-slate-50 text-xs sm:text-sm"
                   >
-                    {isSyncing ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    ) : (
-                      <RefreshCw className="h-4 w-4 mr-2" />
-                    )}
-                    Đồng bộ từ SePay
+                    <RefreshCw className={`h-4 w-4 mr-2 ${txLoading ? "animate-spin" : ""}`} />
+                    Làm mới danh sách
                   </Button>
                 </div>
               </div>
@@ -1319,9 +1371,9 @@ export default function BillingPage() {
               <div>
                 <CardTitle className="flex items-center gap-2">
                   <CreditCard className="h-5 w-5 text-blue-600" />
-                  Lịch sử biến động số dư SePay
+                  <span>Lịch sử biến động số dư SePay</span>
                   {txTotalRecords > 0 && (
-                    <Badge variant="secondary" className="ml-2 text-xs">
+                    <Badge variant="secondary" className="ml-2">
                       {txTotalRecords} giao dịch
                     </Badge>
                   )}
@@ -1358,28 +1410,30 @@ export default function BillingPage() {
                 </TableHeader>
                 <TableBody>
                   {transactions.map((tx) => (
-                    <TableRow key={tx.id} className={tx.status === "UNMATCHED" ? "bg-amber-50/40" : ""}>
-                      <TableCell className="text-xs text-gray-600 whitespace-nowrap">
+                    <TableRow key={tx.id} className="hover:bg-slate-50/80">
+                      <TableCell className="whitespace-nowrap font-mono text-xs">
                         {new Date(tx.transDate).toLocaleString("vi-VN")}
                       </TableCell>
-                      <TableCell className="font-bold text-green-700 whitespace-nowrap">
-                        +{formatVND(tx.amount)}
+                      <TableCell className="font-semibold text-emerald-600 whitespace-nowrap">
+                        +{Number(tx.amount).toLocaleString("vi-VN")}đ
                       </TableCell>
-                      <TableCell className="max-w-[320px]">
-                        <p className="text-xs font-mono break-words">{tx.content}</p>
-                        {tx.unmatchedReason && (
-                          <p className="text-[11px] text-amber-700 italic mt-0.5">
+                      <TableCell className="max-w-xs">
+                        <p className="font-mono text-xs text-slate-700 truncate" title={tx.content}>
+                          {tx.content}
+                        </p>
+                        {tx.unmatchedReason && tx.status === "UNMATCHED" && (
+                          <p className="text-[11px] text-amber-600 mt-0.5 line-clamp-1 italic">
                             Lý do: {tx.unmatchedReason}
                           </p>
                         )}
                       </TableCell>
                       <TableCell>
-                        {tx.bill ? (
+                        {tx.bill?.student ? (
                           <div className="text-xs">
                             <p className="font-medium text-slate-800">
                               {tx.bill.student.user.fullName} ({tx.bill.student.class.name})
                             </p>
-                            <p className="text-slate-500">
+                            <p className="text-gray-500">
                               Hóa đơn T{tx.bill.month}/{tx.bill.year} • Mã:{" "}
                               <span className="font-mono text-blue-600">
                                 {tx.bill.student.boardingCode || tx.bill.student.studentCode}
@@ -1423,9 +1477,23 @@ export default function BillingPage() {
                             </Button>
                           </div>
                         ) : (
-                          <Badge variant="outline" className="text-gray-400 border-gray-200">
-                            Đã hoàn tất
-                          </Badge>
+                          <div className="flex items-center justify-center gap-1.5">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="border-rose-300 text-rose-700 hover:bg-rose-50 hover:text-rose-800 text-xs h-8 px-2 font-medium shadow-xs"
+                              title="Hủy gạch nợ / Hoàn tác hóa đơn học sinh"
+                              onClick={() =>
+                                handleVoidTransaction(
+                                  tx.id,
+                                  tx.student?.user?.fullName || tx.bill?.student?.user?.fullName
+                                )
+                              }
+                            >
+                              <RotateCcw className="h-3.5 w-3.5 mr-1 text-rose-600" />
+                              Hủy gạch nợ
+                            </Button>
+                          </div>
                         )}
                       </TableCell>
                     </TableRow>
@@ -1435,7 +1503,7 @@ export default function BillingPage() {
                     <TableRow>
                       <TableCell colSpan={7} className="text-center text-gray-400 py-8">
                         <CreditCard className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                        Chưa có giao dịch SePay nào được ghi nhận. Bấm &quot;Đồng bộ từ SePay&quot; để tải giao dịch.
+                        Chưa có giao dịch SePay nào được ghi nhận. Hệ thống sẽ tự động gạch nợ tức thì khi phụ huynh chuyển khoản.
                       </TableCell>
                     </TableRow>
                   )}

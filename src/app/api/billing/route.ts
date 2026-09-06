@@ -95,6 +95,7 @@ export async function GET(request: NextRequest) {
           },
         },
         transactions: {
+          where: { isVoided: false },
           orderBy: {
             transDate: 'desc',
           },

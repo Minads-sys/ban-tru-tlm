@@ -211,7 +211,123 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// DELETE: Xóa giao dịch SePay (chỉ áp dụng cho giao dịch UNMATCHED hoặc dọn dẹp GD 0đ rác)
+// PATCH: Hủy gạch nợ (Void) - Hoàn tác giao dịch đã khớp nhầm và tính lại trạng thái hóa đơn
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { transactionId, reason, deleteTx } = body;
+
+    if (!transactionId) {
+      return NextResponse.json(
+        { error: 'Cần cung cấp transactionId để hủy gạch nợ' },
+        { status: 400 }
+      );
+    }
+
+    const transaction = await prisma.paymentTransaction.findUnique({
+      where: { id: transactionId },
+      include: {
+        bill: {
+          include: {
+            student: {
+              include: {
+                user: { select: { fullName: true } },
+                class: { select: { name: true } },
+              },
+            },
+            transactions: true,
+          },
+        },
+      },
+    });
+
+    if (!transaction) {
+      return NextResponse.json({ error: 'Không tìm thấy giao dịch' }, { status: 404 });
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Tính lại trạng thái hóa đơn nếu giao dịch có liên kết hóa đơn
+      let updatedBill = null;
+      if (transaction.billId && transaction.bill) {
+        const bill = transaction.bill;
+        // Lấy tất cả giao dịch còn lại hợp lệ (bỏ qua giao dịch này và các giao dịch đã void)
+        const validTransactions = bill.transactions.filter(
+          (t) => t.id !== transactionId && !t.isVoided
+        );
+        const totalPaid = validTransactions.reduce((sum, t) => sum + Number(t.amount), 0);
+        const finalAmount = Number(bill.finalAmount);
+
+        let newStatus: PaymentStatus = PaymentStatus.UNPAID;
+        if (totalPaid >= finalAmount && finalAmount > 0) {
+          newStatus = PaymentStatus.PAID;
+        } else if (totalPaid > 0) {
+          newStatus = PaymentStatus.PARTIAL;
+        }
+
+        updatedBill = await tx.monthlyBill.update({
+          where: { id: bill.id },
+          data: { paymentStatus: newStatus },
+        });
+      }
+
+      // 2. Xóa hẳn hoặc chuyển về UNMATCHED
+      if (deleteTx) {
+        await tx.paymentTransaction.delete({
+          where: { id: transactionId },
+        });
+        return { deleted: true, updatedBill };
+      } else {
+        const voidedTx = await tx.paymentTransaction.update({
+          where: { id: transactionId },
+          data: {
+            isVoided: true,
+            voidedAt: new Date(),
+            voidReason: reason || 'Hủy gạch nợ do khớp nhầm (giao dịch demo/test)',
+            status: PaymentTransactionStatus.UNMATCHED,
+            unmatchedReason: `Đã hủy gạch nợ: ${reason || 'Giao dịch demo/test khớp nhầm'}`,
+            billId: null,
+            studentId: null,
+          },
+        });
+        return { deleted: false, voidedTx, updatedBill };
+      }
+    });
+
+    // Phát tín hiệu Realtime
+    if (result.deleted) {
+      broadcastChange('payment_transactions', 'DELETE', { transactionId });
+    } else {
+      broadcastChange('payment_transactions', 'UPDATE', { transactionId });
+    }
+
+    if (transaction.billId) {
+      broadcastChange('monthly_bills', 'UPDATE', {
+        billId: transaction.billId,
+        studentId: transaction.studentId,
+        paymentStatus: result.updatedBill?.paymentStatus,
+      });
+    }
+
+    const studentName = transaction.bill?.student?.user?.fullName || 'học sinh';
+    const billInfo = transaction.bill ? `Tháng ${transaction.bill.month}/${transaction.bill.year}` : '';
+
+    return NextResponse.json({
+      success: true,
+      message: result.deleted
+        ? `Đã hủy gạch nợ và xóa hẳn giao dịch ${transaction.sepayTransId || transactionId.slice(0, 8)} của ${studentName} ${billInfo}. Hóa đơn đã hoàn lại trạng thái.`
+        : `Đã hủy gạch nợ giao dịch ${transaction.sepayTransId || transactionId.slice(0, 8)} của ${studentName} ${billInfo}. Trạng thái hóa đơn đã được tính lại.`,
+      data: result,
+    });
+  } catch (error) {
+    console.error('Error voiding SePay transaction:', error);
+    return NextResponse.json(
+      { error: 'Lỗi khi hủy gạch nợ', details: String(error) },
+      { status: 500 }
+    );
+  }
+}
+
+// DELETE: Xóa giao dịch SePay
 export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -263,17 +379,38 @@ export async function DELETE(request: NextRequest) {
 
     const tx = await prisma.paymentTransaction.findUnique({
       where: { id },
+      include: {
+        bill: {
+          include: {
+            transactions: true,
+          },
+        },
+      },
     });
 
     if (!tx) {
       return NextResponse.json({ error: 'Không tìm thấy giao dịch' }, { status: 404 });
     }
 
-    if (tx.status === PaymentTransactionStatus.MATCHED || tx.status === PaymentTransactionStatus.MANUAL) {
-      return NextResponse.json(
-        { error: 'Không thể xóa giao dịch đã gạch nợ thành công cho hóa đơn.' },
-        { status: 400 }
-      );
+    // Nếu giao dịch đang gắn với hóa đơn, tự động tính lại trạng thái hóa đơn trước khi xóa
+    if (tx.billId && tx.bill) {
+      const remaining = tx.bill.transactions.filter((t) => t.id !== id && !t.isVoided);
+      const totalPaid = remaining.reduce((sum, t) => sum + Number(t.amount), 0);
+      const finalAmount = Number(tx.bill.finalAmount);
+      let newStatus: PaymentStatus = PaymentStatus.UNPAID;
+      if (totalPaid >= finalAmount && finalAmount > 0) newStatus = PaymentStatus.PAID;
+      else if (totalPaid > 0) newStatus = PaymentStatus.PARTIAL;
+
+      await prisma.monthlyBill.update({
+        where: { id: tx.bill.id },
+        data: { paymentStatus: newStatus },
+      });
+
+      broadcastChange('monthly_bills', 'UPDATE', {
+        billId: tx.bill.id,
+        studentId: tx.bill.studentId,
+        paymentStatus: newStatus,
+      });
     }
 
     await prisma.paymentTransaction.delete({
