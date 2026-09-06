@@ -57,6 +57,7 @@ model User {
   voidedTransactions  PaymentTransaction[] @relation("VoidedTransactions")
   cashierClosings      DailyCashClosing[]   @relation("UserCashClosings")
   accountantClosings   DailyCashClosing[]   @relation("AccountantConfirmations")
+  auditLogs            AuditLog[]
 
   @@map("users")
 }
@@ -385,3 +386,28 @@ model SettlementRecord {
   @@index([studentId])
   @@map("settlement_records")
 }
+
+// ==================== NHẬT KÝ THAO TÁC HỆ THỐNG (AUDIT LOG) ====================
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  userId      String?  @map("user_id")
+  userName    String?  @map("user_name")
+  userRole    String?  @map("user_role")
+  action      String   // LOGIN, CREATE, UPDATE, DELETE, IMPORT, EXPORT, APPROVE, REJECT, VOID, RESET
+  module      String   // AUTH, STUDENTS, CLASSES, SCHEDULE, MEALS, BILLING, SETTINGS, SYSTEM
+  description String   // Chi tiết hành động
+  targetId    String?  @map("target_id")
+  metadata    String?  // JSON stringified thông tin thêm
+  ipAddress   String?  @map("ip_address")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([userId])
+  @@index([module])
+  @@index([action])
+  @@map("audit_logs")
+}
+

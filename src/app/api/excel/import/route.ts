@@ -10,6 +10,7 @@ import bcrypt from "bcryptjs";
 import { MealType, BoardingStatus, UserRole } from "@prisma/client";
 import { parseDateValue } from "@/lib/utils";
 import { auth } from "@/lib/auth";
+import { logAudit, AUDIT_ACTIONS, AUDIT_MODULES } from "@/lib/audit-log";
 
 export async function POST(request: NextRequest) {
   try {
@@ -64,6 +65,17 @@ export async function POST(request: NextRequest) {
         });
         created++;
       }
+
+      await logAudit({
+        req: request,
+        userId: session.user.id,
+        userName: (session.user as any).name || (session.user as any).username || "Quản trị viên",
+        userRole: session.user.role,
+        action: AUDIT_ACTIONS.IMPORT,
+        module: AUDIT_MODULES.CLASSES,
+        description: `Import Excel danh sách lớp học: ${created} lớp (File: ${file.name})`,
+        metadata: { filename: file.name, count: created },
+      });
 
       return NextResponse.json({
         message: `Đã import thành công ${created} lớp học`,
@@ -206,6 +218,17 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      await logAudit({
+        req: request,
+        userId: session.user.id,
+        userName: (session.user as any).name || (session.user as any).username || "Quản trị viên",
+        userRole: session.user.role,
+        action: AUDIT_ACTIONS.IMPORT,
+        module: AUDIT_MODULES.STUDENTS,
+        description: `Import Excel danh sách học sinh: ${created} tạo mới, ${updated} cập nhật (File: ${file.name})`,
+        metadata: { filename: file.name, created, updated },
+      });
+
       return NextResponse.json({
         message: `Hoàn tất! Tạo mới ${created} HS, cập nhật ${updated} HS.`,
         created,
@@ -269,6 +292,17 @@ export async function POST(request: NextRequest) {
         });
         created++;
       }
+
+      await logAudit({
+        req: request,
+        userId: session.user.id,
+        userName: (session.user as any).name || (session.user as any).username || "Quản trị viên",
+        userRole: session.user.role,
+        action: AUDIT_ACTIONS.IMPORT,
+        module: AUDIT_MODULES.SCHEDULE,
+        description: `Import Excel thời khóa biểu cho ${created} lớp (Tuần ${weekNumber}, năm ${year}, File: ${file.name})`,
+        metadata: { filename: file.name, count: created, weekNumber, year },
+      });
 
       return NextResponse.json({
         message: `Đã import thời khóa biểu cho ${created} lớp (Tuần ${weekNumber}, ${year})`,

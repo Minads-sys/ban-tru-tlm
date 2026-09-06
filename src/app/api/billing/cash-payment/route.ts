@@ -5,6 +5,7 @@ import { hasPermission } from "@/lib/permissions";
 import { broadcastChange } from "@/lib/realtime-hub";
 import { getVietnamTodayString, getVietnamTime, maskStudentCode } from "@/lib/utils";
 import { PaymentMethod, PaymentStatus, PaymentTransactionStatus } from "@prisma/client";
+import { logAudit, AUDIT_ACTIONS, AUDIT_MODULES } from "@/lib/audit-log";
 
 export const dynamic = "force-dynamic";
 
@@ -129,6 +130,18 @@ export async function POST(request: NextRequest) {
     broadcastChange("payment_transactions", "INSERT", {
       transactionId: result.newTx.id,
       paymentMethod: "CASH",
+    });
+
+    await logAudit({
+      req: request,
+      userId: session.user.id,
+      userName: (session.user as any).name || (session.user as any).username || cashierName,
+      userRole: session.user.role,
+      action: AUDIT_ACTIONS.CREATE,
+      module: AUDIT_MODULES.BILLING,
+      description: `Thu tiền mặt ${payAmount.toLocaleString("vi-VN")}đ cho HS ${bill.student.user?.fullName} (Phiếu: ${receiptNumber})`,
+      targetId: result.newTx.id,
+      metadata: { receiptNumber, amount: payAmount, billId: bill.id, studentId },
     });
 
     const isFullAdmin = session.user.role === "ADMIN";
@@ -446,6 +459,18 @@ export async function DELETE(request: NextRequest) {
     broadcastChange("payment_transactions", "UPDATE", {
       transactionId,
       isVoided: true,
+    });
+
+    await logAudit({
+      req: request,
+      userId: session.user.id,
+      userName: (session.user as any).name || (session.user as any).username || "Quản trị viên",
+      userRole: session.user.role,
+      action: AUDIT_ACTIONS.VOID,
+      module: AUDIT_MODULES.BILLING,
+      description: `Hủy phiếu thu ${transaction.receiptNumber || transactionId} (${Number(transaction.amount).toLocaleString("vi-VN")}đ). Lý do: ${voidReason}`,
+      targetId: transactionId,
+      metadata: { receiptNumber: transaction.receiptNumber, amount: Number(transaction.amount), voidReason },
     });
 
     return NextResponse.json({

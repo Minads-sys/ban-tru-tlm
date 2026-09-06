@@ -4,6 +4,8 @@ import prisma from "@/lib/db";
 import { CancellationStatus, BoardingStatus } from "@prisma/client";
 import { broadcastChange } from "@/lib/realtime-hub";
 import { getWeekNumber } from "@/lib/utils";
+import { auth } from "@/lib/auth";
+import { logAudit, AUDIT_ACTIONS, AUDIT_MODULES } from "@/lib/audit-log";
 
 // GET: Lấy tổng hợp suất ăn cho 1 ngày
 export async function GET(request: NextRequest) {
@@ -164,6 +166,7 @@ export async function GET(request: NextRequest) {
 // POST: Chốt suất ăn cho ngày
 export async function POST(request: NextRequest) {
   try {
+    const session = await auth();
     const { date: dateStr, type = "FINAL" } = await request.json();
 
     if (!dateStr) {
@@ -301,6 +304,19 @@ export async function POST(request: NextRequest) {
     }
 
     broadcastChange('daily_meals', 'UPDATE', { date: dateStr, type });
+
+    await logAudit({
+      req: request,
+      userId: session?.user?.id,
+      userName: (session?.user as any)?.name || (session?.user as any)?.username || "Quản trị viên",
+      userRole: session?.user?.role,
+      action: AUDIT_ACTIONS.APPROVE,
+      module: AUDIT_MODULES.MEALS,
+      description: type === "EXPECTED" 
+        ? `Chốt số liệu suất ăn dự kiến ngày ${dateStr} cho ${totalLocked} lớp`
+        : `Chốt số liệu suất ăn chính thức ngày ${dateStr} cho ${totalLocked} lớp`,
+      metadata: { date: dateStr, type, totalLocked },
+    });
 
     return NextResponse.json({
       message: type === "EXPECTED" 

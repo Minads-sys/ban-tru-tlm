@@ -5,6 +5,7 @@ import { hasPermission } from "@/lib/permissions";
 import { broadcastChange } from "@/lib/realtime-hub";
 import { getVietnamTodayString, maskStudentCode } from "@/lib/utils";
 import { ClosingStatus, PaymentMethod } from "@prisma/client";
+import { logAudit, AUDIT_ACTIONS, AUDIT_MODULES } from "@/lib/audit-log";
 
 export const dynamic = "force-dynamic";
 
@@ -282,6 +283,18 @@ export async function POST(request: NextRequest) {
     // Phát tín hiệu Realtime
     broadcastChange("payment_transactions", "UPDATE");
 
+    await logAudit({
+      req: request,
+      userId: session.user.id,
+      userName: (session.user as any).name || (session.user as any).username || "Thu ngân",
+      userRole: session.user.role,
+      action: AUDIT_ACTIONS.CREATE,
+      module: AUDIT_MODULES.BILLING,
+      description: `Lập biên bản chốt ca ${code} (${totalTransactions} phiếu, tổng ${totalAmount.toLocaleString("vi-VN")}đ)`,
+      targetId: result.id,
+      metadata: { code, totalTransactions, totalAmount },
+    });
+
     return NextResponse.json({
       success: true,
       message: `Đã lập biên bản bàn giao ${code} thành công! Vui lòng in biên bản và nộp tiền mặt cho Kế toán.`,
@@ -352,6 +365,18 @@ export async function PUT(request: NextRequest) {
 
       broadcastChange("payment_transactions", "UPDATE");
 
+      await logAudit({
+        req: request,
+        userId: session.user.id,
+        userName: (session.user as any).name || (session.user as any).username || "Kế toán",
+        userRole: session.user.role,
+        action: AUDIT_ACTIONS.APPROVE,
+        module: AUDIT_MODULES.BILLING,
+        description: `Kế toán xác nhận nhận đủ tiền cho biên bản bàn giao ${closing.code} (${Number(closing.totalAmount).toLocaleString("vi-VN")}đ)`,
+        targetId: closingId,
+        metadata: { code: closing.code, totalAmount: Number(closing.totalAmount) },
+      });
+
       return NextResponse.json({
         success: true,
         message: `Kế toán đã XÁC NHẬN NHẬN ĐỦ TIỀN cho biên bản ${closing.code}. Toàn bộ phiếu thu đã được KHÓA CỨNG!`,
@@ -377,6 +402,18 @@ export async function PUT(request: NextRequest) {
       ]);
 
       broadcastChange("payment_transactions", "UPDATE");
+
+      await logAudit({
+        req: request,
+        userId: session.user.id,
+        userName: (session.user as any).name || (session.user as any).username || "Kế toán",
+        userRole: session.user.role,
+        action: AUDIT_ACTIONS.REJECT,
+        module: AUDIT_MODULES.BILLING,
+        description: `Kế toán từ chối biên bản bàn giao ${closing.code}. Lý do: ${note || "Lệch tiền"}`,
+        targetId: closingId,
+        metadata: { code: closing.code, note },
+      });
 
       return NextResponse.json({
         success: true,

@@ -5,6 +5,7 @@ import { auth } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
 import { broadcastChange } from '@/lib/realtime-hub';
 import { getVietnamTodayUTC, isPastCutoffTime } from '@/lib/utils';
+import { logAudit, AUDIT_ACTIONS, AUDIT_MODULES } from '@/lib/audit-log';
 
 /**
  * Duyệt 1 đơn cắt suất thủ công bởi giáo viên/admin
@@ -27,6 +28,17 @@ export async function approveCancellation(id: string, note?: string) {
 
     broadcastChange('meal_cancellations', 'UPDATE', updated);
     broadcastChange('daily_meals', 'UPDATE');
+
+    await logAudit({
+      userId: approverId,
+      userName: (session?.user as any)?.name || (session?.user as any)?.username || "Quản trị viên",
+      userRole: session?.user?.role,
+      action: AUDIT_ACTIONS.APPROVE,
+      module: AUDIT_MODULES.MEALS,
+      description: `Duyệt đơn cắt suất ăn (ID: ${id})`,
+      targetId: id,
+      metadata: { note },
+    });
 
     revalidatePath('/admin/meal-cancel');
     revalidatePath('/admin/daily-meals');
@@ -58,6 +70,17 @@ export async function rejectCancellation(id: string, reason?: string) {
 
     broadcastChange('meal_cancellations', 'UPDATE', updated);
     broadcastChange('daily_meals', 'UPDATE');
+
+    await logAudit({
+      userId: approverId,
+      userName: (session?.user as any)?.name || (session?.user as any)?.username || "Quản trị viên",
+      userRole: session?.user?.role,
+      action: AUDIT_ACTIONS.REJECT,
+      module: AUDIT_MODULES.MEALS,
+      description: `Từ chối đơn cắt suất ăn (ID: ${id}): ${reason || "Không có lý do"}`,
+      targetId: id,
+      metadata: { reason },
+    });
 
     revalidatePath('/admin/meal-cancel');
     revalidatePath('/admin/daily-meals');
@@ -95,6 +118,16 @@ export async function bulkApproveCancellations(ids: string[]) {
 
     broadcastChange('meal_cancellations', 'UPDATE');
     broadcastChange('daily_meals', 'UPDATE');
+
+    await logAudit({
+      userId: approverId,
+      userName: (session?.user as any)?.name || (session?.user as any)?.username || "Quản trị viên",
+      userRole: session?.user?.role,
+      action: AUDIT_ACTIONS.APPROVE,
+      module: AUDIT_MODULES.MEALS,
+      description: `Duyệt hàng loạt ${result.count} đơn cắt suất ăn`,
+      metadata: { ids, count: result.count },
+    });
 
     revalidatePath('/admin/meal-cancel');
     revalidatePath('/admin/daily-meals');

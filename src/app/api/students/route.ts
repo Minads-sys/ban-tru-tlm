@@ -4,8 +4,8 @@ import prisma from "@/lib/db";
 import { BoardingStatus, CancellationStatus } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { broadcastChange } from "@/lib/realtime-hub";
-
 import { removeVietnameseTones } from "@/lib/utils";
+import { logAudit, AUDIT_ACTIONS, AUDIT_MODULES } from "@/lib/audit-log";
 
 // GET: Lấy danh sách học sinh
 export async function GET(request: NextRequest) {
@@ -354,6 +354,18 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      await logAudit({
+        req: request,
+        userId: adminId,
+        userName: (session?.user as any)?.name || (session?.user as any)?.username || "Quản trị viên",
+        userRole: session?.user?.role,
+        action: AUDIT_ACTIONS.CREATE,
+        module: AUDIT_MODULES.STUDENTS,
+        description: `Tạo mới học sinh ${fullName} (${studentCode}, Lớp ${classId})`,
+        targetId: newStudent.id,
+        metadata: { studentCode, boardingCode, fullName, classId, mealType },
+      });
+
       return NextResponse.json({
         success: true,
         message: responseMsg,
@@ -401,6 +413,17 @@ export async function POST(request: NextRequest) {
 
       broadcastChange('students', 'UPDATE', { id: studentId, status: BoardingStatus.ACTIVE });
       broadcastChange('daily_meals', 'UPDATE');
+
+      await logAudit({
+        req: request,
+        userId: adminId,
+        userName: (session?.user as any)?.name || (session?.user as any)?.username || "Quản trị viên",
+        userRole: session?.user?.role,
+        action: AUDIT_ACTIONS.UPDATE,
+        module: AUDIT_MODULES.STUDENTS,
+        description: `Kích hoạt ăn bán trú cho học sinh ${student.user?.fullName || student.studentCode} (${student.id})`,
+        targetId: studentId,
+      });
 
       return NextResponse.json({
         message: `Đã kích hoạt ăn bán trú cho HS ${student.id}`,
@@ -506,6 +529,18 @@ export async function POST(request: NextRequest) {
       broadcastChange('daily_meals', 'UPDATE');
       broadcastChange('monthly_bills', 'UPDATE');
 
+      await logAudit({
+        req: request,
+        userId: adminId,
+        userName: (session?.user as any)?.name || (session?.user as any)?.username || "Quản trị viên",
+        userRole: session?.user?.role,
+        action: AUDIT_ACTIONS.UPDATE,
+        module: AUDIT_MODULES.STUDENTS,
+        description: `Hủy ăn bán trú và quyết toán cho học sinh ${student.user?.fullName || student.studentCode} (${student.id})`,
+        targetId: studentId,
+        metadata: { refundOrDebt, settlementType, note },
+      });
+
       return NextResponse.json({
         message: `Đã hủy bán trú cho HS ${student.id}`,
         settlement: {
@@ -533,6 +568,7 @@ export async function POST(request: NextRequest) {
 // PUT: Cập nhật thông tin học sinh
 export async function PUT(request: NextRequest) {
   try {
+    const session = await auth();
     const body = await request.json();
     const { studentId, studentCode, boardingCode, fullName, classId, mealType, parentPhone } = body;
 
@@ -613,6 +649,18 @@ export async function PUT(request: NextRequest) {
     broadcastChange('students', 'UPDATE');
     broadcastChange('daily_meals', 'UPDATE');
 
+    await logAudit({
+      req: request,
+      userId: session?.user?.id,
+      userName: (session?.user as any)?.name || (session?.user as any)?.username || "Quản trị viên",
+      userRole: session?.user?.role,
+      action: AUDIT_ACTIONS.UPDATE,
+      module: AUDIT_MODULES.STUDENTS,
+      description: `Cập nhật thông tin học sinh ${fullName || student.user.fullName} (${student.studentCode})`,
+      targetId: studentId,
+      metadata: { studentCode: trimmedNewCode, boardingCode: trimmedBoardingCode, classId: updateClassId, mealType },
+    });
+
     return NextResponse.json({ message: "Cập nhật thông tin thành công" });
   } catch (error) {
     console.error("Update student error:", error);
@@ -623,6 +671,7 @@ export async function PUT(request: NextRequest) {
 // DELETE: Xóa học sinh
 export async function DELETE(request: NextRequest) {
   try {
+    const session = await auth();
     const { searchParams } = new URL(request.url);
     const studentId = searchParams.get("studentId");
 
@@ -648,6 +697,17 @@ export async function DELETE(request: NextRequest) {
 
     broadcastChange('students', 'DELETE', { studentId });
     broadcastChange('daily_meals', 'UPDATE');
+
+    await logAudit({
+      req: request,
+      userId: session?.user?.id,
+      userName: (session?.user as any)?.name || (session?.user as any)?.username || "Quản trị viên",
+      userRole: session?.user?.role,
+      action: AUDIT_ACTIONS.DELETE,
+      module: AUDIT_MODULES.STUDENTS,
+      description: `Xóa học sinh ${student.studentCode} (ID: ${studentId})`,
+      targetId: studentId,
+    });
 
     return NextResponse.json({ message: "Xóa học sinh thành công" });
   } catch (error) {

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/db";
 import bcrypt from "bcryptjs";
+import { logAudit, AUDIT_ACTIONS, AUDIT_MODULES } from "@/lib/audit-log";
 
 export async function POST(req: Request) {
   try {
@@ -80,6 +81,17 @@ export async function POST(req: Request) {
       if (deleteClasses) {
         await tx.class.deleteMany();
       }
+    });
+
+    await logAudit({
+      req,
+      userId: session.user.id,
+      userName: (session.user as any).name || (session.user as any).username || "Quản trị viên",
+      userRole: session.user.role,
+      action: AUDIT_ACTIONS.RESET,
+      module: AUDIT_MODULES.SYSTEM,
+      description: `Đặt lại toàn bộ dữ liệu hệ thống (Reset Database)${deleteClasses ? " kèm xóa danh mục lớp học" : ""}`,
+      metadata: { deleteClasses: !!deleteClasses },
     });
 
     return NextResponse.json({

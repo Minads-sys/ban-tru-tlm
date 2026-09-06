@@ -20,6 +20,7 @@ import {
   X,
   ShieldCheck,
   Utensils,
+  History,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -110,6 +111,12 @@ const NAV_ITEMS: NavItem[] = [
     title: "Cài đặt",
     href: "/admin/settings",
     icon: Settings,
+    permission: "MANAGE_SETTINGS",
+  },
+  {
+    title: "Nhật ký hệ thống",
+    href: "/admin/audit-logs",
+    icon: History,
     permission: "MANAGE_SETTINGS",
   },
 ];

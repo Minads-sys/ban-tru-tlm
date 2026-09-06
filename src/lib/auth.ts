@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import prisma from '@/lib/db';
 import '@/lib/auth-types';
 import { removeVietnameseTones } from '@/lib/utils';
+import { logAudit, AUDIT_ACTIONS, AUDIT_MODULES } from '@/lib/audit-log';
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
@@ -95,6 +96,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         if (user.role === 'STUDENT' && user.student?.boardingStatus === 'CANCELLED') {
           throw new Error('Tài khoản bán trú của bạn đã bị ngưng hoạt động');
+        }
+
+        if (user.role !== 'STUDENT') {
+          logAudit({
+            userId: user.id,
+            userName: user.fullName || user.username,
+            userRole: user.role,
+            action: AUDIT_ACTIONS.LOGIN,
+            module: AUDIT_MODULES.AUTH,
+            description: `Người dùng ${user.fullName} (${user.username}) đăng nhập hệ thống quản lý`,
+          });
         }
 
         return {

@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/db';
+import { auth } from '@/lib/auth';
+import { logAudit, AUDIT_ACTIONS, AUDIT_MODULES } from '@/lib/audit-log';
 
 export async function GET() {
   try {
@@ -28,6 +30,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const session = await auth();
     const body = await request.json();
 
     if (!body || typeof body !== 'object') {
@@ -51,6 +54,18 @@ export async function POST(request: Request) {
     });
 
     await prisma.$transaction(updates);
+
+    const updatedKeys = Object.keys(body).join(", ");
+    await logAudit({
+      req: request,
+      userId: session?.user?.id,
+      userName: (session?.user as any)?.name || (session?.user as any)?.username || "Quản trị viên",
+      userRole: session?.user?.role,
+      action: AUDIT_ACTIONS.UPDATE,
+      module: AUDIT_MODULES.SETTINGS,
+      description: `Cập nhật cài đặt hệ thống (${updatedKeys})`,
+      metadata: body,
+    });
 
     return NextResponse.json({
       success: true,

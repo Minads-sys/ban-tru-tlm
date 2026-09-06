@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
+import { logAudit, AUDIT_ACTIONS, AUDIT_MODULES } from "@/lib/audit-log";
 
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -23,6 +24,17 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         name,
         teacherId: teacherId || null,
       },
+    });
+
+    await logAudit({
+      req,
+      userId: session.user.id,
+      userName: (session.user as any)?.name || (session.user as any)?.username || "Quản trị viên",
+      userRole: session.user.role,
+      action: AUDIT_ACTIONS.UPDATE,
+      module: AUDIT_MODULES.CLASSES,
+      description: `Cập nhật thông tin lớp học ${name} (Mã: ${id})`,
+      targetId: id,
     });
 
     return NextResponse.json(updatedClass);
@@ -67,6 +79,17 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
 
     await prisma.class.delete({
       where: { id },
+    });
+
+    await logAudit({
+      req,
+      userId: session.user.id,
+      userName: (session.user as any)?.name || (session.user as any)?.username || "Quản trị viên",
+      userRole: session.user.role,
+      action: AUDIT_ACTIONS.DELETE,
+      module: AUDIT_MODULES.CLASSES,
+      description: `Xóa lớp học (Mã: ${id})`,
+      targetId: id,
     });
 
     return NextResponse.json({ success: true });

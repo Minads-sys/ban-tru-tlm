@@ -4,6 +4,7 @@ import prisma from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
 import { broadcastChange } from "@/lib/realtime-hub";
+import { logAudit, AUDIT_ACTIONS, AUDIT_MODULES } from "@/lib/audit-log";
 
 export async function GET() {
   const classes = await prisma.class.findMany({
@@ -48,6 +49,17 @@ export async function POST(req: Request) {
     });
 
     broadcastChange('classes', 'INSERT', newClass);
+
+    await logAudit({
+      req,
+      userId: session.user.id,
+      userName: (session.user as any)?.name || (session.user as any)?.username || "Quản trị viên",
+      userRole: session.user.role,
+      action: AUDIT_ACTIONS.CREATE,
+      module: AUDIT_MODULES.CLASSES,
+      description: `Tạo mới lớp học ${name} (Mã: ${id})`,
+      targetId: id,
+    });
 
     return NextResponse.json(newClass, { status: 201 });
   } catch (error: any) {
