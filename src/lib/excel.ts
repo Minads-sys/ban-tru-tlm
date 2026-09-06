@@ -235,7 +235,14 @@ export async function generateStudentTemplate(): Promise<Buffer> {
 }
 
 /**
- * Template 3: Thời khóa biểu Bán trú
+ * Template 3: Thời khóa biểu Bán trú (Định dạng Ma trận phân ca)
+ *
+ * Layout:
+ *   Row 1: Title
+ *   Row 2: Instructions
+ *   Row 3: "Lớp" (merged A3:A4) | "Thứ 2" (merged B3:C3) | "Thứ 3" (merged D3:E3) | ... | "Thứ 6" (merged J3:K3)
+ *   Row 4: (merged)            | Tiết 4 | Tiết 5          | Tiết 4 | Tiết 5          | ... | Tiết 4 | Tiết 5
+ *   Row 5+: Data – đánh dấu "x" vào ô tương ứng
  */
 export async function generateScheduleTemplate(): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
@@ -243,10 +250,11 @@ export async function generateScheduleTemplate(): Promise<Buffer> {
   workbook.created = new Date();
 
   const sheet = workbook.addWorksheet("ThoiKhoaBieu", {
-    properties: { defaultColWidth: 15 },
+    properties: { defaultColWidth: 10 },
   });
 
-  const headerStyle: Partial<ExcelJS.Style> = {
+  // --- Styles ---
+  const dayHeaderStyle: Partial<ExcelJS.Style> = {
     font: { bold: true, color: { argb: "FFFFFFFF" }, size: 11 },
     fill: { type: "pattern", pattern: "solid", fgColor: { argb: "FFEA580C" } },
     alignment: { horizontal: "center", vertical: "middle", wrapText: true },
@@ -258,69 +266,107 @@ export async function generateScheduleTemplate(): Promise<Buffer> {
     },
   };
 
-  // Title
-  sheet.mergeCells("A1:I1");
+  const periodHeaderStyle: Partial<ExcelJS.Style> = {
+    font: { bold: true, color: { argb: "FF1E293B" }, size: 10 },
+    fill: { type: "pattern", pattern: "solid", fgColor: { argb: "FFFDE68A" } },
+    alignment: { horizontal: "center", vertical: "middle" },
+    border: {
+      top: { style: "thin" },
+      left: { style: "thin" },
+      bottom: { style: "thin" },
+      right: { style: "thin" },
+    },
+  };
+
+  const dataCellBorder: Partial<ExcelJS.Borders> = {
+    top: { style: "thin", color: { argb: "FFD1D5DB" } },
+    left: { style: "thin", color: { argb: "FFD1D5DB" } },
+    bottom: { style: "thin", color: { argb: "FFD1D5DB" } },
+    right: { style: "thin", color: { argb: "FFD1D5DB" } },
+  };
+
+  // --- Days config ---
+  // Col A = Lớp, then each day occupies 2 columns (Tiết 4, Tiết 5)
+  // Thứ 2: B-C, Thứ 3: D-E, Thứ 4: F-G, Thứ 5: H-I, Thứ 6: J-K
+  const days = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6"];
+  const totalCols = 1 + days.length * 2; // A + 10 = 11 columns (A..K)
+
+  // --- Row 1: Title ---
+  sheet.mergeCells(1, 1, 1, totalCols);
   const titleCell = sheet.getCell("A1");
   titleCell.value = "THỜI KHÓA BIỂU BÁN TRÚ CÁC LỚP - BAN-TRU-TLM";
   titleCell.font = { bold: true, size: 14, color: { argb: "FFEA580C" } };
   titleCell.alignment = { horizontal: "center" };
 
-  // Instructions
-  sheet.mergeCells("A2:I2");
+  // --- Row 2: Instructions ---
+  sheet.mergeCells(2, 1, 2, totalCols);
   const instrCell = sheet.getCell("A2");
   instrCell.value =
-    "Hướng dẫn: Điền KHONG (Không ăn), TIET_4 hoặc TIET_5 cho từng ngày. MaLop phải trùng danh sách lớp.";
+    "Hướng dẫn: Đánh dấu x vào ô Tiết 4 hoặc Tiết 5 tương ứng với lịch ăn bán trú của từng lớp. Để trống nếu không ăn ngày đó. Tên lớp phải trùng danh sách lớp đã có.";
   instrCell.font = { italic: true, color: { argb: "FF6B7280" }, size: 10 };
 
-  // Headers
-  const headers = [
-    "STT",
-    "MaLop (*)",
-    "Thứ 2\n(KHONG/TIET_4/TIET_5)",
-    "Thứ 3\n(KHONG/TIET_4/TIET_5)",
-    "Thứ 4\n(KHONG/TIET_4/TIET_5)",
-    "Thứ 5\n(KHONG/TIET_4/TIET_5)",
-    "Thứ 6\n(KHONG/TIET_4/TIET_5)",
-    "Thứ 7\n(KHONG/TIET_4/TIET_5)",
-    "GhiChu",
-  ];
-  const headerRow = sheet.addRow(headers);
-  headerRow.height = 35;
-  headerRow.eachCell((cell) => {
-    cell.style = headerStyle;
-  });
+  // --- Row 3-4: Matrix headers ---
+  // A3:A4 merged = "Lớp"
+  sheet.mergeCells("A3:A4");
+  const lopCell = sheet.getCell("A3");
+  lopCell.value = "Lớp";
+  lopCell.style = dayHeaderStyle;
 
-  // Column widths
-  sheet.getColumn(1).width = 7;
-  sheet.getColumn(2).width = 14;
-  sheet.getColumn(3).width = 20;
-  sheet.getColumn(4).width = 20;
-  sheet.getColumn(5).width = 20;
-  sheet.getColumn(6).width = 20;
-  sheet.getColumn(7).width = 20;
-  sheet.getColumn(8).width = 20;
-  sheet.getColumn(9).width = 30;
+  for (let i = 0; i < days.length; i++) {
+    const col1 = 2 + i * 2; // first sub-column for this day
+    const col2 = col1 + 1;  // second sub-column
 
-  // Dropdown validations
-  const coKhongValidation: ExcelJS.DataValidation = {
-    type: "list",
-    allowBlank: false,
-    formulae: ['"KHONG,TIET_4,TIET_5"'],
-    showErrorMessage: true,
-    errorTitle: "Giá trị không hợp lệ",
-    error: "Chỉ nhận: KHONG, TIET_4 hoặc TIET_5",
-  };
+    // Merge day name across 2 cols in row 3
+    sheet.mergeCells(3, col1, 3, col2);
+    const dayCell = sheet.getCell(3, col1);
+    dayCell.value = days[i];
+    dayCell.style = dayHeaderStyle;
 
-  for (let row = 4; row <= 54; row++) {
-    for (let col = 3; col <= 8; col++) {
-      sheet.getCell(row, col).dataValidation = coKhongValidation;
-    }
+    // Period sub-headers in row 4
+    const t4Cell = sheet.getCell(4, col1);
+    t4Cell.value = "Tiết 4";
+    t4Cell.style = periodHeaderStyle;
+
+    const t5Cell = sheet.getCell(4, col2);
+    t5Cell.value = "Tiết 5";
+    t5Cell.style = periodHeaderStyle;
   }
 
-  // Sample data
-  sheet.addRow([1, "1A", "TIET_4", "TIET_4", "TIET_4", "TIET_4", "TIET_4", "KHONG", ""]);
-  sheet.addRow([2, "1B", "TIET_5", "TIET_5", "TIET_5", "TIET_5", "TIET_5", "KHONG", "Tùy chọn ghi chú"]);
-  sheet.addRow([3, "2A", "KHONG", "TIET_4", "TIET_4", "KHONG", "TIET_4", "KHONG", ""]);
+  sheet.getRow(3).height = 25;
+  sheet.getRow(4).height = 22;
+
+  // --- Column widths ---
+  sheet.getColumn(1).width = 12; // Lớp
+  for (let c = 2; c <= totalCols; c++) {
+    sheet.getColumn(c).width = 8;
+  }
+
+  // --- Sample data (matching reference image) ---
+  // Each row: [Lớp, T2-Tiết4, T2-Tiết5, T3-T4, T3-T5, T4-T4, T4-T5, T5-T4, T5-T5, T6-T4, T6-T5]
+  const sampleRows = [
+    ["10A1", "",  "x",  "",  "x",  "x", "",   "",  "x",  "",  "x"],
+    ["10A2", "",  "x",  "",  "",   "",  "",   "",  "",   "",  "x"],
+    ["10A3", "x", "",   "",  "",   "x", "",   "x", "",   "",  "x"],
+    ["10A4", "",  "",   "",  "x",  "",  "",   "",  "",   "x", ""],
+    ["10A5", "",  "",   "x", "",   "",  "",   "",  "",   "x", ""],
+    ["10A6", "",  "",   "",  "x",  "",  "",   "",  "",   "",  "x"],
+  ];
+
+  for (const rowData of sampleRows) {
+    const row = sheet.addRow(rowData);
+    row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+      cell.border = dataCellBorder;
+      cell.alignment = { horizontal: colNumber === 1 ? "left" : "center", vertical: "middle" };
+    });
+    // Ensure all columns get borders (eachCell with includeEmpty may skip trailing empty cells)
+    for (let c = 1; c <= totalCols; c++) {
+      const cell = row.getCell(c);
+      if (!cell.border) {
+        cell.border = dataCellBorder;
+        cell.alignment = { horizontal: c === 1 ? "left" : "center", vertical: "middle" };
+      }
+    }
+  }
 
   const buffer = await workbook.xlsx.writeBuffer();
   return Buffer.from(buffer);
