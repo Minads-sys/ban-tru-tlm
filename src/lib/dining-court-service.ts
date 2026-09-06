@@ -413,11 +413,17 @@ export async function getDiningCourtAllocation(dateStr: string): Promise<DiningA
     settings.find((s) => s.key === "CUTOFF_TIME")?.value ||
     "07:00";
 
-  // Xác định trạng thái trước/sau giờ chốt
+  // Xác định trạng thái trước/sau giờ chốt: Đã chốt nếu qua giờ hoặc user đã chốt trong DB
   const localToday = getVietnamTodayUTC();
   const isPastDate = date < localToday;
   const isToday = date.getTime() === localToday.getTime();
-  const isAfterLockTime = isToday ? isPastCutoffTime(lockTime2) : isPastDate;
+  const isPastCutoff = isToday ? isPastCutoffTime(lockTime2) : isPastDate;
+
+  const lockedSummariesCount = await prisma.dailyMealSummary.count({
+    where: { summaryDate: date, isLocked: true },
+  });
+  const isLockedInDb = lockedSummariesCount > 0;
+  const isAfterLockTime = isLockedInDb || isPastCutoff;
 
   if (!dayField) {
     // Chủ nhật không có lịch ăn

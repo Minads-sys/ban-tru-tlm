@@ -16,6 +16,7 @@ import {
   FileText,
   Layers,
   Sparkles,
+  Lock,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -27,6 +28,7 @@ import { DiningAllocationResult, DiningCourt } from '@/lib/dining-court-service'
 import { DiningCourtSummaryPrint } from './dining-court-summary-print';
 import { splitVietnameseName } from '@/lib/utils';
 import Swal from 'sweetalert2';
+import { useSession } from 'next-auth/react';
 
 interface DiningCourtTabProps {
   cutoffTime: string;
@@ -34,6 +36,8 @@ interface DiningCourtTabProps {
 }
 
 export function DiningCourtTab({ cutoffTime, schoolName }: DiningCourtTabProps) {
+  const { data: session } = useSession();
+  const isCashier = session?.user?.role === "CASHIER";
   const [selectedDate, setSelectedDate] = useState<string>(() => format(new Date(), 'yyyy-MM-dd'));
   const [data, setData] = useState<DiningAllocationResult | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -41,6 +45,47 @@ export function DiningCourtTab({ cutoffTime, schoolName }: DiningCourtTabProps) 
   const [expandedCourtIds, setExpandedCourtIds] = useState<Set<string>>(new Set());
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [isPrintSummaryOpen, setIsPrintSummaryOpen] = useState<boolean>(false);
+  const [isLocking, setIsLocking] = useState<boolean>(false);
+
+  const handleLockMealsFromCourtTab = async () => {
+    const result = await Swal.fire({
+      title: 'Xác nhận chốt suất ăn?',
+      text: `Bạn có chắc chắn muốn chốt chính thức suất ăn cho ngày ${formatDateDDMMYYYY(selectedDate)}? Sau khi chốt, số liệu sẽ được khóa báo bếp và phân sân chính thức.`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#10b981',
+      cancelButtonColor: '#64748b',
+      confirmButtonText: 'Đồng ý chốt ngay',
+      cancelButtonText: 'Hủy bỏ',
+    });
+
+    if (!result.isConfirmed) return;
+
+    setIsLocking(true);
+    try {
+      const res = await fetch('/api/daily-meals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: selectedDate, type: 'FINAL' }),
+      });
+      const resJson = await res.json();
+      if (!res.ok) {
+        throw new Error(resJson.error || 'Lỗi khi chốt suất ăn');
+      }
+      Swal.fire({
+        icon: 'success',
+        title: 'Đã chốt số báo bếp thành công!',
+        timer: 1500,
+        showConfirmButton: false,
+      });
+      await fetchData(selectedDate);
+    } catch (err) {
+      console.error('Error locking meals:', err);
+      Swal.fire('Lỗi', err instanceof Error ? err.message : 'Không thể chốt suất ăn', 'error');
+    } finally {
+      setIsLocking(false);
+    }
+  };
 
   const fetchData = useCallback(async (dateStr: string) => {
     setLoading(true);
@@ -238,12 +283,26 @@ export function DiningCourtTab({ cutoffTime, schoolName }: DiningCourtTabProps) 
               </span>
             </div>
           ) : (
-            <div className="bg-red-600 text-white font-bold py-2.5 px-4 rounded-xl text-center text-sm sm:text-base flex items-center justify-center gap-2 shadow-xs tracking-wide">
-              <AlertTriangle className="h-5 w-5 shrink-0" />
-              <span>Số liệu chưa chốt</span>
-              <span className="text-xs font-normal opacity-90">
-                (Số liệu phân sân tạm tính - Đang cập nhật đến giờ chốt tự động lúc {data.lockTime2 || cutoffTime})
-              </span>
+            <div className="bg-red-600 text-white font-bold py-2.5 px-4 rounded-xl text-sm sm:text-base flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xs tracking-wide">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 shrink-0" />
+                <span>Số liệu chưa chốt</span>
+                <span className="text-xs font-normal opacity-90">
+                  (Số liệu phân sân tạm tính - Đang cập nhật đến giờ chốt tự động lúc {data.lockTime2 || cutoffTime})
+                </span>
+              </div>
+              {!isCashier && (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleLockMealsFromCourtTab}
+                  disabled={isLocking}
+                  className="bg-white text-red-700 hover:bg-red-50 text-xs font-bold shadow-xs cursor-pointer gap-1.5 shrink-0"
+                >
+                  <Lock className="h-3.5 w-3.5" />
+                  <span>{isLocking ? 'Đang chốt...' : 'Chốt suất ngay'}</span>
+                </Button>
+              )}
             </div>
           )}
         </>

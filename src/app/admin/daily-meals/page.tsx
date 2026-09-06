@@ -46,6 +46,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { useRealtime } from '@/hooks/use-realtime';
+import { useSession } from 'next-auth/react';
 
 interface TotalSummary {
   totalRegistered: number;
@@ -137,6 +138,8 @@ function formatFullDateVietnamese(dateStr: string): string {
 }
 
 export default function DailyMealsPage() {
+  const { data: session } = useSession();
+  const isCashier = session?.user?.role === "CASHIER";
   const [selectedDate, setSelectedDate] = useState<string>(getTomorrowDateString());
   const [activeMainTab, setActiveMainTab] = useState<'summary' | 'dining-areas'>('summary');
   const [data, setData] = useState<DailyMealsResponse | null>(null);
@@ -588,8 +591,13 @@ export default function DailyMealsPage() {
               <ChefHat className="h-6 w-6" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
-                Chốt suất ăn hàng ngày
+              <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl flex items-center gap-2">
+                <span>Chốt suất ăn hàng ngày</span>
+                {isCashier && (
+                  <Badge variant="outline" className="text-xs bg-slate-100 text-slate-700 border-slate-300 font-normal">
+                    Chỉ xem
+                  </Badge>
+                )}
               </h1>
               <p className="text-sm text-muted-foreground">
                 Tổng hợp số lượng học sinh ăn thực tế theo lớp và khóa số liệu gửi bộ phận bếp
@@ -600,7 +608,7 @@ export default function DailyMealsPage() {
           {/* Quick Print & Action Buttons */}
           {activeMainTab === 'summary' && (
             <div className="flex items-center gap-2.5">
-              {classSummaries.length > 0 && !isFullyLocked && (
+              {classSummaries.length > 0 && !isFullyLocked && !isCashier && (
                 <Button
                   variant="outline"
                   className="border-blue-500 text-blue-700 hover:bg-blue-50"
@@ -610,13 +618,14 @@ export default function DailyMealsPage() {
                   {isExpectedLocked ? "Cập nhật lại Số Dự Kiến" : "Chốt số Dự Kiến (Lần 1)"}
                 </Button>
               )}
-              {classSummaries.length > 0 && !isFullyLocked && isPastLockTime2() && (
+              {classSummaries.length > 0 && !isFullyLocked && !isPastLockTime2() && !isCashier && (
                 <Button
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1.5 shadow-xs cursor-pointer"
                   onClick={() => { setLockType("FINAL"); setIsConfirmOpen(true); }}
                   disabled={isLocking || isLoading}
                 >
-                  Chốt Chính Thức (Lần 2)
+                  <Lock className="h-4 w-4" />
+                  <span>Chốt Chính Thức (Lần 2)</span>
                 </Button>
               )}
 
@@ -1157,10 +1166,24 @@ export default function DailyMealsPage() {
                     Số liệu chưa chốt - Tự động chốt sổ lúc {data?.lockTime2 || "07:00"}
                   </h4>
                   <p className="text-xs text-amber-700">
-                    Hệ thống sẽ tự động chốt sổ và khóa dữ liệu báo bếp sau giờ quy định mà không cần bấm nút chốt suất. Thao tác báo cắt và đổi món vẫn đang được tiếp nhận.
+                    {isCashier
+                      ? `Tài khoản Thu ngân chỉ có quyền xem số liệu. Hệ thống sẽ tự động chốt sổ lúc ${data?.lockTime2 || "07:00"} theo quy định.`
+                      : `Hệ thống sẽ tự động chốt sổ lúc ${data?.lockTime2 || "07:00"} hoặc bạn có thể chủ động bấm nút \u201cChốt suất ăn ngay\u201d trước giờ chốt.`}
                   </p>
                 </div>
               </div>
+              {!isFullyLocked && !isPastLockTime2() && !isCashier && (
+                <Button
+                  type="button"
+                  size="default"
+                  onClick={() => { setLockType("FINAL"); setIsConfirmOpen(true); }}
+                  disabled={isLoading || isLocking}
+                  className="bg-red-600 hover:bg-red-700 text-white font-bold px-5 py-2.5 shadow-md gap-2 shrink-0 cursor-pointer text-sm"
+                >
+                  <Lock className="h-4 w-4" />
+                  <span>Chốt suất ăn ngay</span>
+                </Button>
+              )}
             </div>
           )}
         </div>

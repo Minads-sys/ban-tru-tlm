@@ -94,7 +94,7 @@ export async function GET(request: NextRequest) {
   const localToday = getVietnamTodayUTC();
   const isPastDate = date < localToday;
   const isToday = date.getTime() === localToday.getTime();
-  const isAfterLockTime = isToday ? isPastCutoffTime(lockTime2) : isPastDate;
+  const isPastLockTime = isToday ? isPastCutoffTime(lockTime2) : isPastDate;
 
   // Kiểm tra đã chốt chưa và lấy số dự kiến
   let existingSummaries = await prisma.dailyMealSummary.findMany({
@@ -105,7 +105,7 @@ export async function GET(request: NextRequest) {
   );
 
   // Tự động chốt sổ khi đã qua giờ chốt MEAL_LOCK_TIME_2
-  if (isAfterLockTime && schedules.length > 0) {
+  if (isPastLockTime && schedules.length > 0) {
     const unLockedSchedules = schedules.filter(s => !lockedClasses.has(s.classId));
     if (unLockedSchedules.length > 0) {
       const now = new Date();
@@ -159,26 +159,11 @@ export async function GET(request: NextRequest) {
         where: { summaryDate: date },
       });
     }
-  } else if (!isAfterLockTime) {
-    // Nếu chưa tới giờ chốt (hoặc admin đã gia hạn MEAL_LOCK_TIME_2 sang giờ muộn hơn),
-    // tự động mở khóa các lớp đã chốt trước đó để admin/giáo viên có thể báo cắt hoặc đổi món
-    const lockedInDb = existingSummaries.filter(s => s.isLocked);
-    if (lockedInDb.length > 0) {
-      await prisma.dailyMealSummary.updateMany({
-        where: {
-          summaryDate: date,
-          isLocked: true,
-        },
-        data: {
-          isLocked: false,
-        },
-      });
-      lockedClasses.clear();
-      existingSummaries = await prisma.dailyMealSummary.findMany({
-        where: { summaryDate: date },
-      });
-    }
   }
+
+  // Trạng thái chốt: Đã chốt nếu qua giờ MEAL_LOCK_TIME_2 HOẶC user đã chủ động chốt trong DB
+  const isLockedInDb = existingSummaries.length > 0 && schedules.length > 0 && schedules.every(s => lockedClasses.has(s.classId));
+  const isAfterLockTime = isPastLockTime || isLockedInDb;
 
   const existingSummaryMap = new Map(existingSummaries.map(s => [s.classId, s]));
 
@@ -254,6 +239,17 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const session = await auth();
+    if (!session?.user) {
+      return NextResponse.json({ error: "Chưa đăng nhập" }, { status: 401 });
+    }
+
+    if (session.user.role === "CASHIER") {
+      return NextResponse.json(
+        { error: "Tài khoản Thu ngân chỉ có quyền xem, không được chốt suất ăn" },
+        { status: 403 }
+      );
+    }
+
     const { date: dateStr, type = "FINAL" } = await request.json();
 
     if (!dateStr) {
