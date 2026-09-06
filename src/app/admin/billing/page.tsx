@@ -362,14 +362,16 @@ export default function BillingPage() {
     }
   };
 
-  // Dọn dẹp tất cả giao dịch 0đ rác
+  // Dọn dẹp tất cả giao dịch chưa khớp (bao gồm 0đ và giao dịch nhầm tài khoản)
   const handleCleanZeroTxs = async () => {
     const confirm = await Swal.fire({
-      title: "Dọn dẹp giao dịch 0đ?",
-      text: "Hệ thống sẽ xóa tất cả các giao dịch 0đ chưa khớp (do đồng bộ nhầm trước đó). Bạn có chắc chắn muốn tiếp tục?",
+      title: "Dọn dẹp giao dịch chưa khớp?",
+      html: `<p class="text-sm text-left">Hệ thống sẽ <b class="text-rose-600">xóa tất cả</b> các giao dịch đang ở trạng thái <b>"Chưa khớp"</b> trong danh sách.</p>
+             <p class="text-xs text-left mt-2 text-gray-500">Bao gồm: giao dịch 0đ do đồng bộ lỗi, giao dịch nhầm tài khoản, giao dịch không đúng cú pháp BSTLM...</p>
+             <p class="text-xs text-left mt-1 text-amber-700 font-semibold">⚠️ Các giao dịch đã gạch nợ thành công (Đã khớp / Gạch tay) sẽ KHÔNG bị ảnh hưởng.</p>`,
       icon: "warning",
       showCancelButton: true,
-      confirmButtonText: "Dọn dẹp ngay",
+      confirmButtonText: "Xóa tất cả chưa khớp",
       cancelButtonText: "Hủy",
       confirmButtonColor: "#e11d48",
     });
@@ -377,7 +379,7 @@ export default function BillingPage() {
     if (!confirm.isConfirmed) return;
 
     try {
-      const res = await fetch("/api/sepay/transactions?cleanZero=true", { method: "DELETE" });
+      const res = await fetch("/api/sepay/transactions?cleanAllUnmatched=true", { method: "DELETE" });
       const data = await res.json();
       if (res.ok) {
         Swal.fire("Thành công", data.message, "success");
@@ -1294,14 +1296,6 @@ export default function BillingPage() {
 
                 <div className="flex items-center gap-2 w-full md:w-auto justify-end">
                   <Button
-                    onClick={handleCleanZeroTxs}
-                    variant="outline"
-                    className="border-rose-300 text-rose-700 hover:bg-rose-50 text-xs sm:text-sm"
-                  >
-                    <Trash2 className="h-4 w-4 mr-1.5 text-rose-600" />
-                    Dọn dẹp GD 0đ
-                  </Button>
-                  <Button
                     onClick={handleSyncSepay}
                     disabled={isSyncing}
                     variant="outline"
@@ -1345,7 +1339,7 @@ export default function BillingPage() {
                   className="border-rose-300 text-rose-700 hover:bg-rose-50 hover:text-rose-800 text-xs font-semibold shadow-xs"
                 >
                   <Trash2 className="h-4 w-4 mr-1.5 text-rose-600" />
-                  Dọn dẹp GD 0đ
+                  Xóa tất cả chưa khớp
                 </Button>
               </div>
             </CardHeader>

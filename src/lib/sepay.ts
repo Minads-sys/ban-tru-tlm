@@ -461,7 +461,7 @@ export async function fetchSepayTransactions(limit = 50, specificAccountNumber?:
     throw new Error('Chưa cấu hình SEPAY_API_KEY trong hệ thống hoặc file .env');
   }
 
-  // Xác định số tài khoản ngân hàng SePay để lọc nếu có cấu hình
+  // BẮT BUỘC: Phải có số tài khoản ngân hàng SePay để tránh lấy nhầm giao dịch tài khoản khác
   let accNo = specificAccountNumber?.trim();
   if (!accNo) {
     const sepayAccSetting = await prisma.systemSetting.findUnique({
@@ -472,10 +472,15 @@ export async function fetchSepayTransactions(limit = 50, specificAccountNumber?:
     }
   }
 
-  let url = `https://my.sepay.vn/userapi/transactions/list?limit=${limit}`;
-  if (accNo) {
-    url += `&account_number=${encodeURIComponent(accNo)}`;
+  if (!accNo) {
+    throw new Error(
+      'Chưa cấu hình Số Tài Khoản Ngân Hàng trên SePay (SEPAY_ACCOUNT_NO). ' +
+      'Vui lòng vào Cài đặt hệ thống → mục "Tài khoản Ngân hàng Thanh toán" → ' +
+      'điền Số Tài Khoản Ngân Hàng Trên SePay (ví dụ: 8833442251) rồi Lưu, sau đó thử lại.'
+    );
   }
+
+  const url = `https://my.sepay.vn/userapi/transactions/list?limit=${limit}&account_number=${encodeURIComponent(accNo)}`;
 
   const response = await fetch(url, {
     method: 'GET',
