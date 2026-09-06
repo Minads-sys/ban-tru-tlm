@@ -133,10 +133,6 @@ export function CashReceiptPrint({ data, onClose, format = "K80" }: Props) {
                 <span className="text-slate-600">Mã Bán Trú:</span>
                 <span className="font-semibold text-slate-800">{data.student.boardingCode || "—"}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-slate-600">Mã HS (CCCD):</span>
-                <span className="font-mono text-slate-700">{data.student.studentCode}</span>
-              </div>
               {data.bill && (
                 <div className="flex justify-between">
                   <span className="text-slate-600">Tiền ăn tháng:</span>
@@ -233,15 +229,9 @@ export function CashReceiptPrint({ data, onClose, format = "K80" }: Props) {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <span className="text-slate-600">Mã Bán Trú:</span>{" "}
-                  <span className="font-bold text-blue-800">{data.student.boardingCode || "—"}</span>
-                </div>
-                <div>
-                  <span className="text-slate-600">Mã HS (CCCD):</span>{" "}
-                  <span className="font-mono text-slate-700 font-semibold">{data.student.studentCode}</span>
-                </div>
+              <div>
+                <span className="text-slate-600">Mã Bán Trú:</span>{" "}
+                <span className="font-bold text-blue-800">{data.student.boardingCode || "—"}</span>
               </div>
 
               <div>

@@ -21,8 +21,11 @@ import {
   Soup,
   Leaf,
   Info,
+  UtensilsCrossed,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { DiningCourtTab } from '@/components/admin/dining-court-tab';
 import {
   Table,
   TableHeader,
@@ -118,8 +121,24 @@ function formatDateDDMMYYYY(dateStr: string): string {
   }
 }
 
+function formatFullDateVietnamese(dateStr: string): string {
+  try {
+    if (!dateStr) return '';
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dateObj = new Date(y, m - 1, d);
+    const dayOfWeek = format(dateObj, 'EEEE', { locale: vi });
+    const capitalizedDay = dayOfWeek.charAt(0).toUpperCase() + dayOfWeek.slice(1);
+    const dayStr = String(d).padStart(2, '0');
+    const monthStr = String(m).padStart(2, '0');
+    return `${capitalizedDay}, ngày ${dayStr}/${monthStr}/${y}`;
+  } catch {
+    return dateStr;
+  }
+}
+
 export default function DailyMealsPage() {
   const [selectedDate, setSelectedDate] = useState<string>(getTomorrowDateString());
+  const [activeMainTab, setActiveMainTab] = useState<'summary' | 'dining-areas'>('summary');
   const [data, setData] = useState<DailyMealsResponse | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isLocking, setIsLocking] = useState<boolean>(false);
@@ -303,53 +322,57 @@ export default function DailyMealsPage() {
   return (
     <div className="space-y-6">
       {/* ========================================================
-          PRINT STYLING SHEET (VISIBLE ONLY ON PRINT)
+          PRINT STYLING SHEET (A4 PORTRAIT SPECIFIC)
          ======================================================== */}
       <style jsx global>{`
+        @page {
+          size: A4 portrait;
+          margin: 10mm 12mm 12mm 12mm;
+        }
         @media print {
-          /* Hide sidebar, navigation, headers outside print template */
-          body {
-            background-color: white !important;
-            color: black !important;
+          html, body {
+            width: 100% !important;
+            height: auto !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #ffffff !important;
+            color: #000000 !important;
             font-size: 11pt !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
-          aside,
-          nav,
+          /* Hide all screen components */
           .no-print,
-          button,
-          input,
-          .badge-no-print {
+          .no-print * {
             display: none !important;
           }
+          /* Show print document */
           .print-only {
             display: block !important;
           }
-          .print-card {
-            border: none !important;
-            box-shadow: none !important;
-            padding: 0 !important;
-            margin: 0 !important;
-          }
-          .print-table {
+          .a4-print-table {
             width: 100% !important;
             border-collapse: collapse !important;
-            margin-top: 10px !important;
+            page-break-inside: auto !important;
           }
-          .print-table th,
-          .print-table td {
-            border: 1px solid #1e293b !important;
-            padding: 5px 8px !important;
-            text-align: center !important;
+          .a4-print-table thead {
+            display: table-header-group !important;
           }
-          .print-table th {
-            background-color: #f1f5f9 !important;
-            font-weight: bold !important;
+          .a4-print-table tfoot {
+            display: table-footer-group !important;
           }
-          .print-table td.text-left {
-            text-align: left !important;
+          .a4-print-table tr {
+            page-break-inside: avoid !important;
+            page-break-after: auto !important;
           }
-          .print-table td.text-right {
-            text-align: right !important;
+          .a4-print-table th,
+          .a4-print-table td {
+            border: 1px solid #000000 !important;
+            padding: 4px 6px !important;
+          }
+          .a4-signatures {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
           }
         }
         @media screen {
@@ -360,74 +383,182 @@ export default function DailyMealsPage() {
       `}</style>
 
       {/* ========================================================
-          PRINT-ONLY HEADER & VOUCHER TEMPLATE
+          DEDICATED A4 PORTRAIT PRINT VOUCHER (MẪU PB-01/BT)
          ======================================================== */}
-      <div className="print-only mb-6">
-        <div className="flex justify-between items-start border-b-2 border-slate-900 pb-4 mb-4">
+      <div className="print-only font-sans text-black">
+        {/* Header 2 cột: Đơn vị & Mẫu biểu */}
+        <div className="flex justify-between items-start border-b-2 border-black pb-2 mb-3">
           <div>
-            <h3 className="font-bold text-sm uppercase tracking-wide text-slate-800">
+            <h3 className="font-black text-sm uppercase tracking-wide text-black">
               {schoolName}
             </h3>
-            <p className="text-xs text-slate-600">Bộ phận Quản lý Bán trú</p>
+            <p className="text-xs text-slate-800 font-medium mt-0.5">Bộ phận Quản lý Bán trú</p>
           </div>
           <div className="text-right">
-            <p className="text-xs italic text-slate-600">
+            <p className="text-xs font-bold text-black uppercase">Mẫu: PB-01/BT</p>
+            <p className="text-[11px] italic text-slate-600 mt-0.5">
               Ngày in: {format(new Date(), 'dd/MM/yyyy HH:mm')}
             </p>
-            <p className="text-xs font-semibold text-slate-800">Mẫu: PB-01/BT</p>
           </div>
         </div>
 
-        <div className="text-center my-4">
-          <h1 className="text-xl font-bold uppercase tracking-wider text-slate-900">
+        {/* Tiêu đề & Thông tin ngày */}
+        <div className="text-center my-3">
+          <h1 className="text-xl font-black uppercase tracking-wider text-black">
             PHIẾU BÁO SUẤT ĂN BÁN TRÚ NHÀ BẾP
           </h1>
-          <p className="text-sm font-medium text-slate-700 capitalize mt-1">
-            Ngày phục vụ: <span className="font-bold">{formattedDateString}</span>
+          <p className="text-sm font-bold text-black mt-1">
+            Ngày phục vụ: <span className="uppercase underline decoration-1">{formatFullDateVietnamese(selectedDate)}</span>
           </p>
-          <p className="text-xs italic text-slate-500">
+          <p className="text-xs italic text-slate-600 mt-0.5">
             (Căn cứ theo dữ liệu chốt suất ăn bán trú ngày {formatDateDDMMYYYY(selectedDate)})
           </p>
+
+          {/* Ô trạng thái chốt sổ */}
+          <div className="mt-2 inline-block">
+            {(isFullyLocked || isPastLockTime2()) ? (
+              <div className="border-[1.5px] border-black bg-slate-100 px-3 py-1 rounded text-xs font-bold tracking-wide uppercase">
+                ✓ ĐÃ CHỐT SỐ BÁO BẾP (Khóa sổ theo quy định: {data?.lockTime2 || "07:00"})
+              </div>
+            ) : (
+              <div className="border-[1.5px] border-black bg-slate-100 px-3 py-1 rounded text-xs font-bold tracking-wide uppercase">
+                ⚠ SỐ LIỆU CHƯA CHỐT - TẠM TÍNH (Tự động khóa lúc: {data?.lockTime2 || "07:00"})
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Print Summary Quick Table */}
-        <div className="my-4 p-3 border border-slate-900 rounded bg-slate-50">
-          <div className="grid grid-cols-6 gap-2 text-center text-xs">
-            <div className="border-r border-slate-300 pr-2">
-              <span className="block text-slate-500 font-medium">Tổng đăng ký</span>
-              <span className="text-sm font-bold text-slate-900">
-                {totalSummary.totalRegistered}
-              </span>
+        {/* Các ô thống kê rõ ràng (Summary Statistics Box) */}
+        <div className="my-3 border-[1.5px] border-black">
+          <div className="grid grid-cols-6 divide-x-[1.5px] divide-black text-center bg-slate-50">
+            <div className="p-2">
+              <div className="text-[11px] font-bold text-slate-800 uppercase">Tổng đăng ký</div>
+              <div className="text-xl font-black text-black mt-0.5">{totalSummary.totalRegistered}</div>
+              <div className="text-[10px] text-slate-500 font-medium">suất</div>
             </div>
-            <div className="border-r border-slate-300 pr-2">
-              <span className="block text-slate-500 font-medium">Số cắt suất</span>
-              <span className="text-sm font-bold text-red-600">
-                {totalSummary.totalCanceled}
-              </span>
+            <div className="p-2">
+              <div className="text-[11px] font-bold text-slate-800 uppercase">Số cắt suất</div>
+              <div className="text-xl font-black text-red-600 mt-0.5">
+                {totalSummary.totalCanceled > 0 ? `-${totalSummary.totalCanceled}` : "0"}
+              </div>
+              <div className="text-[10px] text-slate-500 font-medium">suất nghỉ</div>
             </div>
-            <div className="border-r border-slate-300 pr-2">
-              <span className="block text-slate-500 font-medium">Suất Mặn</span>
-              <span className="text-sm font-bold text-slate-900">
-                {totalSummary.finalMan}
-              </span>
+            <div className="p-2">
+              <div className="text-[11px] font-bold text-slate-800 uppercase">Suất Mặn</div>
+              <div className="text-xl font-black text-black mt-0.5">{totalSummary.finalMan}</div>
+              <div className="text-[10px] text-slate-500 font-medium">suất</div>
             </div>
-            <div className="border-r border-slate-300 pr-2">
-              <span className="block text-slate-500 font-medium">Suất Chay</span>
-              <span className="text-sm font-bold text-slate-900">
-                {totalSummary.finalChay}
-              </span>
+            <div className="p-2">
+              <div className="text-[11px] font-bold text-slate-800 uppercase">Suất Chay</div>
+              <div className="text-xl font-black text-black mt-0.5">{totalSummary.finalChay}</div>
+              <div className="text-[10px] text-slate-500 font-medium">suất</div>
             </div>
-            <div className="border-r border-slate-300 pr-2">
-              <span className="block text-slate-500 font-medium">Suất Cháo</span>
-              <span className="text-sm font-bold text-slate-900">
-                {totalSummary.finalChao}
-              </span>
+            <div className="p-2">
+              <div className="text-[11px] font-bold text-slate-800 uppercase">Suất Cháo</div>
+              <div className="text-xl font-black text-black mt-0.5">{totalSummary.finalChao}</div>
+              <div className="text-[10px] text-slate-500 font-medium">suất</div>
+            </div>
+            <div className="p-2 bg-slate-200">
+              <div className="text-[11px] font-black text-black uppercase">Tổng thực tế</div>
+              <div className="text-2xl font-black text-black mt-0.5">{totalSummary.finalTotal}</div>
+              <div className="text-[10px] font-extrabold text-black">Giao nhà bếp</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Bảng danh sách chi tiết toàn bộ các lớp (ĐẦY ĐỦ, KHÔNG phân trang, KHÔNG thanh cuộn) */}
+        <div className="my-3">
+          <div className="text-xs font-bold text-black mb-1.5 flex justify-between items-center">
+            <span className="uppercase tracking-wide">Chi tiết số lượng suất ăn từng lớp:</span>
+            <span className="font-semibold text-slate-700">Tổng số: {classSummaries.length} lớp</span>
+          </div>
+
+          <table className="a4-print-table text-xs">
+            <thead>
+              <tr className="bg-slate-100">
+                <th className="text-center w-9 font-bold">STT</th>
+                <th className="text-left w-20 font-bold px-2">Lớp</th>
+                <th className="text-center w-24 font-bold">Tổng đăng ký</th>
+                <th className="text-center w-16 font-bold text-red-600">Số cắt</th>
+                <th className="text-center w-16 font-bold">Mặn</th>
+                <th className="text-center w-16 font-bold">Chay</th>
+                <th className="text-center w-16 font-bold">Cháo</th>
+                <th className="text-center w-24 font-black bg-slate-100">Tổng thực tế</th>
+                <th className="text-center font-bold">Ký nhận / Ghi chú</th>
+              </tr>
+            </thead>
+            <tbody>
+              {classSummaries.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="text-center py-4 text-slate-500 italic">
+                    Không có dữ liệu suất ăn cho ngày {formatDateDDMMYYYY(selectedDate)}
+                  </td>
+                </tr>
+              ) : (
+                classSummaries.map((item, index) => (
+                  <tr key={item.classId}>
+                    <td className="text-center font-medium">{index + 1}</td>
+                    <td className="text-left font-bold px-2">{item.className}</td>
+                    <td className="text-center">{item.totalRegistered}</td>
+                    <td className={`text-center font-semibold ${item.totalCanceled > 0 ? 'text-red-600' : 'text-slate-400'}`}>
+                      {item.totalCanceled > 0 ? `-${item.totalCanceled}` : "0"}
+                    </td>
+                    <td className="text-center">{item.finalMan}</td>
+                    <td className="text-center">{item.finalChay}</td>
+                    <td className="text-center">{item.finalChao}</td>
+                    <td className="text-center font-black text-sm bg-slate-50">
+                      {item.finalTotal}
+                    </td>
+                    <td className="text-left px-2"></td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+            {classSummaries.length > 0 && (
+              <tfoot>
+                <tr className="bg-slate-100 font-black">
+                  <td colSpan={2} className="text-center uppercase font-black py-1.5">
+                    TỔNG CỘNG ({classSummaries.length} LỚP)
+                  </td>
+                  <td className="text-center py-1.5">{totalSummary.totalRegistered}</td>
+                  <td className="text-center py-1.5 text-red-600">
+                    {totalSummary.totalCanceled > 0 ? `-${totalSummary.totalCanceled}` : "0"}
+                  </td>
+                  <td className="text-center py-1.5">{totalSummary.finalMan}</td>
+                  <td className="text-center py-1.5">{totalSummary.finalChay}</td>
+                  <td className="text-center py-1.5">{totalSummary.finalChao}</td>
+                  <td className="text-center py-1.5 text-sm font-black bg-slate-200">
+                    {totalSummary.finalTotal}
+                  </td>
+                  <td className="text-center text-[10px] text-slate-500 font-normal italic">
+                    (Số liệu chốt bếp)
+                  </td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+
+        {/* Chữ ký 3 bên */}
+        <div className="a4-signatures mt-6 pt-2">
+          <div className="grid grid-cols-3 gap-4 text-center text-xs">
+            <div>
+              <p className="font-bold uppercase text-black">Người lập biểu</p>
+              <p className="text-[11px] italic text-slate-600 mt-0.5">(Ký và ghi rõ họ tên)</p>
+              <div className="h-20" />
+              <p className="font-semibold text-slate-800">........................................</p>
             </div>
             <div>
-              <span className="block text-slate-500 font-medium">Tổng thực tế</span>
-              <span className="text-base font-extrabold text-blue-900">
-                {totalSummary.finalTotal}
-              </span>
+              <p className="font-bold uppercase text-black">Bếp trưởng / Tiếp phẩm</p>
+              <p className="text-[11px] italic text-slate-600 mt-0.5">(Ký xác nhận nhận số lượng)</p>
+              <div className="h-20" />
+              <p className="font-semibold text-slate-800">........................................</p>
+            </div>
+            <div>
+              <p className="font-bold uppercase text-black">Ban Giám hiệu duyệt</p>
+              <p className="text-[11px] italic text-slate-600 mt-0.5">(Ký và đóng dấu)</p>
+              <div className="h-20" />
+              <p className="font-semibold text-slate-800">........................................</p>
             </div>
           </div>
         </div>
@@ -454,53 +585,69 @@ export default function DailyMealsPage() {
           </div>
 
           {/* Quick Print & Action Buttons */}
-          <div className="flex items-center gap-2.5">
-            {classSummaries.length > 0 && !isFullyLocked && (
+          {activeMainTab === 'summary' && (
+            <div className="flex items-center gap-2.5">
+              {classSummaries.length > 0 && !isFullyLocked && (
+                <Button
+                  variant="outline"
+                  className="border-blue-500 text-blue-700 hover:bg-blue-50"
+                  onClick={() => { setLockType("EXPECTED"); setIsConfirmOpen(true); }}
+                  disabled={isLocking || isLoading}
+                >
+                  {isExpectedLocked ? "Cập nhật lại Số Dự Kiến" : "Chốt số Dự Kiến (Lần 1)"}
+                </Button>
+              )}
+              {classSummaries.length > 0 && !isFullyLocked && isPastLockTime2() && (
+                <Button
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                  onClick={() => { setLockType("FINAL"); setIsConfirmOpen(true); }}
+                  disabled={isLocking || isLoading}
+                >
+                  Chốt Chính Thức (Lần 2)
+                </Button>
+              )}
+
               <Button
                 variant="outline"
-                className="border-blue-500 text-blue-700 hover:bg-blue-50"
-                onClick={() => { setLockType("EXPECTED"); setIsConfirmOpen(true); }}
-                disabled={isLocking || isLoading}
+                size="sm"
+                onClick={handlePrint}
+                disabled={isLoading || classSummaries.length === 0}
+                className="gap-2 border-slate-300 hover:bg-slate-100 shadow-xs cursor-pointer"
               >
-                {isExpectedLocked ? "Cập nhật lại Số Dự Kiến" : "Chốt số Dự Kiến (Lần 1)"}
+                <Printer className="h-4 w-4 text-slate-600" />
+                <span>In phiếu bếp</span>
               </Button>
-            )}
-            {classSummaries.length > 0 && !isFullyLocked && isPastLockTime2() && (
+
               <Button
-                className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                onClick={() => { setLockType("FINAL"); setIsConfirmOpen(true); }}
-                disabled={isLocking || isLoading}
+                variant="outline"
+                size="sm"
+                onClick={() => fetchData(selectedDate)}
+                disabled={isLoading}
+                className="gap-2 border-slate-300 hover:bg-slate-100 shadow-xs cursor-pointer"
               >
-                Chốt Chính Thức (Lần 2)
+                <RefreshCw className={`h-4 w-4 text-slate-600 ${isLoading ? 'animate-spin' : ''}`} />
+                <span>Làm mới</span>
               </Button>
-            )}
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handlePrint}
-              disabled={isLoading || classSummaries.length === 0}
-              className="gap-2 border-slate-300 hover:bg-slate-100 shadow-xs cursor-pointer"
-            >
-              <Printer className="h-4 w-4 text-slate-600" />
-              <span>In phiếu bếp</span>
-            </Button>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => fetchData(selectedDate)}
-              disabled={isLoading}
-              className="gap-2 border-slate-300 hover:bg-slate-100 shadow-xs cursor-pointer"
-            >
-              <RefreshCw className={`h-4 w-4 text-slate-600 ${isLoading ? 'animate-spin' : ''}`} />
-              <span>Làm mới</span>
-            </Button>
-          </div>
+            </div>
+          )}
         </div>
 
-        {/* Date Selector Filter Bar */}
-        <Card className="border-slate-200 shadow-xs bg-white">
+        {/* Main Tabs Navigation */}
+        <Tabs value={activeMainTab} onValueChange={(v) => setActiveMainTab(v as 'summary' | 'dining-areas')} className="w-full">
+          <TabsList className="no-print grid w-full max-w-md grid-cols-2 bg-slate-100 p-1 border">
+            <TabsTrigger value="summary" className="gap-2 font-semibold">
+              <ChefHat className="h-4 w-4" />
+              Chốt suất ăn
+            </TabsTrigger>
+            <TabsTrigger value="dining-areas" className="gap-2 font-semibold">
+              <UtensilsCrossed className="h-4 w-4" />
+              Chia sân ăn
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="summary" className="space-y-6 mt-4">
+            {/* Date Selector Filter Bar */}
+            <Card className="no-print border-slate-200 shadow-xs bg-white">
           <CardContent className="p-4 sm:p-5">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div className="flex flex-wrap items-center gap-3">
@@ -595,7 +742,7 @@ export default function DailyMealsPage() {
         {/* Alert Notification */}
         {alertMessage && (
           <div
-            className={`flex items-center gap-3 rounded-lg border p-4 text-sm font-medium transition-all ${
+            className={`no-print flex items-center gap-3 rounded-lg border p-4 text-sm font-medium transition-all ${
               alertMessage.type === 'success'
                 ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
                 : alertMessage.type === 'error'
@@ -613,7 +760,6 @@ export default function DailyMealsPage() {
             <span>{alertMessage.text}</span>
           </div>
         )}
-      </div>
 
       {/* ========================================================
           TOTAL SUMMARY CARDS (Screen view)
@@ -734,10 +880,10 @@ export default function DailyMealsPage() {
       </div>
 
       {/* ========================================================
-          TABLE OF CLASS DETAILS (Dual View: Screen + Print)
+          TABLE OF CLASS DETAILS (Screen View with Pagination)
          ======================================================== */}
-      <Card className="print-card border-slate-200 shadow-sm overflow-hidden bg-white">
-        <CardHeader className="no-print border-b bg-slate-50/60 p-4 sm:p-5">
+      <Card className="border-slate-200 shadow-sm overflow-hidden bg-white">
+        <CardHeader className="border-b bg-slate-50/60 p-4 sm:p-5">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div>
               <CardTitle className="text-base font-semibold text-slate-900">
@@ -790,7 +936,7 @@ export default function DailyMealsPage() {
                   </span>
                 </div>
               )}
-              <Table className="print-table" wrapperClassName="max-h-[65vh]">
+              <Table wrapperClassName="max-h-[65vh]">
                 <TableHeader className="sticky top-0 z-10 bg-slate-50 text-xs shadow-sm shadow-slate-200">
                   <TableRow>
                     <TableHead className="w-12 text-center font-bold text-slate-700">STT</TableHead>
@@ -961,32 +1107,6 @@ export default function DailyMealsPage() {
       </Card>
 
       {/* ========================================================
-          PRINT SIGNATURE SECTION (VISIBLE ONLY ON PRINT)
-         ======================================================== */}
-      <div className="print-only mt-8 pt-4">
-        <div className="grid grid-cols-3 gap-4 text-center text-xs">
-          <div>
-            <p className="font-bold uppercase text-slate-800">Người lập biểu</p>
-            <p className="text-[11px] italic text-slate-500">(Ký và ghi rõ họ tên)</p>
-            <div className="h-20" />
-            <p className="font-semibold text-slate-700">........................................</p>
-          </div>
-          <div>
-            <p className="font-bold uppercase text-slate-800">Bếp trưởng / Tiếp phẩm</p>
-            <p className="text-[11px] italic text-slate-500">(Ký xác nhận nhận số lượng)</p>
-            <div className="h-20" />
-            <p className="font-semibold text-slate-700">........................................</p>
-          </div>
-          <div>
-            <p className="font-bold uppercase text-slate-800">Ban Giám hiệu duyệt</p>
-            <p className="text-[11px] italic text-slate-500">(Ký và đóng dấu)</p>
-            <div className="h-20" />
-            <p className="font-semibold text-slate-700">........................................</p>
-          </div>
-        </div>
-      </div>
-
-      {/* ========================================================
           BIG ACTION LOCK BUTTON (no-print)
          ======================================================== */}
       {classSummaries.length > 0 && (
@@ -1026,6 +1146,13 @@ export default function DailyMealsPage() {
           )}
         </div>
       )}
+          </TabsContent>
+
+          <TabsContent value="dining-areas" className="no-print space-y-4 mt-4">
+            <DiningCourtTab cutoffTime={data?.lockTime2 || "07:00"} />
+          </TabsContent>
+        </Tabs>
+      </div>
 
       {/* ========================================================
           CONFIRMATION LOCK DIALOG

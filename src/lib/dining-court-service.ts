@@ -5,6 +5,7 @@ import { getWeekNumber, getVietnamTodayUTC, isPastCutoffTime } from "@/lib/utils
 export interface StudentMealInfo {
   id: string;
   studentCode: string;
+  boardingCode: string;
   fullName: string;
   className: string;
   mealType: "MAN" | "CHAY" | "CHAO";
@@ -394,9 +395,10 @@ export async function getDiningCourtAllocation(dateStr: string): Promise<DiningA
                 select: { fullName: true },
               },
             },
-            orderBy: {
-              studentCode: "asc",
-            },
+            orderBy: [
+              { boardingCode: "asc" },
+              { studentCode: "asc" },
+            ],
           },
         },
       },
@@ -443,6 +445,7 @@ export async function getDiningCourtAllocation(dateStr: string): Promise<DiningA
       return {
         id: s.id,
         studentCode: s.studentCode,
+        boardingCode: s.boardingCode || "—",
         fullName: s.user?.fullName || "Chưa có tên",
         className: schedule.class.name,
         mealType: finalMealType,

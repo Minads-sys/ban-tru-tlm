@@ -32,7 +32,6 @@ import { ApprovalActions } from '@/components/admin/approval-actions';
 import { bulkApproveCancellations, autoApproveExpiredCancellations } from '@/app/admin/meal-cancel/actions';
 import { BulkMealCancelDialog } from '@/components/admin/bulk-meal-cancel-dialog';
 import { BulkMealOverrideDialog } from '@/components/admin/bulk-meal-override-dialog';
-import { DiningCourtTab } from '@/components/admin/dining-court-tab';
 import Swal from 'sweetalert2';
 
 export interface CancellationItem {
@@ -78,7 +77,7 @@ export function MealCancelManager({
   classes = [],
   isAccountant = false,
 }: MealCancelManagerProps) {
-  const [activeTab, setActiveTab] = useState<'pending' | 'history' | 'dining-areas'>('pending');
+  const [activeTab, setActiveTab] = useState<'pending' | 'history'>('pending');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isBulkPending, startBulkTransition] = useTransition();
 
@@ -355,7 +354,7 @@ export function MealCancelManager({
       </div>
 
       {/* Tabs Layout */}
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'pending' | 'history' | 'dining-areas')} className="w-full">
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'pending' | 'history')} className="w-full">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-200 pb-3">
           <TabsList className="bg-slate-100 p-1 rounded-lg">
             <TabsTrigger
@@ -379,13 +378,6 @@ export function MealCancelManager({
               <Badge variant="outline" className="text-slate-600 bg-white text-[11px] px-1.5 py-0 h-5 ml-1">
                 {initialHistory.length}
               </Badge>
-            </TabsTrigger>
-            <TabsTrigger
-              value="dining-areas"
-              className="data-[state=active]:bg-white data-[state=active]:text-orange-700 data-[state=active]:shadow-xs px-4 py-2 font-medium text-xs sm:text-sm gap-2"
-            >
-              <UtensilsCrossed className="h-4 w-4 text-orange-600" />
-              <span>Chia sân</span>
             </TabsTrigger>
           </TabsList>
 
@@ -761,11 +753,6 @@ export function MealCancelManager({
               )}
             </CardContent>
           </Card>
-        </TabsContent>
-
-        {/* Tab 3: Chia sân theo Tiết ăn */}
-        <TabsContent value="dining-areas" className="mt-4 space-y-4">
-          <DiningCourtTab cutoffTime={cutoffTime} />
         </TabsContent>
       </Tabs>
 

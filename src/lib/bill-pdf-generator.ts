@@ -1,4 +1,5 @@
 import QRCode from "qrcode";
+import JsBarcode from "jsbarcode";
 import { numberToVietnameseWords } from "@/lib/utils";
 import { generateMealPaymentEMVCo } from "@/lib/vietqr";
 
@@ -66,6 +67,58 @@ const formatVND = (amount: number) => {
 };
 
 /**
+ * Sinh chuỗi SVG mã vạch Code 128 dạng vector để nhúng trực tiếp vào pdfmake
+ */
+export function generateBarcodeSvg(
+  text: string,
+  options: {
+    width?: number;
+    height?: number;
+  } = {}
+): string {
+  if (!text) return "";
+  const barWidth = options.width ?? 1.1;
+  const barHeight = options.height ?? 26;
+
+  try {
+    const result: any = {};
+    JsBarcode(result, text, {
+      format: "CODE128",
+      displayValue: false,
+    });
+
+    const encoding = result.encodings?.[0];
+    if (!encoding || !encoding.data) return "";
+
+    const binary: string = encoding.data;
+    let rects = "";
+    let currentRun = 0;
+
+    for (let b = 0; b < binary.length; b++) {
+      if (binary[b] === "1") {
+        currentRun++;
+      } else if (currentRun > 0) {
+        const x = (b - currentRun) * barWidth;
+        const w = currentRun * barWidth;
+        rects += `<rect x="${x.toFixed(2)}" y="0" width="${w.toFixed(2)}" height="${barHeight}" fill="#000000"/>`;
+        currentRun = 0;
+      }
+    }
+    if (currentRun > 0) {
+      const x = (binary.length - currentRun) * barWidth;
+      const w = currentRun * barWidth;
+      rects += `<rect x="${x.toFixed(2)}" y="0" width="${w.toFixed(2)}" height="${barHeight}" fill="#000000"/>`;
+    }
+
+    const totalWidth = binary.length * barWidth;
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${totalWidth.toFixed(2)}" height="${barHeight}" viewBox="0 0 ${totalWidth.toFixed(2)} ${barHeight}">${rects}</svg>`;
+  } catch (err) {
+    console.error("Lỗi sinh barcode SVG:", err);
+    return "";
+  }
+}
+
+/**
  * Sinh Buffer PDF phiếu thu khổ A5 chuẩn in ấn
  */
 export async function generateBillPdfBuffer(
@@ -125,13 +178,14 @@ export async function generateBillPdfBuffer(
   });
 
   const receiptBarcode = `PT${bill.month}${bill.year}${boardingCode}`;
+  const barcodeSvg = generateBarcodeSvg(receiptBarcode, { width: 1.1, height: 26 });
 
   const docDefinition: any = {
     pageSize: "A5",
     pageOrientation: "portrait",
     pageMargins: [20, 18, 20, 18],
     content: [
-      // Header: Trường học & Mã phiếu
+      // Header: Trường học & Mã phiếu Barcode
       {
         columns: [
           {
@@ -139,13 +193,17 @@ export async function generateBillPdfBuffer(
             stack: [
               { text: schoolName.toUpperCase(), fontSize: 11, bold: true },
               schoolAddress ? { text: schoolAddress, fontSize: 8.5, color: "#444", margin: [0, 2, 0, 0] } : {},
+              settings.schoolPhone ? { text: `ĐT: ${settings.schoolPhone} - TỔ QUẢN LÝ BÁN TRÚ`, fontSize: 8, color: "#555", margin: [0, 1, 0, 0] } : {},
             ],
           },
           {
-            width: "auto",
+            width: 130,
             stack: [
-              { text: `Mã phiếu: ${receiptBarcode}`, fontSize: 9, font: "Roboto", bold: true, alignment: "right" },
-              { text: `Ngày xuất: ${new Date().toLocaleDateString("vi-VN")}`, fontSize: 8, color: "#666", alignment: "right" },
+              barcodeSvg
+                ? { svg: barcodeSvg, width: 130, alignment: "center" }
+                : { text: `Mã phiếu: ${receiptBarcode}`, fontSize: 9, font: "Roboto", bold: true, alignment: "right" },
+              { text: receiptBarcode, fontSize: 8.5, font: "Roboto", bold: true, alignment: "center", margin: [0, 1, 0, 0] },
+              { text: `Ngày xuất: ${new Date().toLocaleDateString("vi-VN")}`, fontSize: 7.5, color: "#666", alignment: "center", margin: [0, 1, 0, 0] },
             ],
           },
         ],
@@ -188,13 +246,6 @@ export async function generateBillPdfBuffer(
                     text: [
                       { text: "Mã Bán Trú: ", bold: true, fontSize: 9 },
                       { text: boardingCode || "Chưa cấp", fontSize: 9, bold: true, color: "#1d4ed8" },
-                    ],
-                    margin: [0, 1.5, 0, 1.5],
-                  },
-                  {
-                    text: [
-                      { text: "Mã Học Sinh: ", bold: true, fontSize: 9 },
-                      { text: studentCode, fontSize: 9 },
                     ],
                     margin: [0, 1.5, 0, 1.5],
                   },

@@ -180,7 +180,7 @@ export async function generateDiningCourtsPdfBuffer(
     const tableBody: any[] = [
       [
         { text: "STT", bold: true, alignment: "center", fillColor: "#f1f5f9" },
-        { text: "Mã HS", bold: true, alignment: "center", fillColor: "#f1f5f9" },
+        { text: "Mã bán trú", bold: true, alignment: "center", fillColor: "#f1f5f9" },
         { text: "Họ và tên học sinh", bold: true, alignment: "left", fillColor: "#f1f5f9" },
         { text: "Lớp", bold: true, alignment: "center", fillColor: "#f1f5f9" },
         { text: "Suất ăn", bold: true, alignment: "center", fillColor: "#f1f5f9" },
@@ -202,7 +202,7 @@ export async function generateDiningCourtsPdfBuffer(
 
       tableBody.push([
         { text: String(sIdx + 1), alignment: "center", fontSize: 9 },
-        { text: student.studentCode, alignment: "center", fontSize: 8.5 },
+        { text: student.boardingCode || "—", alignment: "center", fontSize: 8.5, bold: true, color: "#1d4ed8" },
         { text: student.fullName, alignment: "left", bold: true, fontSize: 9 },
         { text: student.className, alignment: "center", fontSize: 9 },
         { text: mealText, alignment: "center", bold: student.mealType !== "MAN", color: mealColor, fontSize: 9 },

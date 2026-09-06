@@ -212,10 +212,6 @@ export function PaymentBillPrint({ data, onClose, defaultFormat = "K80" }: Props
                 <span className="font-bold text-blue-700">{data.student.boardingCode || "—"}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-600">Mã HS (CCCD):</span>
-                <span className="font-mono text-slate-700">{maskStudentCode(data.student.studentCode)}</span>
-              </div>
-              <div className="flex justify-between">
                 <span className="text-slate-600">Loại suất:</span>
                 <span className="font-medium text-slate-800">{mealTypeName}</span>
               </div>
@@ -456,10 +452,6 @@ export function PaymentBillPrint({ data, onClose, defaultFormat = "K80" }: Props
                   <p className="flex">
                     <span className="font-bold w-24 shrink-0">Lớp học:</span>
                     <span className="font-semibold">{data.student.className}</span>
-                  </p>
-                  <p className="flex">
-                    <span className="font-bold w-24 shrink-0">Mã HS (CCCD):</span>
-                    <span className="font-mono">{maskStudentCode(data.student.studentCode)}</span>
                   </p>
                   <p className="flex">
                     <span className="font-bold w-24 shrink-0">Loại suất:</span>

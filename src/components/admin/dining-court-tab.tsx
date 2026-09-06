@@ -469,7 +469,7 @@ export function DiningCourtTab({ cutoffTime }: DiningCourtTabProps) {
                         <TableHeader className="bg-slate-50 sticky top-0">
                           <TableRow>
                             <TableHead className="w-8 text-center p-1">#</TableHead>
-                            <TableHead className="p-1">Mã HS</TableHead>
+                            <TableHead className="p-1">Mã bán trú</TableHead>
                             <TableHead className="p-1">Họ tên</TableHead>
                             <TableHead className="w-12 text-center p-1">Lớp</TableHead>
                             <TableHead className="w-14 text-center p-1">Suất</TableHead>
@@ -481,8 +481,8 @@ export function DiningCourtTab({ cutoffTime }: DiningCourtTabProps) {
                               <TableCell className="text-center font-medium text-slate-500 p-1">
                                 {sIdx + 1}
                               </TableCell>
-                              <TableCell className="p-1 text-slate-600 font-mono text-[11px]">
-                                {st.studentCode}
+                              <TableCell className="p-1 text-blue-700 font-semibold font-mono text-[11px]">
+                                {st.boardingCode || "—"}
                               </TableCell>
                               <TableCell className="p-1 font-semibold text-slate-900">
                                 {st.fullName}
