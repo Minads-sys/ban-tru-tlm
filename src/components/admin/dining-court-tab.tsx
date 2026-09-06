@@ -540,7 +540,7 @@ export function DiningCourtTab({ cutoffTime, schoolName }: DiningCourtTabProps) 
 
       {/* DIALOG XEM TRƯỚC VÀ IN BẢNG TẬP KẾT SUẤT ĂN THEO SÂN */}
       <Dialog open={isPrintSummaryOpen} onOpenChange={setIsPrintSummaryOpen}>
-        <DialogContent className="max-w-4xl p-0 overflow-hidden max-h-[95vh] border-none shadow-2xl">
+        <DialogContent className="max-w-4xl p-0 overflow-hidden max-h-[95vh] border-none shadow-2xl print:max-w-none print:max-h-none print:overflow-visible print:p-0 print:m-0 print:border-none print:shadow-none print:bg-transparent">
           {data && (
             <DiningCourtSummaryPrint
               data={data}

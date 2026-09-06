@@ -108,10 +108,6 @@ export function DiningCourtSummaryPrint({
                 height: auto !important;
                 overflow: visible !important;
               }
-              /* Ẩn toàn bộ DOM phía dưới trừ Dialog Portal */
-              body > *:not([data-radix-portal]) {
-                display: none !important;
-              }
               .no-print,
               .no-print *,
               [data-radix-dialog-overlay],
@@ -130,6 +126,7 @@ export function DiningCourtSummaryPrint({
                 width: 100% !important;
                 max-width: 100% !important;
                 height: auto !important;
+                max-height: none !important;
                 margin: 0 !important;
                 padding: 0 !important;
                 box-shadow: none !important;
