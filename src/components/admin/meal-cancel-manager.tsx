@@ -356,26 +356,26 @@ export function MealCancelManager({
       {/* Tabs Layout */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'pending' | 'history')} className="w-full">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-200 pb-3">
-          <TabsList className="bg-slate-100 p-1 rounded-lg">
+          <TabsList className="bg-slate-100 p-1.5 rounded-xl border border-slate-200 shadow-2xs h-auto">
             <TabsTrigger
               value="pending"
-              className="data-[state=active]:bg-white data-[state=active]:text-blue-700 data-[state=active]:shadow-xs px-4 py-2 font-medium text-xs sm:text-sm gap-2"
+              className="px-4 py-2 font-medium text-xs sm:text-sm gap-2 cursor-pointer transition-all duration-150 hover:bg-slate-200/80 hover:text-slate-900 text-slate-700 data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:font-semibold data-[state=active]:shadow-sm group"
             >
-              <Clock className="h-4 w-4 text-amber-500" />
+              <Clock className="h-4 w-4 text-amber-500 group-data-[state=active]:text-white" />
               <span>Chờ xử lý</span>
               {initialPending.length > 0 && (
-                <Badge className="bg-amber-500 hover:bg-amber-600 text-white text-[11px] px-1.5 py-0 h-5 min-w-5 flex items-center justify-center rounded-full font-bold ml-1">
+                <Badge className="bg-amber-500 group-data-[state=active]:bg-white group-data-[state=active]:text-blue-700 text-white text-[11px] px-1.5 py-0 h-5 min-w-5 flex items-center justify-center rounded-full font-bold ml-1 transition-colors">
                   {initialPending.length}
                 </Badge>
               )}
             </TabsTrigger>
             <TabsTrigger
               value="history"
-              className="data-[state=active]:bg-white data-[state=active]:text-emerald-700 data-[state=active]:shadow-xs px-4 py-2 font-medium text-xs sm:text-sm gap-2"
+              className="px-4 py-2 font-medium text-xs sm:text-sm gap-2 cursor-pointer transition-all duration-150 hover:bg-slate-200/80 hover:text-slate-900 text-slate-700 data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:font-semibold data-[state=active]:shadow-sm group"
             >
-              <Users className="h-4 w-4 text-emerald-600" />
+              <Users className="h-4 w-4 text-emerald-600 group-data-[state=active]:text-white" />
               <span>Lịch sử &amp; Đối soát</span>
-              <Badge variant="outline" className="text-slate-600 bg-white text-[11px] px-1.5 py-0 h-5 ml-1">
+              <Badge variant="outline" className="text-slate-600 bg-white group-data-[state=active]:bg-blue-700 group-data-[state=active]:text-white group-data-[state=active]:border-blue-400 text-[11px] px-1.5 py-0 h-5 ml-1 transition-colors">
                 {initialHistory.length}
               </Badge>
             </TabsTrigger>

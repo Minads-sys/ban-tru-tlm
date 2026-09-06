@@ -634,13 +634,19 @@ export default function DailyMealsPage() {
 
         {/* Main Tabs Navigation */}
         <Tabs value={activeMainTab} onValueChange={(v) => setActiveMainTab(v as 'summary' | 'dining-areas')} className="w-full">
-          <TabsList className="no-print grid w-full max-w-md grid-cols-2 bg-slate-100 p-1 border">
-            <TabsTrigger value="summary" className="gap-2 font-semibold">
-              <ChefHat className="h-4 w-4" />
+          <TabsList className="no-print grid w-full max-w-md grid-cols-2 bg-slate-100 p-1.5 rounded-xl border border-slate-200 shadow-2xs h-auto">
+            <TabsTrigger
+              value="summary"
+              className="gap-2 py-2 font-semibold cursor-pointer transition-all duration-150 hover:bg-slate-200/80 hover:text-slate-900 data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-sm group"
+            >
+              <ChefHat className="h-4 w-4 text-slate-600 group-data-[state=active]:text-white" />
               Chốt suất ăn
             </TabsTrigger>
-            <TabsTrigger value="dining-areas" className="gap-2 font-semibold">
-              <UtensilsCrossed className="h-4 w-4" />
+            <TabsTrigger
+              value="dining-areas"
+              className="gap-2 py-2 font-semibold cursor-pointer transition-all duration-150 hover:bg-slate-200/80 hover:text-slate-900 data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-sm group"
+            >
+              <UtensilsCrossed className="h-4 w-4 text-slate-600 group-data-[state=active]:text-white" />
               Chia sân ăn
             </TabsTrigger>
           </TabsList>

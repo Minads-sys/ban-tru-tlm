@@ -739,50 +739,56 @@ export default function BillingPage() {
         <TabsList
           className={`grid ${
             isCashier ? "grid-cols-2 max-w-md" : "grid-cols-2 sm:grid-cols-4 max-w-3xl"
-          } w-full h-auto p-1 gap-1`}
+          } w-full h-auto p-1.5 gap-1 bg-slate-100 rounded-xl border border-slate-200 shadow-2xs`}
         >
           {isCashier ? (
             <>
               <TabsTrigger
                 value="pos"
-                className="flex items-center justify-center gap-2 py-2.5 text-emerald-700 data-[state=active]:bg-emerald-50 data-[state=active]:text-emerald-800 font-bold"
+                className="flex items-center justify-center gap-2 py-2.5 font-bold cursor-pointer transition-all duration-150 text-slate-700 hover:text-emerald-900 hover:bg-emerald-100/70 data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm group"
               >
-                <Banknote className="h-4 w-4 text-emerald-600" />
+                <Banknote className="h-4 w-4 text-emerald-600 group-data-[state=active]:text-white" />
                 💵 Quầy Thu Tiền Mặt
               </TabsTrigger>
               <TabsTrigger
                 value="cash-closing"
-                className="flex items-center justify-center gap-2 py-2.5 text-blue-700 data-[state=active]:bg-blue-50 data-[state=active]:text-blue-800 font-bold"
+                className="flex items-center justify-center gap-2 py-2.5 font-bold cursor-pointer transition-all duration-150 text-slate-700 hover:text-blue-900 hover:bg-blue-100/70 data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-sm group"
               >
-                <FileCheck2 className="h-4 w-4 text-blue-600" />
+                <FileCheck2 className="h-4 w-4 text-blue-600 group-data-[state=active]:text-white" />
                 📄 Chốt Ca & Báo Cáo
               </TabsTrigger>
             </>
           ) : (
             <>
-              <TabsTrigger value="bills" className="flex items-center gap-2 py-2">
-                <Receipt className="h-4 w-4" />
+              <TabsTrigger
+                value="bills"
+                className="flex items-center justify-center gap-2 py-2.5 font-semibold cursor-pointer transition-all duration-150 text-slate-700 hover:text-slate-900 hover:bg-slate-200/80 data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-sm group"
+              >
+                <Receipt className="h-4 w-4 text-slate-600 group-data-[state=active]:text-white" />
                 Hóa đơn
               </TabsTrigger>
               <TabsTrigger
                 value="pos"
-                className="flex items-center gap-2 py-2 text-emerald-700 data-[state=active]:bg-emerald-50 data-[state=active]:text-emerald-800 font-bold"
+                className="flex items-center justify-center gap-2 py-2.5 font-semibold cursor-pointer transition-all duration-150 text-emerald-700 hover:text-emerald-900 hover:bg-emerald-100/80 data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm group"
               >
-                <Banknote className="h-4 w-4 text-emerald-600" />
+                <Banknote className="h-4 w-4 text-emerald-600 group-data-[state=active]:text-white" />
                 Quầy Thu Tiền Mặt
               </TabsTrigger>
               <TabsTrigger
                 value="cash-closing"
-                className="flex items-center gap-2 py-2 text-blue-700 data-[state=active]:bg-blue-50 data-[state=active]:text-blue-800 font-bold"
+                className="flex items-center justify-center gap-2 py-2.5 font-semibold cursor-pointer transition-all duration-150 text-blue-700 hover:text-blue-900 hover:bg-blue-100/80 data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-sm group"
               >
-                <FileCheck2 className="h-4 w-4 text-blue-600" />
+                <FileCheck2 className="h-4 w-4 text-blue-600 group-data-[state=active]:text-white" />
                 Chốt Ca & Báo Cáo
               </TabsTrigger>
-              <TabsTrigger value="transactions" className="flex items-center gap-2 py-2">
-                <CreditCard className="h-4 w-4" />
+              <TabsTrigger
+                value="transactions"
+                className="flex items-center justify-center gap-2 py-2.5 font-semibold cursor-pointer transition-all duration-150 text-slate-700 hover:text-indigo-900 hover:bg-indigo-100/80 data-[state=active]:bg-indigo-600 data-[state=active]:text-white data-[state=active]:shadow-sm group"
+              >
+                <CreditCard className="h-4 w-4 text-indigo-600 group-data-[state=active]:text-white" />
                 Đối soát SePay
                 {txStats && txStats.unmatchedCount > 0 && (
-                  <span className="ml-1 px-1.5 py-0.2 text-[10px] bg-amber-500 text-white rounded-full font-bold">
+                  <span className="ml-1 px-1.5 py-0.2 text-[10px] bg-amber-500 group-data-[state=active]:bg-white group-data-[state=active]:text-indigo-700 text-white rounded-full font-bold transition-colors">
                     {txStats.unmatchedCount}
                   </span>
                 )}

@@ -336,21 +336,27 @@ export function CashClosingManager({ currentUser }: { currentUser: any }) {
   return (
     <div className="space-y-6">
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-2 lg:w-[600px] mb-4">
-          <TabsTrigger value="closing-today" className="flex items-center gap-2 text-xs sm:text-sm">
-            <FileCheck2 className="h-4 w-4 text-blue-600" />
+        <TabsList className="grid w-full grid-cols-2 lg:w-[600px] mb-4 bg-slate-100 p-1.5 rounded-xl border border-slate-200 shadow-2xs h-auto">
+          <TabsTrigger
+            value="closing-today"
+            className="flex items-center justify-center gap-2 py-2 text-xs sm:text-sm font-semibold cursor-pointer transition-all duration-150 text-slate-700 hover:text-slate-900 hover:bg-slate-200/80 data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-sm group"
+          >
+            <FileCheck2 className="h-4 w-4 text-blue-600 group-data-[state=active]:text-white" />
             Chốt Ca Hôm Nay
           </TabsTrigger>
-          <TabsTrigger value="history" className="flex items-center gap-2 text-xs sm:text-sm">
-            <History className="h-4 w-4 text-indigo-600" />
+          <TabsTrigger
+            value="history"
+            className="flex items-center justify-center gap-2 py-2 text-xs sm:text-sm font-semibold cursor-pointer transition-all duration-150 text-slate-700 hover:text-slate-900 hover:bg-slate-200/80 data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-sm group"
+          >
+            <History className="h-4 w-4 text-indigo-600 group-data-[state=active]:text-white" />
             Lịch Sử Bàn Giao ({historyClosings.length})
           </TabsTrigger>
           {isAccountantOrAdmin && (
             <TabsTrigger
               value="void-manager"
-              className="flex items-center gap-2 text-xs sm:text-sm text-rose-700 data-[state=active]:bg-rose-50 data-[state=active]:text-rose-800"
+              className="flex items-center justify-center gap-2 py-2 text-xs sm:text-sm font-semibold cursor-pointer transition-all duration-150 text-rose-700 hover:text-rose-900 hover:bg-rose-100/80 data-[state=active]:bg-rose-600 data-[state=active]:text-white data-[state=active]:shadow-sm group"
             >
-              <ShieldAlert className="h-4 w-4" />
+              <ShieldAlert className="h-4 w-4 text-rose-600 group-data-[state=active]:text-white" />
               Quản Lý Hủy Phiếu (Kế toán)
             </TabsTrigger>
           )}

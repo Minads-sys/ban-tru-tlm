@@ -238,17 +238,26 @@ export default function ReportsPage() {
       </h1>
 
       <Tabs defaultValue="daily" className="no-print">
-        <TabsList className="mb-4">
-          <TabsTrigger value="daily">
-            <ChefHat className="h-4 w-4 mr-1" />
+        <TabsList className="mb-4 bg-slate-100 p-1.5 rounded-xl border border-slate-200 shadow-2xs h-auto">
+          <TabsTrigger
+            value="daily"
+            className="py-2 px-3.5 font-semibold cursor-pointer transition-all duration-150 text-slate-700 hover:text-slate-900 hover:bg-slate-200/80 data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-sm group"
+          >
+            <ChefHat className="h-4 w-4 mr-1.5 text-slate-600 group-data-[state=active]:text-white" />
             Suất ăn hàng ngày
           </TabsTrigger>
-          <TabsTrigger value="debt">
-            <CreditCard className="h-4 w-4 mr-1" />
+          <TabsTrigger
+            value="debt"
+            className="py-2 px-3.5 font-semibold cursor-pointer transition-all duration-150 text-slate-700 hover:text-slate-900 hover:bg-slate-200/80 data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-sm group"
+          >
+            <CreditCard className="h-4 w-4 mr-1.5 text-slate-600 group-data-[state=active]:text-white" />
             Công nợ
           </TabsTrigger>
-          <TabsTrigger value="overdue" className="text-red-600 data-[state=active]:bg-red-50 data-[state=active]:text-red-700">
-            <AlertTriangle className="h-4 w-4 mr-1" />
+          <TabsTrigger
+            value="overdue"
+            className="py-2 px-3.5 font-semibold cursor-pointer transition-all duration-150 text-red-600 hover:text-red-900 hover:bg-red-100/80 data-[state=active]:bg-red-600 data-[state=active]:text-white data-[state=active]:shadow-sm group"
+          >
+            <AlertTriangle className="h-4 w-4 mr-1.5 text-red-600 group-data-[state=active]:text-white" />
             Nợ quá hạn
           </TabsTrigger>
         </TabsList>
