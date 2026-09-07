@@ -193,51 +193,28 @@ export function BulkMealCancelDialog({
       return;
     }
 
-    const className = classes.find((c) => c.id === selectedClassId)?.name || selectedClassId;
+    startSubmitTransition(async () => {
+      const res = await bulkCreateAndApproveCancellations({
+        classId: selectedClassId,
+        studentIds: Array.from(selectedStudentIds),
+        cancelDate,
+        reason: reason.trim(),
+        autoApprove,
+        bypassCutoff,
+      });
 
-    Swal.fire({
-      title: `${autoApprove ? 'Tạo & Duyệt' : 'Tạo'} cắt suất hàng loạt?`,
-      html: `
-        <div class="text-left text-sm space-y-1.5 p-2 bg-slate-50 rounded border">
-          <div>- Lớp: <strong>${className}</strong></div>
-          <div>- Ngày cắt: <strong>${cancelDate}</strong></div>
-          <div>- Số lượng: <strong>${selectedStudentIds.size} học sinh</strong></div>
-          <div>- Lý do: <strong>${reason.trim()}</strong></div>
-          <div>- Trạng thái: <strong class="${autoApprove ? 'text-emerald-700' : 'text-amber-600'}">${autoApprove ? 'Duyệt ngay lập tức (APPROVED)' : 'Chờ duyệt (PENDING)'}</strong></div>
-        </div>
-      `,
-      icon: 'question',
-      showCancelButton: true,
-      confirmButtonColor: '#059669',
-      cancelButtonColor: '#64748b',
-      confirmButtonText: 'Đồng ý thực hiện',
-      cancelButtonText: 'Hủy bỏ',
-    }).then((result) => {
-      if (result.isConfirmed) {
-        startSubmitTransition(async () => {
-          const res = await bulkCreateAndApproveCancellations({
-            classId: selectedClassId,
-            studentIds: Array.from(selectedStudentIds),
-            cancelDate,
-            reason: reason.trim(),
-            autoApprove,
-            bypassCutoff,
-          });
-
-          if (res.success) {
-            Swal.fire({
-              icon: 'success',
-              title: 'Thành công',
-              text: res.message,
-              timer: 2000,
-              showConfirmButton: false,
-            });
-            onOpenChange(false);
-            if (onSuccess) onSuccess();
-          } else {
-            Swal.fire('Thao tác thất bại', res.error || 'Có lỗi xảy ra', 'error');
-          }
+      if (res.success) {
+        onOpenChange(false);
+        Swal.fire({
+          icon: 'success',
+          title: 'Thành công',
+          text: res.message,
+          timer: 2000,
+          showConfirmButton: false,
         });
+        if (onSuccess) onSuccess();
+      } else {
+        Swal.fire('Thao tác thất bại', res.error || 'Có lỗi xảy ra', 'error');
       }
     });
   };

@@ -32,11 +32,25 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
+>(({ className, children, onPointerDownOutside, onInteractOutside, ...props }, ref) => (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content
       ref={ref}
+      onPointerDownOutside={(e) => {
+        const target = e.target as HTMLElement;
+        if (target?.closest?.('.swal2-container') || target?.classList?.contains('swal2-container')) {
+          e.preventDefault();
+        }
+        onPointerDownOutside?.(e);
+      }}
+      onInteractOutside={(e) => {
+        const target = e.target as HTMLElement;
+        if (target?.closest?.('.swal2-container') || target?.classList?.contains('swal2-container')) {
+          e.preventDefault();
+        }
+        onInteractOutside?.(e);
+      }}
       className={cn(
         "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-white text-slate-900 p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg print:static print:left-auto print:top-auto print:translate-x-0 print:translate-y-0 print:w-full print:max-w-none print:p-0 print:m-0 print:border-none print:shadow-none print:bg-transparent print:block",
         className

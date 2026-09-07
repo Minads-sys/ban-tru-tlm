@@ -205,50 +205,27 @@ export function BulkMealOverrideDialog({
       return;
     }
 
-    const className = classes.find((c) => c.id === selectedClassId)?.name || selectedClassId;
-    const mealLabel = MEAL_OPTIONS.find((m) => m.type === selectedMealType)?.label || selectedMealType;
+    startSubmitTransition(async () => {
+      const res = await bulkOverrideMeals({
+        classId: selectedClassId,
+        studentIds: Array.from(selectedStudentIds),
+        date: targetDate,
+        mealType: selectedMealType,
+        bypassCutoff,
+      });
 
-    Swal.fire({
-      title: `Đổi món hàng loạt sang ${mealLabel}?`,
-      html: `
-        <div class="text-left text-sm space-y-1.5 p-2 bg-slate-50 rounded border">
-          <div>- Lớp: <strong>${className}</strong></div>
-          <div>- Ngày áp dụng: <strong>${targetDate}</strong></div>
-          <div>- Món chuyển sang: <strong class="text-blue-700">${mealLabel}</strong></div>
-          <div>- Số lượng: <strong>${selectedStudentIds.size} học sinh</strong></div>
-        </div>
-      `,
-      icon: 'question',
-      showCancelButton: true,
-      confirmButtonColor: '#4f46e5',
-      cancelButtonColor: '#64748b',
-      confirmButtonText: 'Đồng ý đổi món',
-      cancelButtonText: 'Hủy bỏ',
-    }).then((result) => {
-      if (result.isConfirmed) {
-        startSubmitTransition(async () => {
-          const res = await bulkOverrideMeals({
-            classId: selectedClassId,
-            studentIds: Array.from(selectedStudentIds),
-            date: targetDate,
-            mealType: selectedMealType,
-            bypassCutoff,
-          });
-
-          if (res.success) {
-            Swal.fire({
-              icon: 'success',
-              title: 'Thành công',
-              text: res.message,
-              timer: 2000,
-              showConfirmButton: false,
-            });
-            onOpenChange(false);
-            if (onSuccess) onSuccess();
-          } else {
-            Swal.fire('Thao tác thất bại', res.error || 'Có lỗi xảy ra', 'error');
-          }
+      if (res.success) {
+        onOpenChange(false);
+        Swal.fire({
+          icon: 'success',
+          title: 'Thành công',
+          text: res.message,
+          timer: 2000,
+          showConfirmButton: false,
         });
+        if (onSuccess) onSuccess();
+      } else {
+        Swal.fire('Thao tác thất bại', res.error || 'Có lỗi xảy ra', 'error');
       }
     });
   };

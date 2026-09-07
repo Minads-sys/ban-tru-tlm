@@ -49,11 +49,14 @@ export async function GET(request: NextRequest) {
       fileName = `Diem_Danh_San_An_${shiftSuffix}_${dateStr.replace(/-/g, "")}.pdf`;
     }
 
+    const isInline = searchParams.get("inline") === "1" || searchParams.get("view") === "1";
+    const dispositionType = isInline ? "inline" : "attachment";
+
     return new NextResponse(pdfBuffer as any, {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${fileName}"`,
+        "Content-Disposition": `${dispositionType}; filename="${fileName}"`,
         "Content-Length": pdfBuffer.length.toString(),
       },
     });

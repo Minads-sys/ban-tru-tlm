@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Printer, Download, Layers, Utensils, Users, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Printer, Download, Layers, Utensils, Users, CheckCircle2, AlertTriangle, ExternalLink } from 'lucide-react';
 import { DiningAllocationResult } from '@/lib/dining-court-service';
 import Swal from 'sweetalert2';
 
@@ -51,12 +51,20 @@ export function DiningCourtSummaryPrint({
       a.download = `Bang_Tap_Ket_Suat_An_San_${shiftSuffix}_${cleanDate}.pdf`;
       document.body.appendChild(a);
       a.click();
-      a.remove();
-      window.URL.revokeObjectURL(downloadUrl);
+      
+      // Giữ blob trong 60 giây để trình duyệt hoàn tất quá trình ghi file xuống ổ đĩa, tránh lỗi "Cần có quyền để tải xuống"
+      setTimeout(() => {
+        try {
+          a.remove();
+          window.URL.revokeObjectURL(downloadUrl);
+        } catch {
+          // ignore
+        }
+      }, 60000);
 
       Swal.fire({
         icon: 'success',
-        title: 'Đã tải bảng tập kết PDF',
+        title: 'Đã tạo lệnh tải bảng tập kết PDF',
         timer: 1500,
         showConfirmButton: false,
       });
@@ -66,6 +74,11 @@ export function DiningCourtSummaryPrint({
     } finally {
       setIsExportingPdf(false);
     }
+  };
+
+  const handleOpenPdfNewTab = () => {
+    const url = `/api/dining-areas/export-pdf?date=${data.date}&shift=${activeShiftFilter}&type=summary&view=1`;
+    window.open(url, '_blank');
   };
 
   const formatDateDisplay = (dateStr: string) => {
@@ -257,6 +270,18 @@ export function DiningCourtSummaryPrint({
           >
             <Printer className="h-3.5 w-3.5" />
             <span>In danh sách</span>
+          </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleOpenPdfNewTab}
+            className="text-xs border-slate-300 gap-1.5 hover:bg-slate-50 cursor-pointer font-medium text-slate-700"
+            title="Mở tài liệu PDF trong tab mới để xem, in hoặc lưu"
+          >
+            <ExternalLink className="h-3.5 w-3.5 text-slate-600" />
+            <span>Mở xem PDF</span>
           </Button>
 
           <Button

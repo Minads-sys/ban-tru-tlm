@@ -137,8 +137,16 @@ export function DiningCourtTab({ cutoffTime, schoolName }: DiningCourtTabProps) 
       a.download = `Diem_Danh_San_An_${shift}_${cleanDate}.pdf`;
       document.body.appendChild(a);
       a.click();
-      a.remove();
-      window.URL.revokeObjectURL(downloadUrl);
+
+      // Giữ blob trong 60s để browser hoàn thành ghi file xuống đĩa
+      setTimeout(() => {
+        try {
+          a.remove();
+          window.URL.revokeObjectURL(downloadUrl);
+        } catch {
+          // ignore
+        }
+      }, 60000);
 
       Swal.fire({
         icon: 'success',

@@ -90,3 +90,11 @@ body {
   }
 }
 
+/* Đảm bảo SweetAlert2 luôn hiển thị trên cùng và bấm được khi có Dialog/Modal mở */
+.swal2-container {
+  z-index: 999999 !important;
+  pointer-events: auto !important;
+}
+.swal2-popup {
+  pointer-events: auto !important;
+}
