@@ -28,6 +28,8 @@ import {
   Download,
   KeyRound,
   Eye,
+  Calendar,
+  Calculator,
 } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
@@ -114,6 +116,26 @@ export default function AdminStudentsPage() {
   const [cancellingStudent, setCancellingStudent] = useState<StudentItem | null>(null);
   const [cancelReason, setCancelReason] = useState<string>('');
   const [isSubmittingCancel, setIsSubmittingCancel] = useState<boolean>(false);
+  const [cancelStopDate, setCancelStopDate] = useState<string>(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
+  const [cancelIncludeStopDate, setCancelIncludeStopDate] = useState<boolean>(false);
+  const [cancelActualMealDays, setCancelActualMealDays] = useState<number>(0);
+  const [isManualMealDays, setIsManualMealDays] = useState<boolean>(false);
+  const [previewLoading, setPreviewLoading] = useState<boolean>(false);
+  const [settlementPreview, setSettlementPreview] = useState<{
+    calculatedDays: number;
+    actualMealDays: number;
+    unitPrice: number;
+    totalPaid: number;
+    actualUsedAmount: number;
+    refundOrDebt: number;
+    settlementType: 'REFUND' | 'ADDITIONAL_PAYMENT' | 'BALANCED';
+    hasBill: boolean;
+    billFinalAmount: number;
+    billPaymentStatus: string | null;
+  } | null>(null);
 
   // Settlement modal state
   const [settlementData, setSettlementData] = useState<{
@@ -305,6 +327,60 @@ export default function AdminStudentsPage() {
     return { total, active, cancelled, suspended };
   }, [students]);
 
+  // Load settlement preview from API
+  const loadSettlementPreview = useCallback(
+    async (
+      studentId: string,
+      stopDate: string,
+      includeStopDate: boolean,
+      customDays?: number | null
+    ) => {
+      setPreviewLoading(true);
+      try {
+        const res = await fetch('/api/students', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'settlement-preview',
+            studentId,
+            stopDate,
+            includeStopDate,
+            actualMealDays:
+              customDays !== undefined && customDays !== null ? customDays : null,
+          }),
+        });
+        const resData = await res.json();
+        if (res.ok && resData.success && resData.data) {
+          setSettlementPreview(resData.data);
+          if (customDays === undefined || customDays === null) {
+            setCancelActualMealDays(resData.data.calculatedDays);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load settlement preview:', err);
+      } finally {
+        setPreviewLoading(false);
+      }
+    },
+    []
+  );
+
+  // Open cancel dialog with default dates & preview
+  const handleOpenCancelDialog = (student: StudentItem) => {
+    const today = (() => {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    })();
+    setCancellingStudent(student);
+    setCancelReason('');
+    setCancelStopDate(today);
+    setCancelIncludeStopDate(false);
+    setCancelActualMealDays(0);
+    setIsManualMealDays(false);
+    setSettlementPreview(null);
+    loadSettlementPreview(student.id, today, false, null);
+  };
+
   // Handle Cancel Boarding Action
   const handleConfirmCancel = async () => {
     if (!cancellingStudent) return;
@@ -318,7 +394,10 @@ export default function AdminStudentsPage() {
         body: JSON.stringify({
           action: 'cancel',
           studentId: cancellingStudent.id,
-          note: cancelReason.trim() || 'Hủy đăng ký ăn bán trú theo yêu cầu',
+          stopDate: cancelStopDate,
+          includeStopDate: cancelIncludeStopDate,
+          actualMealDays: cancelActualMealDays,
+          note: cancelReason.trim() || `Hủy đăng ký ăn bán trú từ ngày ${cancelStopDate}`,
         }),
       });
 
@@ -331,6 +410,8 @@ export default function AdminStudentsPage() {
       const targetStudent = cancellingStudent;
       setCancellingStudent(null);
       setCancelReason('');
+      setSettlementPreview(null);
+      setIsManualMealDays(false);
 
       // Show settlement popup if returned
       if (data.settlement) {
@@ -1012,10 +1093,7 @@ export default function AdminStudentsPage() {
                                   type="button"
                                   size="sm"
                                   variant="outline"
-                                  onClick={() => {
-                                    setCancellingStudent(student);
-                                    setCancelReason('');
-                                  }}
+                                  onClick={() => handleOpenCancelDialog(student)}
                                   className="h-8 px-2.5 text-xs font-medium border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300 gap-1.5 shadow-2xs cursor-pointer"
                                 >
                                   <UserMinus className="h-3.5 w-3.5" />
@@ -1152,10 +1230,12 @@ export default function AdminStudentsPage() {
           if (!open) {
             setCancellingStudent(null);
             setCancelReason('');
+            setSettlementPreview(null);
+            setIsManualMealDays(false);
           }
         }}
       >
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <div className="flex items-center gap-3 mb-1">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100 text-red-600">
@@ -1163,10 +1243,10 @@ export default function AdminStudentsPage() {
               </div>
               <div>
                 <DialogTitle className="text-lg font-bold text-slate-900">
-                  Hủy đăng ký bán trú
+                  Hủy đăng ký Bán trú & Quyết toán
                 </DialogTitle>
                 <DialogDescription className="text-xs text-slate-500">
-                  Thao tác sẽ khóa tài khoản học sinh và lập phiếu quyết toán tiền ăn
+                  Xác nhận ngừng ăn bán trú và tính toán quyết toán công nợ / hoàn tiền cho học sinh
                 </DialogDescription>
               </div>
             </div>
@@ -1179,7 +1259,7 @@ export default function AdminStudentsPage() {
                 <div className="flex justify-between">
                   <span className="text-slate-500">Học sinh:</span>
                   <span className="font-bold text-slate-900">
-                    {cancellingStudent.user.fullName}
+                    {cancellingStudent.user.fullName} ({cancellingStudent.studentCode})
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -1189,7 +1269,7 @@ export default function AdminStudentsPage() {
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Loại suất:</span>
+                  <span className="text-slate-500">Loại suất ăn:</span>
                   <span className="font-semibold text-slate-800">
                     {cancellingStudent.mealType === 'MAN'
                       ? 'Suất Mặn'
@@ -1198,6 +1278,191 @@ export default function AdminStudentsPage() {
                       : 'Suất Cháo'}
                   </span>
                 </div>
+              </div>
+
+              {/* Date & Lunch option section */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Ngày bắt đầu ngừng ăn */}
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor="cancelStopDate"
+                    className="text-xs font-semibold text-slate-700 flex items-center gap-1.5"
+                  >
+                    <Calendar className="h-3.5 w-3.5 text-blue-600" />
+                    Ngày bắt đầu ngừng ăn:
+                  </label>
+                  <Input
+                    id="cancelStopDate"
+                    type="date"
+                    value={cancelStopDate}
+                    onChange={(e) => {
+                      const newDate = e.target.value;
+                      setCancelStopDate(newDate);
+                      if (!isManualMealDays) {
+                        loadSettlementPreview(cancellingStudent.id, newDate, cancelIncludeStopDate, null);
+                      } else {
+                        loadSettlementPreview(cancellingStudent.id, newDate, cancelIncludeStopDate, cancelActualMealDays);
+                      }
+                    }}
+                    className="h-10 text-sm font-medium"
+                  />
+                </div>
+
+                {/* Số ngày ăn thực tế trong tháng */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label
+                      htmlFor="cancelActualMealDays"
+                      className="text-xs font-semibold text-slate-700 flex items-center gap-1.5"
+                    >
+                      <Calculator className="h-3.5 w-3.5 text-purple-600" />
+                      Số ngày ăn thực tế:
+                    </label>
+                    {isManualMealDays && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setIsManualMealDays(false);
+                          loadSettlementPreview(cancellingStudent.id, cancelStopDate, cancelIncludeStopDate, null);
+                        }}
+                        className="h-5 px-1.5 text-[11px] text-blue-600 hover:text-blue-800 hover:bg-blue-50 cursor-pointer"
+                        title="Tự động tính lại theo lịch ăn"
+                      >
+                        <RefreshCw className="h-3 w-3 mr-1" />
+                        Tự động tính
+                      </Button>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <Input
+                      id="cancelActualMealDays"
+                      type="number"
+                      min={0}
+                      max={31}
+                      value={cancelActualMealDays}
+                      onChange={(e) => {
+                        const val = Math.max(0, parseInt(e.target.value, 10) || 0);
+                        setCancelActualMealDays(val);
+                        setIsManualMealDays(true);
+                        loadSettlementPreview(cancellingStudent.id, cancelStopDate, cancelIncludeStopDate, val);
+                      }}
+                      className="h-10 text-sm font-semibold pr-16"
+                    />
+                    <span className="absolute right-3 top-2.5 text-xs text-slate-400 font-medium pointer-events-none">
+                      ngày
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Toggle ăn trưa ngày ngừng ăn */}
+              <div className="flex items-start gap-2.5 p-3 rounded-lg border bg-slate-50/70">
+                <input
+                  type="checkbox"
+                  id="cancelIncludeStopDate"
+                  checked={cancelIncludeStopDate}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setCancelIncludeStopDate(checked);
+                    if (!isManualMealDays) {
+                      loadSettlementPreview(cancellingStudent.id, cancelStopDate, checked, null);
+                    } else {
+                      loadSettlementPreview(cancellingStudent.id, cancelStopDate, checked, cancelActualMealDays);
+                    }
+                  }}
+                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                />
+                <label
+                  htmlFor="cancelIncludeStopDate"
+                  className="text-xs text-slate-700 leading-snug cursor-pointer select-none"
+                >
+                  <span className="font-semibold text-slate-900 block">
+                    Học sinh VẪN ĂN bữa trưa ngày này (ngừng ăn từ ngày hôm sau)
+                  </span>
+                  <span className="text-slate-500 text-[11px]">
+                    (Mặc định bỏ chọn: Học sinh không ăn trưa ngày {cancelStopDate}, tính ngày ăn đến hết ngày hôm trước)
+                  </span>
+                </label>
+              </div>
+
+              {/* Live Financial Breakdown & Settlement Preview */}
+              <div className="rounded-lg border p-3.5 space-y-3 bg-white shadow-2xs">
+                <div className="flex items-center justify-between border-b pb-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                    Bảng tính quyết toán tiền ăn
+                  </span>
+                  {previewLoading && (
+                    <span className="text-xs text-slate-500 flex items-center gap-1">
+                      <RefreshCw className="h-3 w-3 animate-spin text-blue-600" />
+                      Đang tính...
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                  <div className="bg-slate-50 rounded-md p-2 border">
+                    <span className="text-slate-500 block text-[11px]">Đơn giá</span>
+                    <span className="font-bold text-slate-800 text-sm">
+                      {formatCurrency(settlementPreview?.unitPrice || 45000)}
+                    </span>
+                  </div>
+                  <div className="bg-slate-50 rounded-md p-2 border">
+                    <span className="text-slate-500 block text-[11px]">Tiền ăn thực tế</span>
+                    <span className="font-bold text-slate-900 text-sm">
+                      {formatCurrency(settlementPreview?.actualUsedAmount ?? cancelActualMealDays * (settlementPreview?.unitPrice || 45000))}
+                    </span>
+                  </div>
+                  <div className="bg-slate-50 rounded-md p-2 border">
+                    <span className="text-slate-500 block text-[11px]">Đã nộp tháng này</span>
+                    <span className="font-bold text-emerald-700 text-sm">
+                      {formatCurrency(settlementPreview?.totalPaid || 0)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Settlement status banner */}
+                {settlementPreview && (
+                  <div className="pt-1">
+                    {settlementPreview.settlementType === 'BALANCED' ? (
+                      <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-center">
+                        <div className="flex items-center justify-center gap-1.5 text-emerald-800 font-bold text-xs uppercase tracking-wider mb-0.5">
+                          <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                          Quyết toán Cân bằng (0 đ)
+                        </div>
+                        <p className="text-xs text-emerald-700 font-medium">
+                          Không phát sinh công nợ hay hoàn tiền. Hóa đơn tháng này sẽ tự động đưa về 0 đ sạch nợ.
+                        </p>
+                      </div>
+                    ) : settlementPreview.settlementType === 'REFUND' ? (
+                      <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-center">
+                        <span className="text-xs font-bold uppercase tracking-wider text-blue-800 block mb-0.5">
+                          Hoàn tiền lại cho Phụ huynh
+                        </span>
+                        <div className="text-xl font-extrabold text-blue-700">
+                          {formatCurrency(settlementPreview.refundOrDebt)}
+                        </div>
+                        <p className="text-[11px] text-blue-600 mt-0.5">
+                          (Nhà trường thực hiện chi trả hoàn tiền thừa cho phụ huynh)
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-center">
+                        <div className="flex items-center justify-center gap-1.5 text-amber-800 font-bold text-xs uppercase tracking-wider mb-0.5">
+                          <AlertTriangle className="h-4 w-4 text-amber-600" />
+                          Phụ huynh cần đóng thêm
+                        </div>
+                        <div className="text-xl font-extrabold text-amber-700">
+                          {formatCurrency(settlementPreview.refundOrDebt)}
+                        </div>
+                        <p className="text-[11px] text-amber-600 mt-0.5">
+                          (Hóa đơn tháng này sẽ cập nhật số tiền phải nộp là {formatCurrency(settlementPreview.actualUsedAmount)} tương ứng {settlementPreview.actualMealDays} ngày ăn thực tế)
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Note / Reason input */}
@@ -1218,15 +1483,6 @@ export default function AdminStudentsPage() {
                   className="h-10 text-sm"
                 />
               </div>
-
-              {/* Notice */}
-              <div className="rounded-md bg-amber-50 p-2.5 text-xs text-amber-800 border border-amber-200 flex items-start gap-2">
-                <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
-                <span>
-                  Hệ thống sẽ tự động tính số ngày đã ăn thực tế trong tháng để tạo phiếu quyết toán
-                  (hoàn tiền hoặc thu thêm).
-                </span>
-              </div>
             </div>
           )}
 
@@ -1237,6 +1493,8 @@ export default function AdminStudentsPage() {
               onClick={() => {
                 setCancellingStudent(null);
                 setCancelReason('');
+                setSettlementPreview(null);
+                setIsManualMealDays(false);
               }}
               disabled={isSubmittingCancel}
               className="cursor-pointer"
@@ -1246,7 +1504,7 @@ export default function AdminStudentsPage() {
             <Button
               type="button"
               onClick={handleConfirmCancel}
-              disabled={isSubmittingCancel}
+              disabled={isSubmittingCancel || previewLoading}
               className="bg-red-600 hover:bg-red-700 text-white font-bold gap-2 cursor-pointer"
             >
               {isSubmittingCancel ? (
@@ -1257,7 +1515,7 @@ export default function AdminStudentsPage() {
               ) : (
                 <>
                   <UserMinus className="h-4 w-4" />
-                  <span>Xác nhận Hủy bán trú</span>
+                  <span>Xác nhận Hủy & Quyết toán</span>
                 </>
               )}
             </Button>
@@ -1351,13 +1609,13 @@ export default function AdminStudentsPage() {
                       </p>
                     </div>
                   ) : (
-                    <div className="rounded-lg bg-blue-50 border border-blue-200 p-3.5 text-center">
-                      <span className="text-xs font-semibold uppercase tracking-wider text-blue-800 block mb-1">
+                    <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3.5 text-center">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-emerald-800 block mb-1">
                         Quyết toán Cân bằng (0 VNĐ)
                       </span>
-                      <div className="text-xl font-bold text-blue-700">0 VNĐ</div>
-                      <p className="text-[11px] text-blue-600 mt-1">
-                        Số tiền đã nộp vừa đủ với số ngày ăn thực tế.
+                      <div className="text-xl font-bold text-emerald-700">0 VNĐ</div>
+                      <p className="text-[11px] text-emerald-600 mt-1">
+                        Không phát sinh công nợ hay hoàn tiền. Hóa đơn tháng này đã được tất toán sạch nợ (0 VNĐ).
                       </p>
                     </div>
                   )}

@@ -378,6 +378,192 @@ export async function POST(request: NextRequest) {
       });
     }
 
+interface SettlementCalculationParams {
+  studentId: string;
+  classId: string;
+  stopDateStr: string;
+  includeStopDate?: boolean;
+  actualMealDaysOverride?: number | null;
+}
+
+async function calculateStudentSettlement({
+  studentId,
+  classId,
+  stopDateStr,
+  includeStopDate = false,
+  actualMealDaysOverride,
+}: SettlementCalculationParams) {
+  let targetYear: number;
+  let targetMonth: number;
+  let stopDay: number;
+
+  if (stopDateStr && /^\d{4}-\d{2}-\d{2}$/.test(stopDateStr)) {
+    const [y, m, d] = stopDateStr.split("-").map(Number);
+    targetYear = y;
+    targetMonth = m;
+    stopDay = d;
+  } else {
+    const now = new Date();
+    targetYear = now.getFullYear();
+    targetMonth = now.getMonth() + 1;
+    stopDay = now.getDate();
+  }
+
+  const currentBill = await prisma.monthlyBill.findUnique({
+    where: {
+      studentId_month_year: {
+        studentId,
+        month: targetMonth,
+        year: targetYear,
+      },
+    },
+    include: {
+      transactions: {
+        where: { isVoided: false },
+      },
+    },
+  });
+
+  let unitPrice = 40000;
+  if (currentBill && Number(currentBill.unitPrice) > 0) {
+    unitPrice = Number(currentBill.unitPrice);
+  } else {
+    const priceSetting = await prisma.systemSetting.findUnique({
+      where: { key: "MEAL_UNIT_PRICE" },
+    });
+    if (priceSetting?.value) {
+      unitPrice = parseInt(priceSetting.value, 10) || 40000;
+    }
+  }
+
+  const startOfMonth = new Date(Date.UTC(targetYear, targetMonth - 1, 1));
+  let effectiveStartDate = startOfMonth;
+
+  const schoolYearStartSetting = await prisma.systemSetting.findUnique({
+    where: { key: "SCHOOL_YEAR_START" },
+  });
+  if (schoolYearStartSetting?.value) {
+    const [syY, syM, syD] = schoolYearStartSetting.value.split("-").map(Number);
+    if (!isNaN(syY) && !isNaN(syM) && !isNaN(syD)) {
+      const syDate = new Date(Date.UTC(syY, syM - 1, syD));
+      if (syDate > effectiveStartDate) {
+        effectiveStartDate = syDate;
+      }
+    }
+  }
+
+  const endDay = includeStopDate ? stopDay : stopDay - 1;
+  const effectiveEndDate = new Date(Date.UTC(targetYear, targetMonth - 1, endDay));
+
+  let calculatedDays = 0;
+  if (effectiveStartDate <= effectiveEndDate) {
+    const schedules = await prisma.classWeeklySchedule.findMany({
+      where: {
+        classId,
+        year: targetYear,
+      },
+    });
+
+    const dayFieldMap: Record<number, "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday"> = {
+      1: "monday",
+      2: "tuesday",
+      3: "wednesday",
+      4: "thursday",
+      5: "friday",
+      6: "saturday",
+    };
+
+    const getWeekNum = (d: Date, y: number): number => {
+      const startOfYear = new Date(Date.UTC(y, 0, 1));
+      return Math.ceil(
+        ((d.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getUTCDay() + 1) / 7
+      );
+    };
+
+    const approvedCancellations = await prisma.mealCancellation.findMany({
+      where: {
+        studentId,
+        cancelDate: {
+          gte: effectiveStartDate,
+          lte: effectiveEndDate,
+        },
+        status: CancellationStatus.APPROVED,
+      },
+    });
+
+    const cancelledDateSet = new Set(
+      approvedCancellations.map((c) => c.cancelDate.toISOString().slice(0, 10))
+    );
+
+    const hasSchedules = schedules.length > 0;
+    const cur = new Date(effectiveStartDate);
+
+    while (cur <= effectiveEndDate) {
+      const dayOfWeek = cur.getUTCDay(); // 0 = CN, 1 = T2..6 = T7
+      const dateStr = cur.toISOString().slice(0, 10);
+
+      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+        let isMealDay = false;
+        if (hasSchedules) {
+          const dayField = dayFieldMap[dayOfWeek];
+          if (dayField) {
+            const weekNum = getWeekNum(cur, targetYear);
+            const sched = schedules.find((s) => s.weekNumber === weekNum);
+            if (sched && sched[dayField] && sched[dayField] !== "NONE") {
+              isMealDay = true;
+            }
+          }
+        } else {
+          isMealDay = false;
+        }
+
+        if (isMealDay && !cancelledDateSet.has(dateStr)) {
+          calculatedDays++;
+        }
+      }
+      cur.setUTCDate(cur.getUTCDate() + 1);
+    }
+  } else {
+    calculatedDays = 0;
+  }
+
+  let actualMealDays = calculatedDays;
+  if (
+    actualMealDaysOverride !== undefined &&
+    actualMealDaysOverride !== null &&
+    !isNaN(Number(actualMealDaysOverride))
+  ) {
+    actualMealDays = Math.max(0, Math.floor(Number(actualMealDaysOverride)));
+  }
+
+  const actualUsedAmount = actualMealDays * unitPrice;
+  const totalPaid = currentBill
+    ? currentBill.transactions.reduce((sum, t) => sum + Number(t.amount), 0)
+    : 0;
+  const refundOrDebt = totalPaid - actualUsedAmount;
+
+  const settlementType: "REFUND" | "ADDITIONAL_PAYMENT" | "BALANCED" =
+    refundOrDebt > 0 ? "REFUND" : refundOrDebt < 0 ? "ADDITIONAL_PAYMENT" : "BALANCED";
+
+  const stopDateFormatted = `${targetYear}-${String(targetMonth).padStart(2, "0")}-${String(stopDay).padStart(2, "0")}`;
+
+  return {
+    currentBill,
+    unitPrice,
+    calculatedDays,
+    actualMealDays,
+    actualUsedAmount,
+    totalPaid,
+    refundOrDebt: Math.abs(refundOrDebt),
+    settlementType,
+    rawBalance: refundOrDebt,
+    stopDate: stopDateFormatted,
+    includeStopDate,
+    targetMonth,
+    targetYear,
+  };
+}
+
     if (!studentId) {
       return NextResponse.json(
         { error: "Thiếu studentId" },
@@ -387,7 +573,7 @@ export async function POST(request: NextRequest) {
 
     const student = await prisma.student.findUnique({
       where: { id: studentId },
-      include: { user: true },
+      include: { user: true, class: true },
     });
 
     if (!student) {
@@ -395,6 +581,43 @@ export async function POST(request: NextRequest) {
         { error: "Không tìm thấy học sinh" },
         { status: 404 }
       );
+    }
+
+    // ==================== XEM TRƯỚC QUYẾT TOÁN KHI HỦY BÁN TRÚ ====================
+    if (action === "settlement-preview") {
+      const { stopDate, includeStopDate, actualMealDays } = body;
+      const calculation = await calculateStudentSettlement({
+        studentId,
+        classId: student.classId,
+        stopDateStr: stopDate,
+        includeStopDate: Boolean(includeStopDate),
+        actualMealDaysOverride:
+          actualMealDays !== undefined && actualMealDays !== null
+            ? Number(actualMealDays)
+            : null,
+      });
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          studentId: student.id,
+          studentName: student.user?.fullName || student.studentCode,
+          className: student.class?.name || student.classId,
+          stopDate: calculation.stopDate,
+          includeStopDate: calculation.includeStopDate,
+          calculatedDays: calculation.calculatedDays,
+          actualMealDays: calculation.actualMealDays,
+          unitPrice: calculation.unitPrice,
+          totalPaid: calculation.totalPaid,
+          actualUsedAmount: calculation.actualUsedAmount,
+          refundOrDebt: calculation.refundOrDebt,
+          settlementType: calculation.settlementType,
+          rawBalance: calculation.rawBalance,
+          hasBill: Boolean(calculation.currentBill),
+          billFinalAmount: calculation.currentBill ? Number(calculation.currentBill.finalAmount) : 0,
+          billPaymentStatus: calculation.currentBill?.paymentStatus || null,
+        },
+      });
     }
 
     // ==================== ĐĂNG KÝ MỚI / MỞ LẠI BÁN TRÚ ====================
@@ -435,72 +658,28 @@ export async function POST(request: NextRequest) {
 
     // ==================== HỦY BÁN TRÚ & QUYẾT TOÁN ====================
     if (action === "cancel") {
-      const { note } = body;
+      const { note, stopDate, includeStopDate, actualMealDays } = body;
 
-      // Tính quyết toán
-      const now = new Date();
-      const currentMonth = now.getMonth() + 1;
-      const currentYear = now.getFullYear();
-
-      // Lấy hóa đơn tháng hiện tại
-      const currentBill = await prisma.monthlyBill.findUnique({
-        where: {
-          studentId_month_year: {
-            studentId,
-            month: currentMonth,
-            year: currentYear,
-          },
-        },
-        include: { transactions: true },
+      const calculation = await calculateStudentSettlement({
+        studentId,
+        classId: student.classId,
+        stopDateStr: stopDate,
+        includeStopDate: Boolean(includeStopDate),
+        actualMealDaysOverride:
+          actualMealDays !== undefined && actualMealDays !== null
+            ? Number(actualMealDays)
+            : null,
       });
-
-      // Tính số ngày đã ăn thực tế trong tháng
-      const startOfMonth = new Date(currentYear, currentMonth - 1, 1);
-      const approvedCancellationsThisMonth = await prisma.mealCancellation.count({
-        where: {
-          studentId,
-          cancelDate: {
-            gte: startOfMonth,
-            lte: now,
-          },
-          status: CancellationStatus.APPROVED,
-        },
-      });
-
-      // Lấy đơn giá
-      const priceSetting = await prisma.systemSetting.findUnique({
-        where: { key: "MEAL_UNIT_PRICE" },
-      });
-      const unitPrice = parseInt(priceSetting?.value || "30000");
-
-      // Tính số ngày ăn dự kiến từ đầu tháng đến hiện tại (workdays only - tạm tính)
-      let workdays = 0;
-      const tempDate = new Date(startOfMonth);
-      while (tempDate <= now) {
-        const day = tempDate.getDay();
-        if (day !== 0 && day !== 6) workdays++; // Bỏ T7, CN
-        tempDate.setDate(tempDate.getDate() + 1);
-      }
-
-      const actualMealDays = workdays - approvedCancellationsThisMonth;
-      const actualUsedAmount = actualMealDays * unitPrice;
-      const totalPaid = currentBill
-        ? currentBill.transactions.reduce((sum, t) => sum + Number(t.amount), 0)
-        : 0;
-      const refundOrDebt = totalPaid - actualUsedAmount;
 
       // Tạo phiếu quyết toán
-      const settlementType =
-        refundOrDebt > 0 ? "REFUND" : refundOrDebt < 0 ? "ADDITIONAL_PAYMENT" : "BALANCED";
-
       await prisma.settlementRecord.create({
         data: {
           studentId,
-          totalPaid: totalPaid,
-          actualUsedAmount: actualUsedAmount,
-          refundOrDebt: Math.abs(refundOrDebt),
-          settlementType,
-          note: note || "Hủy đăng ký ăn bán trú",
+          totalPaid: calculation.totalPaid,
+          actualUsedAmount: calculation.actualUsedAmount,
+          refundOrDebt: calculation.refundOrDebt,
+          settlementType: calculation.settlementType,
+          note: note || `Hủy đăng ký ăn bán trú từ ngày ${calculation.stopDate}`,
           createdBy: adminId || student.userId,
         },
       });
@@ -521,11 +700,39 @@ export async function POST(request: NextRequest) {
       });
 
       // Cập nhật hóa đơn hiện tại
-      if (currentBill) {
-        await prisma.monthlyBill.update({
-          where: { id: currentBill.id },
-          data: { paymentStatus: "SETTLED" },
-        });
+      if (calculation.currentBill) {
+        if (calculation.actualMealDays === 0) {
+          // Chưa ăn bữa nào: xóa sạch công nợ về 0 để không còn lưu nợ
+          await prisma.monthlyBill.update({
+            where: { id: calculation.currentBill.id },
+            data: {
+              scheduleMealDays: 0,
+              netPayableDays: 0,
+              totalAmount: 0,
+              finalAmount: 0,
+              paymentStatus: "SETTLED",
+            },
+          });
+        } else {
+          // Đã ăn một số ngày: hóa đơn chỉ tính tiền đúng theo số ngày đã ăn thực tế
+          const isFullyPaid = calculation.totalPaid >= calculation.actualUsedAmount;
+          const newPaymentStatus = isFullyPaid
+            ? "SETTLED"
+            : calculation.totalPaid > 0
+            ? "PARTIAL"
+            : "UNPAID";
+
+          await prisma.monthlyBill.update({
+            where: { id: calculation.currentBill.id },
+            data: {
+              scheduleMealDays: calculation.actualMealDays,
+              netPayableDays: calculation.actualMealDays,
+              totalAmount: calculation.actualUsedAmount,
+              finalAmount: calculation.actualUsedAmount,
+              paymentStatus: newPaymentStatus,
+            },
+          });
+        }
       }
 
       broadcastChange('students', 'UPDATE', { id: studentId, status: BoardingStatus.CANCELLED });
@@ -539,24 +746,37 @@ export async function POST(request: NextRequest) {
         userRole: session?.user?.role,
         action: AUDIT_ACTIONS.UPDATE,
         module: AUDIT_MODULES.STUDENTS,
-        description: `Hủy ăn bán trú và quyết toán cho học sinh ${student.user?.fullName || student.studentCode} (${student.id})`,
+        description: `Hủy ăn bán trú và quyết toán cho học sinh ${student.user?.fullName || student.studentCode} (${student.id}). Ngày ngừng: ${calculation.stopDate}, số ngày ăn: ${calculation.actualMealDays}, Quyết toán: ${calculation.settlementType}`,
         targetId: studentId,
-        metadata: { refundOrDebt, settlementType, note },
+        metadata: {
+          stopDate: calculation.stopDate,
+          includeStopDate: calculation.includeStopDate,
+          actualMealDays: calculation.actualMealDays,
+          unitPrice: calculation.unitPrice,
+          totalPaid: calculation.totalPaid,
+          actualUsedAmount: calculation.actualUsedAmount,
+          refundOrDebt: calculation.refundOrDebt,
+          settlementType: calculation.settlementType,
+          note,
+        },
       });
 
       return NextResponse.json({
-        message: `Đã hủy bán trú cho HS ${student.id}`,
+        message: `Đã hủy bán trú cho học sinh ${student.user?.fullName || student.studentCode}`,
         settlement: {
-          totalPaid,
-          actualUsedAmount,
-          refundOrDebt: Math.abs(refundOrDebt),
-          type: settlementType,
+          totalPaid: calculation.totalPaid,
+          actualUsedAmount: calculation.actualUsedAmount,
+          refundOrDebt: calculation.refundOrDebt,
+          type: calculation.settlementType,
+          actualMealDays: calculation.actualMealDays,
+          stopDate: calculation.stopDate,
+          includeStopDate: calculation.includeStopDate,
         },
       });
     }
 
     return NextResponse.json(
-      { error: "Action không hợp lệ. Sử dụng: activate, cancel" },
+      { error: "Action không hợp lệ. Sử dụng: activate, cancel, settlement-preview" },
       { status: 400 }
     );
   } catch (error) {
