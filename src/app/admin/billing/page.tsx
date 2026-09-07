@@ -47,7 +47,18 @@ import {
   Trash2,
   RotateCcw,
   Scale,
+  ChevronDown,
+  Archive,
+  Files,
+  FileText,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { useSession } from "next-auth/react";
 import { useRealtime } from "@/hooks/use-realtime";
 import { CashPos } from "@/components/admin/cash-pos";
@@ -167,13 +178,23 @@ export default function BillingPage() {
     currentClass: string;
   } | null>(null);
 
-  // State for PDF ZIP Export Modal
+  // State for PDF Export Modal
   const [openPdfZipModal, setOpenPdfZipModal] = useState(false);
   const [pdfZipMonth, setPdfZipMonth] = useState<number>(month);
   const [pdfZipYear, setPdfZipYear] = useState<number>(year);
   const [pdfZipClassId, setPdfZipClassId] = useState<string>("ALL");
   const [pdfZipStatus, setPdfZipStatus] = useState<string>("ALL");
+  const [pdfExportMode, setPdfExportMode] = useState<"SEPARATE_ZIP" | "CLASS_MERGED" | "ALL_IN_ONE">("SEPARATE_ZIP");
   const [downloadingPdfZip, setDownloadingPdfZip] = useState(false);
+
+  const handleOpenExportModal = (mode: "SEPARATE_ZIP" | "CLASS_MERGED" | "ALL_IN_ONE") => {
+    setPdfZipMonth(month);
+    setPdfZipYear(year);
+    setPdfZipClassId(classFilter === "all" ? "ALL" : classFilter);
+    setPdfZipStatus("ALL");
+    setPdfExportMode(mode);
+    setOpenPdfZipModal(true);
+  };
 
   // ================= TAB 2: SEPAY TRANSACTIONS STATE =================
   const [transactions, setTransactions] = useState<SepayTransaction[]>([]);
@@ -698,34 +719,58 @@ export default function BillingPage() {
     setTimeout(() => window.print(), 800);
   };
 
-  // Tải trọn bộ PDF phân theo thư mục lớp (ZIP)
+  // Tải trọn bộ PDF (theo lớp hoặc gộp)
   const handleDownloadPdfZip = async () => {
     setDownloadingPdfZip(true);
     try {
-      const url = `/api/billing/export-pdf-zip?month=${pdfZipMonth}&year=${pdfZipYear}&classId=${pdfZipClassId}&status=${pdfZipStatus}`;
+      const url = `/api/billing/export-pdf-zip?month=${pdfZipMonth}&year=${pdfZipYear}&classId=${pdfZipClassId}&status=${pdfZipStatus}&mode=${pdfExportMode}`;
       const res = await fetch(url);
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "Lỗi tải file ZIP" }));
-        throw new Error(err.error || "Không thể tải file ZIP");
+        const err = await res.json().catch(() => ({ error: "Lỗi tải file" }));
+        throw new Error(err.error || "Không thể tải file");
       }
+
+      // Đọc tên file từ header Content-Disposition nếu có
+      const disposition = res.headers.get("content-disposition");
+      let filename = "";
+      if (disposition && disposition.includes("filename=")) {
+        const match = disposition.match(/filename="?([^"]+)"?/);
+        if (match && match[1]) {
+          filename = match[1];
+        }
+      }
+
+      if (!filename) {
+        const mm = String(pdfZipMonth).padStart(2, "0");
+        const selectedClassObj = classes.find((c) => c.id === pdfZipClassId);
+        const classNamePart = selectedClassObj ? `_Lop_${selectedClassObj.name.replace(/\s+/g, "_")}` : "_Toan_Truong";
+        const isZip = res.headers.get("content-type")?.includes("zip");
+        filename = isZip
+          ? `Phieu_Tien_An${classNamePart}_T${mm}_${pdfZipYear}.zip`
+          : `Phieu_Tien_An${classNamePart}_T${mm}_${pdfZipYear}.pdf`;
+      }
+
       const blob = await res.blob();
       const downloadUrl = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = downloadUrl;
-      const mm = String(pdfZipMonth).padStart(2, "0");
-      const selectedClassObj = classes.find((c) => c.id === pdfZipClassId);
-      const classNamePart = selectedClassObj ? `_Lop_${selectedClassObj.name.replace(/\s+/g, "_")}` : "_Toan_Truong";
-      a.download = `Phieu_Tien_An${classNamePart}_T${mm}_${pdfZipYear}.zip`;
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       a.remove();
       window.URL.revokeObjectURL(downloadUrl);
 
-      Swal.fire("Thành công", "Đã tải về trọn bộ PDF phân theo thư mục lớp!", "success");
+      const successMsg =
+        pdfExportMode === "SEPARATE_ZIP"
+          ? "Đã tải về trọn bộ PDF phân theo thư mục lớp (ZIP)!"
+          : pdfExportMode === "CLASS_MERGED"
+          ? "Đã tải về file PDF theo lớp (tất cả bill của lớp trong 1 file)!"
+          : "Đã tải về toàn bộ hóa đơn gộp trong 1 file PDF!";
+      Swal.fire("Thành công", successMsg, "success");
       setOpenPdfZipModal(false);
     } catch (err: any) {
       console.error(err);
-      Swal.fire("Lỗi", err.message || "Lỗi khi tải file ZIP", "error");
+      Swal.fire("Lỗi", err.message || "Lỗi khi tải file", "error");
     } finally {
       setDownloadingPdfZip(false);
     }
@@ -1076,20 +1121,64 @@ export default function BillingPage() {
               In phiếu trang hiện tại
             </Button>
 
-            <Button
-              onClick={() => {
-                setPdfZipMonth(month);
-                setPdfZipYear(year);
-                setPdfZipClassId(classFilter === "all" ? "ALL" : classFilter);
-                setPdfZipStatus("ALL");
-                setOpenPdfZipModal(true);
-              }}
-              variant="outline"
-              className="border-emerald-500 text-emerald-700 hover:bg-emerald-50 font-semibold"
-            >
-              <FileDown className="h-4 w-4 mr-1.5 text-emerald-600" />
-              Tải PDF theo lớp (ZIP)
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="border-emerald-500 text-emerald-700 hover:bg-emerald-50 font-semibold flex items-center gap-1.5"
+                >
+                  <FileDown className="h-4 w-4 text-emerald-600" />
+                  <span>Tải PDF theo lớp</span>
+                  <ChevronDown className="h-3.5 w-3.5 opacity-60 ml-0.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-80 sm:w-96 p-1.5 shadow-xl bg-white border border-slate-200">
+                <DropdownMenuItem
+                  onClick={() => handleOpenExportModal("SEPARATE_ZIP")}
+                  className="flex items-start gap-2.5 p-2.5 cursor-pointer rounded-md hover:bg-emerald-50 focus:bg-emerald-50 text-slate-800 transition-colors"
+                >
+                  <Archive className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <div className="flex flex-col">
+                    <span className="font-semibold text-xs sm:text-sm text-slate-900">
+                      Tải PDF theo lớp như logic hiện tại (ZIP)
+                    </span>
+                    <span className="text-[11px] text-slate-500 mt-0.5 leading-tight">
+                      Mỗi học sinh 1 file riêng, nén ZIP phân theo thư mục từng lớp.
+                    </span>
+                  </div>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator className="my-1" />
+                <DropdownMenuItem
+                  onClick={() => handleOpenExportModal("CLASS_MERGED")}
+                  className="flex items-start gap-2.5 p-2.5 cursor-pointer rounded-md hover:bg-emerald-50 focus:bg-emerald-50 text-slate-800 transition-colors"
+                >
+                  <Files className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
+                  <div className="flex flex-col">
+                    <span className="font-semibold text-xs sm:text-sm text-slate-900">
+                      Tải PDF theo lớp (tất cả bill của lớp trong 1 file PDF)
+                    </span>
+                    <span className="text-[11px] text-slate-500 mt-0.5 leading-tight">
+                      Mỗi lớp gom thành 1 file PDF gồm nhiều trang (thuận tiện in theo từng lớp).
+                    </span>
+                  </div>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator className="my-1" />
+                <DropdownMenuItem
+                  onClick={() => handleOpenExportModal("ALL_IN_ONE")}
+                  className="flex items-start gap-2.5 p-2.5 cursor-pointer rounded-md hover:bg-emerald-50 focus:bg-emerald-50 text-slate-800 transition-colors"
+                >
+                  <FileText className="h-4 w-4 text-purple-600 shrink-0 mt-0.5" />
+                  <div className="flex flex-col">
+                    <span className="font-semibold text-xs sm:text-sm text-slate-900">
+                      Gộp chung tất cả phiếu trong 1 file (không phân lớp)
+                    </span>
+                    <span className="text-[11px] text-slate-500 mt-0.5 leading-tight">
+                      Toàn bộ phiếu thu gộp vào đúng 1 file PDF duy nhất (thuận tiện gửi lệnh in toàn trường).
+                    </span>
+                  </div>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
 
           {/* Progress bar */}
@@ -1944,17 +2033,41 @@ export default function BillingPage() {
         </Dialog>
       )}
 
-      {/* ================= MODAL TẢI PDF THEO LỚP (ZIP) ================= */}
+      {/* ================= MODAL TẢI PDF THEO LỚP ================= */}
       <Dialog open={openPdfZipModal} onOpenChange={setOpenPdfZipModal}>
         <DialogContent className="w-[96vw] max-w-md p-4 sm:p-6">
           <DialogHeader className="pb-2 border-b">
             <DialogTitle className="flex items-center gap-2 text-base sm:text-lg font-bold text-slate-900">
               <FileDown className="h-5 w-5 text-emerald-600 shrink-0" />
-              Tải trọn bộ Phiếu PDF theo Lớp (ZIP)
+              Tải / Xuất Phiếu Thu PDF
             </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-3.5 py-2 text-xs sm:text-sm">
+            {/* Chọn hình thức xuất */}
+            <div>
+              <Label className="text-xs font-semibold">Hình thức xuất PDF:</Label>
+              <Select
+                value={pdfExportMode}
+                onValueChange={(val: "SEPARATE_ZIP" | "CLASS_MERGED" | "ALL_IN_ONE") => setPdfExportMode(val)}
+              >
+                <SelectTrigger className="mt-1 h-9 font-medium">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="SEPARATE_ZIP">
+                    📦 Tải PDF theo lớp (Logic hiện tại - Từng học sinh 1 file trong ZIP)
+                  </SelectItem>
+                  <SelectItem value="CLASS_MERGED">
+                    📑 Tải PDF theo lớp (Gộp tất cả bill của lớp trong 1 file PDF)
+                  </SelectItem>
+                  <SelectItem value="ALL_IN_ONE">
+                    📚 Gộp chung tất cả phiếu trong 1 file (Không phân lớp)
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs font-semibold">Tháng:</Label>
@@ -2023,16 +2136,60 @@ export default function BillingPage() {
             {/* Khung mô tả cấu trúc file & thư mục */}
             <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-xs space-y-1.5">
               <div className="font-semibold text-slate-800 flex items-center gap-1">
-                <span>📁 Cấu trúc thư mục & file nén tải về:</span>
+                <span>📁 Cấu trúc file xuất tải về:</span>
               </div>
               <div className="font-mono text-[11px] text-slate-700 bg-white p-2 rounded border space-y-1 leading-relaxed">
-                <p className="text-emerald-800 font-bold">📦 Phieu_Tien_An_Thang_{String(pdfZipMonth).padStart(2, '0')}_{pdfZipYear}.zip</p>
-                <p className="pl-3 text-blue-700">├── 📁 Lop_{classes.find(c => c.id === pdfZipClassId)?.name || '10A1'}/</p>
-                <p className="pl-6 text-slate-600">├── 📄 {classes.find(c => c.id === pdfZipClassId)?.name || '10A1'}_Nguyen_Van_A_Thang_{String(pdfZipMonth).padStart(2, '0')}_{pdfZipYear}_BT00863.pdf</p>
-                <p className="pl-6 text-slate-600">└── 📄 {classes.find(c => c.id === pdfZipClassId)?.name || '10A1'}_Tran_Thi_B_Thang_{String(pdfZipMonth).padStart(2, '0')}_{pdfZipYear}_BT00864.pdf</p>
+                {pdfExportMode === "SEPARATE_ZIP" && (
+                  <>
+                    <p className="text-emerald-800 font-bold">
+                      📦 Phieu_Tien_An_{pdfZipClassId !== "ALL" ? `Lop_${(classes.find(c => c.id === pdfZipClassId)?.name || '10A1').replace(/\s+/g, '_')}_` : 'Toan_Truong_'}T{String(pdfZipMonth).padStart(2, '0')}_{pdfZipYear}.zip
+                    </p>
+                    <p className="pl-3 text-blue-700">├── 📁 Lop_{(classes.find(c => c.id === pdfZipClassId)?.name || '10A1').replace(/\s+/g, '_')}/</p>
+                    <p className="pl-6 text-slate-600">├── 📄 {(classes.find(c => c.id === pdfZipClassId)?.name || '10A1').replace(/\s+/g, '_')}_Nguyen_Van_A_Thang_{String(pdfZipMonth).padStart(2, '0')}_{pdfZipYear}_BT00863.pdf</p>
+                    <p className="pl-6 text-slate-600">└── 📄 {(classes.find(c => c.id === pdfZipClassId)?.name || '10A1').replace(/\s+/g, '_')}_Tran_Thi_B_Thang_{String(pdfZipMonth).padStart(2, '0')}_{pdfZipYear}_BT00864.pdf</p>
+                  </>
+                )}
+                {pdfExportMode === "CLASS_MERGED" && (
+                  pdfZipClassId !== "ALL" ? (
+                    <>
+                      <p className="text-blue-800 font-bold">
+                        📄 Phieu_Tien_An_Lop_{(classes.find(c => c.id === pdfZipClassId)?.name || '10A1').replace(/\s+/g, '_')}_T{String(pdfZipMonth).padStart(2, '0')}_{pdfZipYear}.pdf
+                      </p>
+                      <p className="text-slate-600 pl-3">
+                        * 1 file PDF duy nhất gồm tất cả học sinh lớp {classes.find(c => c.id === pdfZipClassId)?.name || '10A1'} (mỗi học sinh 1 trang khổ A5).
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-emerald-800 font-bold">
+                        📦 Phieu_Tien_An_Theo_Lop_Gop_T{String(pdfZipMonth).padStart(2, '0')}_{pdfZipYear}.zip
+                      </p>
+                      <p className="pl-3 text-blue-700">├── 📄 Phieu_Tien_An_Lop_10A1_T{String(pdfZipMonth).padStart(2, '0')}_{pdfZipYear}.pdf (tất cả HS lớp 10A1)</p>
+                      <p className="pl-3 text-blue-700">├── 📄 Phieu_Tien_An_Lop_10A2_T{String(pdfZipMonth).padStart(2, '0')}_{pdfZipYear}.pdf (tất cả HS lớp 10A2)</p>
+                      <p className="pl-3 text-slate-500">└── ... (các lớp khác)</p>
+                    </>
+                  )
+                )}
+                {pdfExportMode === "ALL_IN_ONE" && (
+                  <>
+                    <p className="text-purple-800 font-bold">
+                      📄 Phieu_Tien_An{pdfZipClassId !== "ALL" ? `_Lop_${(classes.find(c => c.id === pdfZipClassId)?.name || '10A1').replace(/\s+/g, '_')}` : '_Toan_Truong'}_Gop_Chung_T{String(pdfZipMonth).padStart(2, '0')}_{pdfZipYear}.pdf
+                    </p>
+                    <p className="text-slate-600 pl-3">
+                      * 1 file PDF duy nhất chứa toàn bộ học sinh được nối tiếp nhau theo thứ tự từng lớp.
+                    </p>
+                    <p className="text-emerald-600 pl-3 italic">
+                      * Rất tiện lợi để mở lên và ấn In toàn bộ trên máy in văn phòng.
+                    </p>
+                  </>
+                )}
               </div>
               <p className="text-[11px] text-slate-500 italic">
-                * Cấu trúc tên file: <strong>Lop_ho_tên_thang_năm_Mã ban trú.pdf</strong>
+                {pdfExportMode === "SEPARATE_ZIP"
+                  ? "* Cấu trúc tên file: Lop_ho_tên_thang_năm_Mã ban trú.pdf"
+                  : pdfExportMode === "CLASS_MERGED"
+                  ? "* Mỗi lớp là 1 file PDF riêng biệt gồm tất cả học sinh của lớp đó."
+                  : "* Toàn bộ học sinh xuất chung trong đúng 1 file PDF duy nhất."}
               </p>
             </div>
           </div>
@@ -2050,12 +2207,14 @@ export default function BillingPage() {
               {downloadingPdfZip ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
-                  Đang xuất & nén ZIP...
+                  Đang xử lý & tải về...
                 </>
               ) : (
                 <>
                   <FileDown className="h-4 w-4 mr-1.5" />
-                  Bắt đầu Tải về (ZIP)
+                  {pdfExportMode === "SEPARATE_ZIP" || (pdfExportMode === "CLASS_MERGED" && pdfZipClassId === "ALL")
+                    ? "Bắt đầu Tải về (ZIP)"
+                    : "Bắt đầu Tải về (PDF)"}
                 </>
               )}
             </Button>

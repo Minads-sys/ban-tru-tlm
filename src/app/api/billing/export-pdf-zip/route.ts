@@ -3,6 +3,7 @@ import prisma from "@/lib/db";
 import JSZip from "jszip";
 import {
   generateBillPdfBuffer,
+  generateBillsCombinedPdfBuffer,
   generateStudentBillFileName,
   BillPdfData,
   SchoolPdfSettings,
@@ -17,6 +18,7 @@ export async function GET(request: NextRequest) {
     const year = parseInt(searchParams.get("year") || "", 10);
     const classId = searchParams.get("classId");
     const status = searchParams.get("status"); // "ALL", "DEBT", "UNPAID", "PAID"
+    const mode = searchParams.get("mode") || "SEPARATE_ZIP"; // "SEPARATE_ZIP", "CLASS_MERGED", "ALL_IN_ONE"
 
     if (isNaN(month) || isNaN(year)) {
       return NextResponse.json(
@@ -128,11 +130,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 4. Khởi tạo JSZip
-    const zip = new JSZip();
-
-    // 5. Sinh PDF cho từng học sinh và đưa vào thư mục lớp tương ứng
-    for (const bill of bills) {
+    // 4. Chuẩn hóa dữ liệu hóa đơn
+    const mappedBills = bills.map((bill) => {
       const className = bill.student.class?.name || "Lop_Chua_Xac_Dinh";
       const studentName = bill.student.user?.fullName || "Hoc_Sinh";
       const boardingCode = bill.student.boardingCode || bill.student.studentCode;
@@ -160,47 +159,138 @@ export async function GET(request: NextRequest) {
         },
       };
 
-      // Tạo PDF Buffer
-      const pdfBuffer = await generateBillPdfBuffer(billData, schoolSettings);
-
-      // Tên thư mục lớp: Lop_{TenLop}
-      const folderName = `Lop_${className.replace(/[/\\?%*:|"<>]/g, "").trim().replace(/\s+/g, "_")}`;
-
-      // Tên file theo đúng yêu cầu: Lop_ho_tên_thang_năm_Mã ban trú.pdf
-      const fileName = generateStudentBillFileName(
+      return {
         className,
         studentName,
-        bill.month,
-        bill.year,
-        boardingCode
-      );
-
-      // Thêm file vào thư mục lớp trong ZIP
-      zip.folder(folderName)!.file(fileName, pdfBuffer);
-    }
-
-    // 6. Đóng gói ZIP
-    const zipBuffer = await zip.generateAsync({
-      type: "nodebuffer",
-      compression: "DEFLATE",
-      compressionOptions: { level: 6 },
+        boardingCode,
+        billData,
+      };
     });
 
     const mm = String(month).padStart(2, "0");
-    const zipFileName =
-      classId && classId !== "ALL"
-        ? `Phieu_Tien_An_Lop_${(bills[0]?.student?.class?.name || classId).replace(/\s+/g, "_")}_T${mm}_${year}.zip`
-        : `Phieu_Tien_An_Toan_Truong_T${mm}_${year}.zip`;
 
-    // 7. Trả về response tải file
-    return new NextResponse(zipBuffer as unknown as BodyInit, {
-      status: 200,
-      headers: {
-        "Content-Type": "application/zip",
-        "Content-Disposition": `attachment; filename="${zipFileName}"`,
-        "Cache-Control": "no-store, no-cache, must-revalidate",
-      },
-    });
+    // ==========================================
+    // NHÁNH 1: SEPARATE_ZIP (Logic hiện tại - Từng học sinh 1 file trong ZIP)
+    // ==========================================
+    if (mode === "SEPARATE_ZIP") {
+      const zip = new JSZip();
+
+      for (const item of mappedBills) {
+        const pdfBuffer = await generateBillPdfBuffer(item.billData, schoolSettings);
+        const folderName = `Lop_${item.className.replace(/[/\\?%*:|"<>]/g, "").trim().replace(/\s+/g, "_")}`;
+        const fileName = generateStudentBillFileName(
+          item.className,
+          item.studentName,
+          month,
+          year,
+          item.boardingCode
+        );
+        zip.folder(folderName)!.file(fileName, pdfBuffer);
+      }
+
+      const zipBuffer = await zip.generateAsync({
+        type: "nodebuffer",
+        compression: "DEFLATE",
+        compressionOptions: { level: 6 },
+      });
+
+      const zipFileName =
+        classId && classId !== "ALL"
+          ? `Phieu_Tien_An_Lop_${(bills[0]?.student?.class?.name || classId).replace(/\s+/g, "_")}_T${mm}_${year}.zip`
+          : `Phieu_Tien_An_Toan_Truong_T${mm}_${year}.zip`;
+
+      return new NextResponse(zipBuffer as unknown as BodyInit, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/zip",
+          "Content-Disposition": `attachment; filename="${zipFileName}"`,
+          "Cache-Control": "no-store, no-cache, must-revalidate",
+        },
+      });
+    }
+
+    // ==========================================
+    // NHÁNH 2: CLASS_MERGED (Gộp tất cả bill của lớp đó trong 1 file PDF)
+    // ==========================================
+    if (mode === "CLASS_MERGED") {
+      // Gom nhóm theo lớp
+      const classGroups: Record<string, BillPdfData[]> = {};
+      for (const item of mappedBills) {
+        if (!classGroups[item.className]) {
+          classGroups[item.className] = [];
+        }
+        classGroups[item.className].push(item.billData);
+      }
+
+      const classNames = Object.keys(classGroups);
+
+      // Nếu chỉ có 1 lớp (người dùng chọn lọc 1 lớp cụ thể): Tải trực tiếp file PDF
+      if (classNames.length === 1) {
+        const singleClassName = classNames[0];
+        const pdfBuffer = await generateBillsCombinedPdfBuffer(classGroups[singleClassName], schoolSettings);
+        const cleanClassName = singleClassName.replace(/[/\\?%*:|"<>]/g, "").trim().replace(/\s+/g, "_");
+        const pdfFileName = `Phieu_Tien_An_Lop_${cleanClassName}_T${mm}_${year}.pdf`;
+
+        return new NextResponse(pdfBuffer as unknown as BodyInit, {
+          status: 200,
+          headers: {
+            "Content-Type": "application/pdf",
+            "Content-Disposition": `attachment; filename="${pdfFileName}"`,
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+          },
+        });
+      }
+
+      // Nếu xuất toàn trường (nhiều lớp): nén tất cả file PDF của từng lớp vào 1 file ZIP
+      const zip = new JSZip();
+      for (const cName of classNames) {
+        const pdfBuffer = await generateBillsCombinedPdfBuffer(classGroups[cName], schoolSettings);
+        const cleanClassName = cName.replace(/[/\\?%*:|"<>]/g, "").trim().replace(/\s+/g, "_");
+        const fileName = `Phieu_Tien_An_Lop_${cleanClassName}_T${mm}_${year}.pdf`;
+        zip.file(fileName, pdfBuffer);
+      }
+
+      const zipBuffer = await zip.generateAsync({
+        type: "nodebuffer",
+        compression: "DEFLATE",
+        compressionOptions: { level: 6 },
+      });
+
+      const zipFileName = `Phieu_Tien_An_Theo_Lop_Gop_T${mm}_${year}.zip`;
+      return new NextResponse(zipBuffer as unknown as BodyInit, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/zip",
+          "Content-Disposition": `attachment; filename="${zipFileName}"`,
+          "Cache-Control": "no-store, no-cache, must-revalidate",
+        },
+      });
+    }
+
+    // ==========================================
+    // NHÁNH 3: ALL_IN_ONE (Gộp chung tất cả phiếu trong 1 file, không phân lớp)
+    // ==========================================
+    if (mode === "ALL_IN_ONE") {
+      const allBillsData = mappedBills.map((b) => b.billData);
+      const pdfBuffer = await generateBillsCombinedPdfBuffer(allBillsData, schoolSettings);
+
+      const selectedClassName =
+        classId && classId !== "ALL"
+          ? `_Lop_${(bills[0]?.student?.class?.name || classId).replace(/\s+/g, "_")}`
+          : "_Toan_Truong";
+      const pdfFileName = `Phieu_Tien_An${selectedClassName}_Gop_Chung_T${mm}_${year}.pdf`;
+
+      return new NextResponse(pdfBuffer as unknown as BodyInit, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `attachment; filename="${pdfFileName}"`,
+          "Cache-Control": "no-store, no-cache, must-revalidate",
+        },
+      });
+    }
+
+    return NextResponse.json({ error: "Chế độ xuất không hợp lệ." }, { status: 400 });
   } catch (error: any) {
     console.error("Lỗi xuất file ZIP PDF:", error);
     return NextResponse.json(

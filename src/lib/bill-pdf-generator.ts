@@ -119,18 +119,15 @@ export function generateBarcodeSvg(
 }
 
 /**
- * Sinh Buffer PDF phiếu thu khổ A5 chuẩn in ấn
+ * Tạo danh sách các phần tử nội dung của 1 phiếu thu khổ A5
  */
-export async function generateBillPdfBuffer(
+export async function createBillContentElements(
   bill: BillPdfData,
   settings: SchoolPdfSettings
-): Promise<Buffer> {
-  ensureFonts();
-
+): Promise<unknown[]> {
   const schoolName = settings.schoolName || "TRƯỜNG TIỂU HỌC BAN TRÚ";
   const schoolAddress = settings.schoolAddress || "";
   const boardingCode = bill.student.boardingCode || bill.student.studentCode;
-  const studentCode = bill.student.studentCode;
   const mealTypeName =
     bill.student.mealType === "MAN"
       ? "Cơm mặn"
@@ -180,11 +177,7 @@ export async function generateBillPdfBuffer(
   const receiptBarcode = `PT${bill.month}${bill.year}${boardingCode}`;
   const barcodeSvg = generateBarcodeSvg(receiptBarcode, { width: 1.1, height: 26 });
 
-  const docDefinition: any = {
-    pageSize: "A5",
-    pageOrientation: "portrait",
-    pageMargins: [20, 18, 20, 18],
-    content: [
+  return [
       // Header: Trường học & Mã phiếu Barcode
       {
         columns: [
@@ -551,13 +544,62 @@ export async function generateBillPdfBuffer(
         ],
         margin: [0, 14, 0, 0],
       },
-    ],
+    ];
+}
+
+/**
+ * Sinh Buffer PDF phiếu thu khổ A5 chuẩn in ấn (1 phiếu)
+ */
+export async function generateBillPdfBuffer(
+  bill: BillPdfData,
+  settings: SchoolPdfSettings
+): Promise<Buffer> {
+  ensureFonts();
+  const elements = await createBillContentElements(bill, settings);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const docDefinition: any = {
+    pageSize: "A5",
+    pageOrientation: "portrait",
+    pageMargins: [20, 18, 20, 18],
+    content: elements,
     defaultStyle: {
       font: "Roboto",
       fontSize: 9,
     },
   };
+  const doc = pdfmake.createPdf(docDefinition);
+  return await doc.getBuffer();
+}
 
+/**
+ * Sinh Buffer PDF gộp nhiều phiếu thu trong 1 file (mỗi phiếu 1 trang khổ A5)
+ */
+export async function generateBillsCombinedPdfBuffer(
+  bills: BillPdfData[],
+  settings: SchoolPdfSettings
+): Promise<Buffer> {
+  ensureFonts();
+  const allElements: unknown[] = [];
+  for (let i = 0; i < bills.length; i++) {
+    const elements = await createBillContentElements(bills[i], settings);
+    if (elements.length > 0) {
+      if (i > 0) {
+        (elements[0] as Record<string, unknown>).pageBreak = "before";
+      }
+      allElements.push(...elements);
+    }
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const docDefinition: any = {
+    pageSize: "A5",
+    pageOrientation: "portrait",
+    pageMargins: [20, 18, 20, 18],
+    content: allElements,
+    defaultStyle: {
+      font: "Roboto",
+      fontSize: 9,
+    },
+  };
   const doc = pdfmake.createPdf(docDefinition);
   return await doc.getBuffer();
 }
