@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { useRealtime } from "@/hooks/use-realtime";
+import Swal from "sweetalert2";
 import {
   Calendar,
   MessageSquare,
@@ -161,6 +162,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
   const [submittingCancel, setSubmittingCancel] = useState<boolean>(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [cancelSuccess, setCancelSuccess] = useState<string | null>(null);
+  const [isConfirmedLeave, setIsConfirmedLeave] = useState<boolean>(false);
 
   // States for Override Form
   const [overrideDate, setOverrideDate] = useState<string>("");
@@ -315,13 +317,103 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
     onChanged: () => { if (studentId) fetchBills(studentId); },
   });
 
+  const handleCancelDateChange = async (newDate: string) => {
+    setCancelDate(newDate);
+    setIsConfirmedLeave(false);
+    setCancelError(null);
+    setCancelSuccess(null);
+
+    if (!newDate) return;
+
+    if (isSunday(newDate)) {
+      setCancelError("Chủ nhật không có lịch ăn bán trú. Vui lòng chọn ngày từ Thứ 2 đến Thứ 6.");
+      return;
+    }
+
+    if (newDate < minDate) {
+      setCancelError("Không thể cắt suất cho ngày trong quá khứ hoặc đã qua giờ khóa sổ.");
+      return;
+    }
+
+    if (newDate > maxDate) {
+      setCancelError("Chỉ được cắt suất trong tuần hiện tại (hoặc tuần kế tiếp từ Thứ Bảy).");
+      return;
+    }
+
+    if (isDateCancelled(newDate)) {
+      setCancelError("Học sinh đang có yêu cầu cắt suất vào ngày này (chưa bị từ chối).");
+      return;
+    }
+
+    // Ngày hợp lệ: Hiển thị popup buộc học sinh xác nhận đã nộp đơn xin nghỉ phép và được duyệt
+    const result = await Swal.fire({
+      title: "Xác nhận xin nghỉ phép",
+      text: "Bạn xác nhận rằng đã nộp đơn xin nghỉ phép cho nhà trường và được duyệt",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#16a34a",
+      cancelButtonColor: "#64748b",
+      confirmButtonText: "Tôi xác nhận",
+      cancelButtonText: "Hủy bỏ",
+      reverseButtons: true,
+      allowOutsideClick: false,
+    });
+
+    if (result.isConfirmed) {
+      setIsConfirmedLeave(true);
+    } else {
+      setCancelDate("");
+      setIsConfirmedLeave(false);
+      setCancelError("Bạn cần nộp đơn xin nghỉ phép cho nhà trường và được duyệt trước khi yêu cầu cắt suất.");
+    }
+  };
+
   const handleCancelSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!studentId || !cancelDate || !reason.trim()) return;
+    if (!studentId || !cancelDate || !reason.trim()) {
+      setCancelError("Vui lòng chọn ngày cắt suất và nhập lý do.");
+      return;
+    }
 
     if (isSunday(cancelDate)) {
       setCancelError("Chủ nhật không có lịch ăn bán trú. Vui lòng chọn ngày từ Thứ 2 đến Thứ 6.");
       return;
+    }
+
+    if (cancelDate < minDate) {
+      setCancelError("Không thể cắt suất cho ngày trong quá khứ hoặc đã qua giờ khóa sổ.");
+      return;
+    }
+
+    if (cancelDate > maxDate) {
+      setCancelError("Chỉ được cắt suất trong tuần hiện tại (hoặc tuần kế tiếp từ Thứ Bảy).");
+      return;
+    }
+
+    if (isDateCancelled(cancelDate)) {
+      setCancelError("Học sinh đang có yêu cầu cắt suất vào ngày này (chưa bị từ chối).");
+      return;
+    }
+
+    if (!isConfirmedLeave) {
+      const result = await Swal.fire({
+        title: "Xác nhận xin nghỉ phép",
+        text: "Bạn xác nhận rằng đã nộp đơn xin nghỉ phép cho nhà trường và được duyệt",
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonColor: "#16a34a",
+        cancelButtonColor: "#64748b",
+        confirmButtonText: "Tôi xác nhận",
+        cancelButtonText: "Hủy bỏ",
+        reverseButtons: true,
+        allowOutsideClick: false,
+      });
+
+      if (!result.isConfirmed) {
+        setCancelError("Bạn cần nộp đơn xin nghỉ phép cho nhà trường và được duyệt trước khi yêu cầu cắt suất.");
+        return;
+      }
+      setIsConfirmedLeave(true);
     }
 
     setSubmittingCancel(true);
@@ -345,9 +437,22 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
         setCancelSuccess(data.message || "Gửi yêu cầu thành công");
         setCancelDate("");
         setReason("");
+        setIsConfirmedLeave(false);
+        Swal.fire({
+          title: "Thành công!",
+          text: data.message || "Đã gửi yêu cầu cắt suất thành công. Vui lòng chờ duyệt.",
+          icon: "success",
+          confirmButtonColor: "#16a34a",
+        });
         fetchCancellations(studentId);
       } else {
         setCancelError(data.error || "Có lỗi xảy ra, vui lòng thử lại");
+        Swal.fire({
+          title: "Không thể gửi yêu cầu",
+          text: data.error || "Có lỗi xảy ra, vui lòng thử lại",
+          icon: "error",
+          confirmButtonColor: "#dc2626",
+        });
       }
     } catch (err) {
       setCancelError("Lỗi kết nối mạng");
@@ -691,10 +796,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                         min={minDate}
                         max={maxDate}
                         value={cancelDate}
-                        onChange={(e) => {
-                          setCancelDate(e.target.value);
-                          if (cancelError) setCancelError(null);
-                        }}
+                        onChange={(e) => handleCancelDateChange(e.target.value)}
                         required
                         className="bg-white"
                       />
@@ -703,6 +805,12 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                           <AlertCircle className="h-4 w-4 shrink-0 text-rose-500" />
                           <span>Chủ nhật không có lịch ăn bán trú. Vui lòng chọn ngày khác (Thứ 2 đến Thứ 6).</span>
                         </p>
+                      )}
+                      {cancelDate && isConfirmedLeave && (
+                        <div className="flex items-center gap-2 p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 font-medium mt-1.5">
+                          <CheckCircle className="h-4 w-4 shrink-0 text-emerald-600" />
+                          <span>Đã xác nhận nộp đơn xin nghỉ phép cho nhà trường và được duyệt.</span>
+                        </div>
                       )}
                     </div>
                     <div className="space-y-2">
@@ -719,7 +827,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
 
                     <Button
                       type="submit"
-                      disabled={submittingCancel || !cancelDate || !reason.trim() || isSunday(cancelDate)}
+                      disabled={submittingCancel || !cancelDate || !reason.trim() || isSunday(cancelDate) || !isConfirmedLeave}
                       className="w-full bg-green-600 hover:bg-green-700 text-white disabled:bg-gray-400 disabled:text-black disabled:opacity-100 font-medium"
                     >
                       {submittingCancel ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}

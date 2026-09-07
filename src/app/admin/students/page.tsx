@@ -161,6 +161,8 @@ export default function AdminStudentsPage() {
     mealType: 'MAN',
     parentPhone: '',
     mealStartDate: '',
+    birthDate: '',
+    gender: 'NAM',
   });
   const [isSubmittingEdit, setIsSubmittingEdit] = useState<boolean>(false);
 
@@ -493,14 +495,32 @@ export default function AdminStudentsPage() {
 
   const handleEditClick = (student: StudentItem) => {
     setEditingStudent(student);
+    let formattedBirthDate = '';
+    if (student.birthDate) {
+      if (typeof student.birthDate === 'string' && /^\d{4}-\d{2}-\d{2}/.test(student.birthDate)) {
+        formattedBirthDate = student.birthDate.slice(0, 10);
+      } else {
+        try {
+          const d = new Date(student.birthDate);
+          if (!isNaN(d.getTime())) {
+            formattedBirthDate = d.toISOString().slice(0, 10);
+          }
+        } catch {
+          formattedBirthDate = '';
+        }
+      }
+    }
+
     setEditFormData({
       studentCode: student.studentCode || '',
       boardingCode: student.boardingCode || '',
-      fullName: student.user.fullName || '',
+      fullName: student.user?.fullName || '',
       classId: student.classId,
       mealType: student.mealType || 'MAN',
       parentPhone: student.parentPhone || '',
       mealStartDate: student.mealStartDate ? student.mealStartDate.slice(0, 10) : '',
+      birthDate: formattedBirthDate,
+      gender: student.gender === 'FEMALE' ? 'NU' : 'NAM',
     });
   };
 
@@ -1986,31 +2006,60 @@ export default function AdminStudentsPage() {
                 />
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700">Lớp học</label>
-                <SearchableClassSelect
-                  value={editFormData.classId}
-                  onChange={(val) => setEditFormData({ ...editFormData, classId: val })}
-                  options={classOptions}
-                  placeholder="Tìm và chọn lớp"
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700">Lớp học</label>
+                  <SearchableClassSelect
+                    value={editFormData.classId}
+                    onChange={(val) => setEditFormData({ ...editFormData, classId: val })}
+                    options={classOptions}
+                    placeholder="Tìm và chọn lớp"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700">Loại suất ăn</label>
+                  <Select
+                    value={editFormData.mealType}
+                    onValueChange={(val) => setEditFormData({ ...editFormData, mealType: val })}
+                  >
+                    <SelectTrigger className="h-10 text-sm">
+                      <SelectValue placeholder="Chọn loại suất" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="MAN">Suất Mặn</SelectItem>
+                      <SelectItem value="CHAY">Suất Chay</SelectItem>
+                      <SelectItem value="CHAO">Suất Cháo</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700">Loại suất ăn</label>
-                <Select
-                  value={editFormData.mealType}
-                  onValueChange={(val) => setEditFormData({ ...editFormData, mealType: val })}
-                >
-                  <SelectTrigger className="h-10 text-sm">
-                    <SelectValue placeholder="Chọn loại suất" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="MAN">Suất Mặn</SelectItem>
-                    <SelectItem value="CHAY">Suất Chay</SelectItem>
-                    <SelectItem value="CHAO">Suất Cháo</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700">Ngày sinh</label>
+                  <Input
+                    type="date"
+                    value={editFormData.birthDate}
+                    onChange={(e) => setEditFormData({ ...editFormData, birthDate: e.target.value })}
+                    className="h-10 text-sm"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700">Giới tính</label>
+                  <Select
+                    value={editFormData.gender}
+                    onValueChange={(val) => setEditFormData({ ...editFormData, gender: val })}
+                  >
+                    <SelectTrigger className="h-10 text-sm">
+                      <SelectValue placeholder="Chọn giới tính" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="NAM">Nam</SelectItem>
+                      <SelectItem value="NU">Nữ</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">

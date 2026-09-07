@@ -835,8 +835,11 @@ async function calculateStudentSettlement({
 export async function PUT(request: NextRequest) {
   try {
     const session = await auth();
+    if (session?.user?.role === 'ACCOUNTANT') {
+      return NextResponse.json({ error: "Tài khoản Kế toán chỉ có quyền xem và xuất Excel danh sách học sinh" }, { status: 403 });
+    }
     const body = await request.json();
-    const { studentId, studentCode, boardingCode, fullName, classId, mealType, parentPhone, mealStartDate } = body;
+    const { studentId, studentCode, boardingCode, fullName, classId, mealType, parentPhone, mealStartDate, birthDate, gender } = body;
 
     if (!studentId) {
       return NextResponse.json({ error: "Thiếu studentId" }, { status: 400 });
@@ -903,6 +906,27 @@ export async function PUT(request: NextRequest) {
       }
     }
 
+    // Parse birthDate nếu có gửi lên
+    let parsedBirthDate: Date | null | undefined = undefined;
+    if (birthDate !== undefined) {
+      if (birthDate) {
+        const [bY, bM, bD] = String(birthDate).split("-").map(Number);
+        if (!isNaN(bY) && !isNaN(bM) && !isNaN(bD)) {
+          parsedBirthDate = new Date(Date.UTC(bY, bM - 1, bD));
+        } else {
+          parsedBirthDate = new Date(birthDate);
+        }
+      } else {
+        parsedBirthDate = null;
+      }
+    }
+
+    // Parse gender nếu có gửi lên
+    let parsedGender: "MALE" | "FEMALE" | undefined = undefined;
+    if (gender !== undefined) {
+      parsedGender = (gender === "NU" || gender === "FEMALE") ? "FEMALE" : "MALE";
+    }
+
     // Cập nhật Student
     let updateClassId = student.classId;
     if (classId) {
@@ -923,6 +947,8 @@ export async function PUT(request: NextRequest) {
         mealType: mealType || student.mealType,
         parentPhone: parentPhone !== undefined ? parentPhone : student.parentPhone,
         ...(parsedMealStartDate !== undefined ? { mealStartDate: parsedMealStartDate } : {}),
+        ...(parsedBirthDate !== undefined ? { birthDate: parsedBirthDate } : {}),
+        ...(parsedGender !== undefined ? { gender: parsedGender } : {}),
       },
     });
 
@@ -938,7 +964,7 @@ export async function PUT(request: NextRequest) {
       module: AUDIT_MODULES.STUDENTS,
       description: `Cập nhật thông tin học sinh ${fullName || student.user.fullName} (${student.studentCode})`,
       targetId: studentId,
-      metadata: { studentCode: trimmedNewCode, boardingCode: trimmedBoardingCode, classId: updateClassId, mealType },
+      metadata: { studentCode: trimmedNewCode, boardingCode: trimmedBoardingCode, classId: updateClassId, mealType, birthDate, gender },
     });
 
     return NextResponse.json({ message: "Cập nhật thông tin thành công" });
