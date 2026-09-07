@@ -317,8 +317,13 @@ export function DiningCourtTab({ cutoffTime, schoolName }: DiningCourtTabProps) 
                 <Layers className="h-5 w-5" />
               </div>
               <div>
-                <p className="text-xs text-slate-500 font-medium">Tổng số sân</p>
-                <p className="text-lg sm:text-xl font-bold text-slate-900">{data.totalCourts} sân</p>
+                <p className="text-xs text-slate-500 font-medium">Tổng số sân &amp; Xe cơm</p>
+                <p className="text-lg sm:text-xl font-bold text-slate-900">
+                  {data.totalCourts} sân{' '}
+                  <span className="text-xs font-normal text-slate-500">
+                    ({data.totalCarts || Math.ceil(data.totalCourts / 2)} xe)
+                  </span>
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -452,6 +457,11 @@ export function DiningCourtTab({ cutoffTime, schoolName }: DiningCourtTabProps) 
                     >
                       {court.courtName}
                     </span>
+                    {court.cartName && (
+                      <Badge variant="outline" className="text-[11px] font-bold text-rose-700 bg-rose-50 border-rose-200">
+                        {court.cartName}
+                      </Badge>
+                    )}
                     <span className="text-xs font-semibold text-slate-700">
                       {isTiet4 ? 'Tiết 4 (Ca 1)' : 'Tiết 5 (Ca 2)'}
                     </span>

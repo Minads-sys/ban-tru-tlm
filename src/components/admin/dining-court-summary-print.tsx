@@ -96,6 +96,17 @@ export function DiningCourtSummaryPrint({
   const showTiet4 = activeShiftFilter === 'ALL' || activeShiftFilter === 'TIET_4';
   const showTiet5 = activeShiftFilter === 'ALL' || activeShiftFilter === 'TIET_5';
 
+  // Tính toán gộp hàng (rowSpan) cho cột Xe cơm: 1 xe chứa 2 sân liền kề
+  const getCartSpanInfo = (courts: typeof tiet4Courts, index: number) => {
+    const current = courts[index];
+    if (index > 0 && courts[index - 1].cartNumber === current.cartNumber) {
+      return { render: false, rowSpan: 1 };
+    }
+    const isSharedWithNext =
+      index + 1 < courts.length && courts[index + 1].cartNumber === current.cartNumber;
+    return { render: true, rowSpan: isSharedWithNext ? 2 : 1 };
+  };
+
   return (
     <div className="flex flex-col h-full max-h-[92vh] bg-slate-100 text-slate-900 rounded-lg overflow-hidden print:h-auto print:max-h-none print:overflow-visible print:bg-white print:rounded-none print:shadow-none">
       {/* CSS in ấn chuẩn khổ A4 */}
@@ -312,7 +323,9 @@ export function DiningCourtSummaryPrint({
             <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-200 text-xs">
               <div className="font-bold text-slate-900">
                 TỔNG CỘNG TOÀN TRƯỜNG:{' '}
-                <span className="text-blue-700 font-extrabold text-sm">{data.totalCourts} SÂN</span>
+                <span className="text-blue-700 font-extrabold text-sm">
+                  {data.totalCourts} SÂN ({data.totalCarts || Math.ceil(data.totalCourts / 2)} XE CƠM)
+                </span>
                 <span className="mx-2 text-slate-400">|</span>
                 <span className="text-blue-700 font-extrabold text-sm">{data.totalMeals} SUẤT ĂN</span>
               </div>
@@ -357,6 +370,7 @@ export function DiningCourtSummaryPrint({
                   <table className="w-full text-xs text-left border-collapse">
                     <thead>
                       <tr className="bg-orange-100 text-slate-800 font-bold border-b border-slate-300">
+                        <th className="py-2 px-2 text-center border-r border-slate-300 w-14">Xe</th>
                         <th className="py-2 px-2 text-center border-r border-slate-300 w-16">Sân</th>
                         <th className="py-2 px-2 border-r border-slate-300">Các lớp tại sân</th>
                         <th className="py-2 px-2 text-center border-r border-slate-300 w-20">Tổng suất</th>
@@ -367,13 +381,22 @@ export function DiningCourtSummaryPrint({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-200">
-                      {tiet4Courts.map((court) => {
+                      {tiet4Courts.map((court, idx) => {
                         const classDetail = court.classes
                           .map((c) => `${c.className} (${c.totalMeals} suất)`)
                           .join(' + ');
+                        const cartInfo = getCartSpanInfo(tiet4Courts, idx);
 
                         return (
                           <tr key={`t4-row-${court.courtNumber}`} className="hover:bg-slate-50">
+                            {cartInfo.render && (
+                              <td
+                                rowSpan={cartInfo.rowSpan}
+                                className="py-2 px-1 text-center font-bold text-slate-800 bg-orange-50/40 border-r border-slate-300 align-middle"
+                              >
+                                {court.cartName || `Xe ${court.cartNumber}`}
+                              </td>
+                            )}
                             <td className="py-2 px-2 text-center font-bold text-slate-900 border-r border-slate-200">
                               {court.courtName}
                             </td>
@@ -403,7 +426,7 @@ export function DiningCourtSummaryPrint({
                       })}
                       {/* Dòng tổng Tiết 4 */}
                       <tr className="bg-amber-50 font-bold border-t-2 border-slate-300">
-                        <td colSpan={2} className="py-2 px-3 text-center border-r border-slate-300">
+                        <td colSpan={3} className="py-2 px-3 text-center border-r border-slate-300">
                           TỔNG CỘNG TIẾT 4 ({tiet4Courts.length} sân)
                         </td>
                         <td className="py-2 px-2 text-center font-black text-orange-800 text-sm border-r border-slate-300">
@@ -451,6 +474,7 @@ export function DiningCourtSummaryPrint({
                   <table className="w-full text-xs text-left border-collapse">
                     <thead>
                       <tr className="bg-indigo-100 text-slate-800 font-bold border-b border-slate-300">
+                        <th className="py-2 px-2 text-center border-r border-slate-300 w-14">Xe</th>
                         <th className="py-2 px-2 text-center border-r border-slate-300 w-16">Sân</th>
                         <th className="py-2 px-2 border-r border-slate-300">Các lớp tại sân</th>
                         <th className="py-2 px-2 text-center border-r border-slate-300 w-20">Tổng suất</th>
@@ -461,13 +485,22 @@ export function DiningCourtSummaryPrint({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-200">
-                      {tiet5Courts.map((court) => {
+                      {tiet5Courts.map((court, idx) => {
                         const classDetail = court.classes
                           .map((c) => `${c.className} (${c.totalMeals} suất)`)
                           .join(' + ');
+                        const cartInfo = getCartSpanInfo(tiet5Courts, idx);
 
                         return (
                           <tr key={`t5-row-${court.courtNumber}`} className="hover:bg-slate-50">
+                            {cartInfo.render && (
+                              <td
+                                rowSpan={cartInfo.rowSpan}
+                                className="py-2 px-1 text-center font-bold text-slate-800 bg-indigo-50/40 border-r border-slate-300 align-middle"
+                              >
+                                {court.cartName || `Xe ${court.cartNumber}`}
+                              </td>
+                            )}
                             <td className="py-2 px-2 text-center font-bold text-slate-900 border-r border-slate-200">
                               {court.courtName}
                             </td>
@@ -497,7 +530,7 @@ export function DiningCourtSummaryPrint({
                       })}
                       {/* Dòng tổng Tiết 5 */}
                       <tr className="bg-indigo-50 font-bold border-t-2 border-slate-300">
-                        <td colSpan={2} className="py-2 px-3 text-center border-r border-slate-300">
+                        <td colSpan={3} className="py-2 px-3 text-center border-r border-slate-300">
                           TỔNG CỘNG TIẾT 5 ({tiet5Courts.length} sân)
                         </td>
                         <td className="py-2 px-2 text-center font-black text-indigo-800 text-sm border-r border-slate-300">

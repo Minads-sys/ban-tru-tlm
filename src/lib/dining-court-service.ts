@@ -27,6 +27,8 @@ export interface ClassMealSummary {
 export interface DiningCourt {
   courtNumber: number;
   courtName: string;
+  cartNumber: number; // Số thứ tự xe cơm (1 xe chứa 2 sân: Math.ceil(courtNumber / 2))
+  cartName: string;   // VD: "Xe 1", "Xe 2", "Xe 3"...
   shift: "TIET_4" | "TIET_5";
   classes: Array<{
     classId: string;
@@ -51,6 +53,7 @@ export interface DiningAllocationResult {
   lockTime2: string;
   isAfterLockTime: boolean; // true: số liệu đã chốt, false: số liệu tạm
   totalCourts: number;
+  totalCarts: number; // Tổng số xe cơm cần dùng (1 xe chứa 2 sân)
   totalClasses: number;
   totalMeals: number;
   shifts: {
@@ -79,7 +82,8 @@ export const MAX_COURTS_PER_SHIFT = 16;
  */
 export function pairClassesIntoCourts(
   classes: ClassMealSummary[],
-  shift: "TIET_4" | "TIET_5"
+  shift: "TIET_4" | "TIET_5",
+  startCourtNumber: number = 1
 ): DiningCourt[] {
   // Chỉ tính các lớp có học sinh ăn (> 0 suất)
   const available = [...classes.filter((c) => c.totalMeals > 0)];
@@ -106,6 +110,8 @@ export function pairClassesIntoCourts(
       courts.push({
         courtNumber: 0, // Đánh số sau
         courtName: "",
+        cartNumber: 0,
+        cartName: "",
         shift,
         classes: [
           {
@@ -170,6 +176,8 @@ export function pairClassesIntoCourts(
       courts.push({
         courtNumber: 0,
         courtName: "",
+        cartNumber: 0,
+        cartName: "",
         shift,
         classes: [
           {
@@ -215,6 +223,8 @@ export function pairClassesIntoCourts(
       courts.push({
         courtNumber: 0,
         courtName: "",
+        cartNumber: 0,
+        cartName: "",
         shift,
         classes: [
           {
@@ -248,6 +258,8 @@ export function pairClassesIntoCourts(
       courts.push({
         courtNumber: 0,
         courtName: "",
+        cartNumber: 0,
+        cartName: "",
         shift,
         classes: [
           {
@@ -311,6 +323,8 @@ export function pairClassesIntoCourts(
       const mergedCourt: DiningCourt = {
         courtNumber: 0,
         courtName: "",
+        cartNumber: 0,
+        cartName: "",
         shift,
         classes: mergedClasses,
         totalMeals: mergedTotalMeals,
@@ -345,6 +359,8 @@ export function pairClassesIntoCourts(
     const mergedCourt: DiningCourt = {
       courtNumber: 0,
       courtName: "",
+      cartNumber: 0,
+      cartName: "",
       shift,
       classes: mergedClasses,
       totalMeals: mergedTotalMeals,
@@ -360,10 +376,13 @@ export function pairClassesIntoCourts(
     courts.splice(0, 2, mergedCourt);
   }
 
-  // 5. Đánh số thứ tự sân: Sân 1, Sân 2, Sân 3...
+  // 5. Đánh số thứ tự sân và xe cơm liên tục
   courts.forEach((court, idx) => {
-    court.courtNumber = idx + 1;
-    court.courtName = `Sân ${idx + 1}`;
+    const num = startCourtNumber + idx;
+    court.courtNumber = num;
+    court.courtName = `Sân ${num}`;
+    court.cartNumber = Math.ceil(num / 2);
+    court.cartName = `Xe ${court.cartNumber}`;
 
     // Sắp xếp các lớp trong sân theo thứ tự số tự nhiên (VD: 10A3 trước 12A10)
     court.classes.sort((a, b) => a.className.localeCompare(b.className, "vi", { numeric: true }));
@@ -437,6 +456,7 @@ export async function getDiningCourtAllocation(dateStr: string): Promise<DiningA
       lockTime2,
       isAfterLockTime,
       totalCourts: 0,
+      totalCarts: 0,
       totalClasses: 0,
       totalMeals: 0,
       shifts: {
@@ -547,11 +567,12 @@ export async function getDiningCourtAllocation(dateStr: string): Promise<DiningA
     }
   }
 
-  // Chạy thuật toán chia sân cho từng tiết
-  const courtsTiet4 = pairClassesIntoCourts(classSummariesTiet4, "TIET_4");
-  const courtsTiet5 = pairClassesIntoCourts(classSummariesTiet5, "TIET_5");
+  // Chạy thuật toán chia sân cho từng tiết (đánh số liên tục giữa các ca)
+  const courtsTiet4 = pairClassesIntoCourts(classSummariesTiet4, "TIET_4", 1);
+  const courtsTiet5 = pairClassesIntoCourts(classSummariesTiet5, "TIET_5", courtsTiet4.length + 1);
 
   const totalCourts = courtsTiet4.length + courtsTiet5.length;
+  const totalCarts = Math.ceil(totalCourts / 2);
   const totalClasses = classSummariesTiet4.length + classSummariesTiet5.length;
   const totalMeals =
     courtsTiet4.reduce((sum, c) => sum + c.totalMeals, 0) +
@@ -563,6 +584,7 @@ export async function getDiningCourtAllocation(dateStr: string): Promise<DiningA
     lockTime2,
     isAfterLockTime,
     totalCourts,
+    totalCarts,
     totalClasses,
     totalMeals,
     shifts: {

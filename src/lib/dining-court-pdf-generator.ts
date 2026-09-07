@@ -136,8 +136,9 @@ export async function generateDiningCourtsPdfBuffer(
       margin: [0, 0, 0, 2],
     });
 
+    const cartTitle = court.cartName ? `${court.cartName.toUpperCase()} - ` : "";
     content.push({
-      text: `${court.courtName.toUpperCase()} - ${shiftLabel}`,
+      text: `${court.courtName.toUpperCase()} - ${cartTitle}${shiftLabel}`,
       fontSize: 12,
       bold: true,
       alignment: "center",
@@ -392,7 +393,7 @@ export async function generateDiningCourtsSummaryPdfBuffer(
                   {
                     text: [
                       { text: "TỔNG TOÀN TRƯỜNG: ", bold: true },
-                      { text: `${allocation.totalCourts} SÂN`, bold: true, color: "#1d4ed8" },
+                      { text: `${allocation.totalCourts} SÂN (${allocation.totalCarts || Math.ceil(allocation.totalCourts / 2)} XE)`, bold: true, color: "#1d4ed8" },
                       { text: "  |  Tổng suất ăn: ", bold: true },
                       { text: `${allocation.totalMeals} suất`, bold: true, color: "#1d4ed8" },
                       { text: ` (Mặn: ${totalMan} | Chay: ${totalChay} | Cháo: ${totalChao})`, fontSize: 8.5, color: "#475569" },
@@ -461,6 +462,7 @@ export async function generateDiningCourtsSummaryPdfBuffer(
     } else {
       const t4Rows: any[] = [
         [
+          { text: "Xe", bold: true, alignment: "center", fillColor: "#ffedd5" },
           { text: "STT / Sân", bold: true, alignment: "center", fillColor: "#ffedd5" },
           { text: "Các lớp tại sân", bold: true, alignment: "left", fillColor: "#ffedd5" },
           { text: "Tổng suất", bold: true, alignment: "center", fillColor: "#ffedd5" },
@@ -471,22 +473,40 @@ export async function generateDiningCourtsSummaryPdfBuffer(
         ],
       ];
 
-      tiet4Courts.forEach((court) => {
+      tiet4Courts.forEach((court, idx) => {
+        const isSameCartAsPrev = idx > 0 && tiet4Courts[idx - 1].cartNumber === court.cartNumber;
+        const isSharedWithNext = idx + 1 < tiet4Courts.length && tiet4Courts[idx + 1].cartNumber === court.cartNumber;
         const classNamesStr = court.classes.map((c) => `${c.className} (${c.totalMeals})`).join(" + ");
-        t4Rows.push([
+
+        const rowCells: any[] = [];
+        if (isSameCartAsPrev) {
+          rowCells.push({});
+        } else {
+          rowCells.push({
+            text: court.cartName || `Xe ${court.cartNumber}`,
+            alignment: "center",
+            bold: true,
+            fontSize: 9,
+            rowSpan: isSharedWithNext ? 2 : 1,
+          });
+        }
+
+        rowCells.push(
           { text: court.courtName, alignment: "center", bold: true, fontSize: 9 },
           { text: classNamesStr, alignment: "left", fontSize: 8.5 },
           { text: String(court.totalMeals), alignment: "center", bold: true, fontSize: 9.5, color: "#c2410c" },
           { text: String(court.manCount), alignment: "center", fontSize: 9 },
           { text: String(court.chayCount), alignment: "center", fontSize: 9, bold: court.chayCount > 0, color: court.chayCount > 0 ? "#059669" : "#0f172a" },
           { text: String(court.chaoCount), alignment: "center", fontSize: 9, bold: court.chaoCount > 0, color: court.chaoCount > 0 ? "#d97706" : "#0f172a" },
-          { text: "[   ] ....................", alignment: "center", fontSize: 8, color: "#64748b" },
-        ]);
+          { text: "[   ] ....................", alignment: "center", fontSize: 8, color: "#64748b" }
+        );
+        t4Rows.push(rowCells);
       });
 
       // Dòng tổng kết Tiết 4
       t4Rows.push([
-        { text: "TỔNG TIẾT 4", colSpan: 2, bold: true, alignment: "center", fillColor: "#fef3c7" },
+        { text: "TỔNG TIẾT 4", colSpan: 3, bold: true, alignment: "center", fillColor: "#fef3c7" },
+        {},
         {},
         { text: String(allocation.shifts.TIET_4.totalMeals), bold: true, alignment: "center", fillColor: "#fef3c7", color: "#c2410c" },
         { text: String(tiet4Man), bold: true, alignment: "center", fillColor: "#fef3c7" },
@@ -498,7 +518,7 @@ export async function generateDiningCourtsSummaryPdfBuffer(
       content.push({
         table: {
           headerRows: 1,
-          widths: [55, 160, 52, 40, 40, 40, "*"],
+          widths: [36, 44, 155, 48, 38, 38, 38, "*"],
           body: t4Rows,
         },
         margin: [0, 0, 0, 10],
@@ -539,6 +559,7 @@ export async function generateDiningCourtsSummaryPdfBuffer(
     } else {
       const t5Rows: any[] = [
         [
+          { text: "Xe", bold: true, alignment: "center", fillColor: "#e0e7ff" },
           { text: "STT / Sân", bold: true, alignment: "center", fillColor: "#e0e7ff" },
           { text: "Các lớp tại sân", bold: true, alignment: "left", fillColor: "#e0e7ff" },
           { text: "Tổng suất", bold: true, alignment: "center", fillColor: "#e0e7ff" },
@@ -549,22 +570,40 @@ export async function generateDiningCourtsSummaryPdfBuffer(
         ],
       ];
 
-      tiet5Courts.forEach((court) => {
+      tiet5Courts.forEach((court, idx) => {
+        const isSameCartAsPrev = idx > 0 && tiet5Courts[idx - 1].cartNumber === court.cartNumber;
+        const isSharedWithNext = idx + 1 < tiet5Courts.length && tiet5Courts[idx + 1].cartNumber === court.cartNumber;
         const classNamesStr = court.classes.map((c) => `${c.className} (${c.totalMeals})`).join(" + ");
-        t5Rows.push([
+
+        const rowCells: any[] = [];
+        if (isSameCartAsPrev) {
+          rowCells.push({});
+        } else {
+          rowCells.push({
+            text: court.cartName || `Xe ${court.cartNumber}`,
+            alignment: "center",
+            bold: true,
+            fontSize: 9,
+            rowSpan: isSharedWithNext ? 2 : 1,
+          });
+        }
+
+        rowCells.push(
           { text: court.courtName, alignment: "center", bold: true, fontSize: 9 },
           { text: classNamesStr, alignment: "left", fontSize: 8.5 },
           { text: String(court.totalMeals), alignment: "center", bold: true, fontSize: 9.5, color: "#4338ca" },
           { text: String(court.manCount), alignment: "center", fontSize: 9 },
           { text: String(court.chayCount), alignment: "center", fontSize: 9, bold: court.chayCount > 0, color: court.chayCount > 0 ? "#059669" : "#0f172a" },
           { text: String(court.chaoCount), alignment: "center", fontSize: 9, bold: court.chaoCount > 0, color: court.chaoCount > 0 ? "#d97706" : "#0f172a" },
-          { text: "[   ] ....................", alignment: "center", fontSize: 8, color: "#64748b" },
-        ]);
+          { text: "[   ] ....................", alignment: "center", fontSize: 8, color: "#64748b" }
+        );
+        t5Rows.push(rowCells);
       });
 
       // Dòng tổng kết Tiết 5
       t5Rows.push([
-        { text: "TỔNG TIẾT 5", colSpan: 2, bold: true, alignment: "center", fillColor: "#fef3c7" },
+        { text: "TỔNG TIẾT 5", colSpan: 3, bold: true, alignment: "center", fillColor: "#fef3c7" },
+        {},
         {},
         { text: String(allocation.shifts.TIET_5.totalMeals), bold: true, alignment: "center", fillColor: "#fef3c7", color: "#4338ca" },
         { text: String(tiet5Man), bold: true, alignment: "center", fillColor: "#fef3c7" },
@@ -576,7 +615,7 @@ export async function generateDiningCourtsSummaryPdfBuffer(
       content.push({
         table: {
           headerRows: 1,
-          widths: [55, 160, 52, 40, 40, 40, "*"],
+          widths: [36, 44, 155, 48, 38, 38, 38, "*"],
           body: t5Rows,
         },
         margin: [0, 0, 0, 10],
