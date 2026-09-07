@@ -1,8 +1,7 @@
 "use client";
 
 import React from "react";
-import { Wrench, Clock, RefreshCw, ArrowRight } from "lucide-react";
-import Link from "next/link";
+import { Wrench, Clock, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface StudentMaintenanceProps {
@@ -74,24 +73,14 @@ export function StudentMaintenance({
             </div>
 
             {/* Action Buttons */}
-            <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+            <div className="pt-2 flex items-center justify-center">
               <Button
                 onClick={handleReload}
-                className="w-full sm:w-auto bg-amber-600 hover:bg-amber-700 text-white font-semibold px-6 shadow-sm gap-2 h-11"
+                className="w-full sm:w-auto bg-amber-600 hover:bg-amber-700 text-white font-semibold px-8 shadow-sm gap-2 h-11"
               >
                 <RefreshCw className="w-4 h-4" />
                 Tải lại trang
               </Button>
-
-              <Link href="/login" className="w-full sm:w-auto">
-                <Button
-                  variant="outline"
-                  className="w-full sm:w-auto border-slate-300 text-slate-700 hover:bg-slate-50 font-medium gap-1.5 h-11"
-                >
-                  Cổng Quản lý / Cán bộ
-                  <ArrowRight className="w-4 h-4 text-slate-400" />
-                </Button>
-              </Link>
             </div>
           </div>
 
