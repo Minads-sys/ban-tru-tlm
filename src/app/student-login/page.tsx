@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import prisma from "@/lib/db";
 import StudentLoginForm from "./student-login-form";
+import { StudentMaintenance } from "@/components/student-maintenance";
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Sổ Bán Trú - Đăng nhập",
@@ -25,10 +28,31 @@ export const metadata: Metadata = {
 };
 
 export default async function StudentLoginPage() {
-  const setting = await prisma.systemSetting.findUnique({
-    where: { key: "SCHOOL_NAME" },
+  const settings = await prisma.systemSetting.findMany({
+    where: {
+      key: {
+        in: [
+          "SCHOOL_NAME",
+          "STUDENT_PORTAL_MAINTENANCE",
+          "STUDENT_MAINTENANCE_MESSAGE",
+        ],
+      },
+    },
   });
-  const schoolName = setting?.value || "TRƯỜNG TIỂU HỌC TLM";
+
+  const settingsMap = Object.fromEntries(settings.map((s) => [s.key, s.value]));
+  const schoolName = settingsMap["SCHOOL_NAME"] || "TRƯỜNG THPT TEN LƠ MAN";
+  const isMaintenance = settingsMap["STUDENT_PORTAL_MAINTENANCE"] === "true";
+  const customMessage = settingsMap["STUDENT_MAINTENANCE_MESSAGE"];
+
+  if (isMaintenance) {
+    return (
+      <StudentMaintenance
+        schoolName={schoolName}
+        customMessage={customMessage}
+      />
+    );
+  }
 
   return <StudentLoginForm schoolName={schoolName} />;
 }

@@ -3,7 +3,10 @@ import type { Metadata } from "next";
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { StudentHeader } from "@/components/student/header";
+import { StudentMaintenance } from "@/components/student-maintenance";
 import prisma from "@/lib/db";
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Sổ Bán Trú",
@@ -36,6 +39,30 @@ export default async function StudentLayout({
 
   if (!session?.user) {
     redirect("/login");
+  }
+
+  // Check Maintenance Mode for students (allow ADMIN to bypass for testing/preview)
+  if (session.user.role === "STUDENT") {
+    const settings = await prisma.systemSetting.findMany({
+      where: {
+        key: {
+          in: [
+            "SCHOOL_NAME",
+            "STUDENT_PORTAL_MAINTENANCE",
+            "STUDENT_MAINTENANCE_MESSAGE",
+          ],
+        },
+      },
+    });
+    const settingsMap = Object.fromEntries(settings.map((s) => [s.key, s.value]));
+    if (settingsMap["STUDENT_PORTAL_MAINTENANCE"] === "true") {
+      return (
+        <StudentMaintenance
+          schoolName={settingsMap["SCHOOL_NAME"] || "TRƯỜNG THPT TEN LƠ MAN"}
+          customMessage={settingsMap["STUDENT_MAINTENANCE_MESSAGE"]}
+        />
+      );
+    }
   }
 
   if (session.user.requiresPasswordChange) {

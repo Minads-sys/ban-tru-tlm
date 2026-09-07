@@ -32,6 +32,7 @@ import {
   AlertTriangle,
   Trash2,
   ShieldAlert,
+  Wrench,
 } from 'lucide-react';
 
 interface SettingsFormState {
@@ -52,6 +53,8 @@ interface SettingsFormState {
   SEPAY_WEBHOOK_SECRET: string;
   SEPAY_API_KEY: string;
   SEPAY_ACCOUNT_NO: string;
+  STUDENT_PORTAL_MAINTENANCE: string;
+  STUDENT_MAINTENANCE_MESSAGE: string;
 }
 
 const VIETNAM_BANKS = [
@@ -110,6 +113,8 @@ export default function AdminSettingsPage() {
     SEPAY_WEBHOOK_SECRET: '',
     SEPAY_API_KEY: '',
     SEPAY_ACCOUNT_NO: '',
+    STUDENT_PORTAL_MAINTENANCE: 'false',
+    STUDENT_MAINTENANCE_MESSAGE: '',
   });
 
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -207,6 +212,8 @@ export default function AdminSettingsPage() {
           SEPAY_WEBHOOK_SECRET: data.SEPAY_WEBHOOK_SECRET ?? prev.SEPAY_WEBHOOK_SECRET,
           SEPAY_API_KEY: data.SEPAY_API_KEY ?? prev.SEPAY_API_KEY,
           SEPAY_ACCOUNT_NO: data.SEPAY_ACCOUNT_NO ?? prev.SEPAY_ACCOUNT_NO,
+          STUDENT_PORTAL_MAINTENANCE: data.STUDENT_PORTAL_MAINTENANCE ?? prev.STUDENT_PORTAL_MAINTENANCE,
+          STUDENT_MAINTENANCE_MESSAGE: data.STUDENT_MAINTENANCE_MESSAGE ?? prev.STUDENT_MAINTENANCE_MESSAGE,
         }));
       } catch (err) {
         console.error(err);
@@ -658,7 +665,123 @@ export default function AdminSettingsPage() {
               </CardFooter>
             </Card>
 
-            {/* CARD 5: KHU VỰC NGUY HIỂM - ĐẶT LẠI DỮ LIỆU HỆ THỐNG */}
+            {/* CARD 5: Chế độ Bảo trì Cổng Học sinh & Phụ huynh */}
+            <Card className={`shadow-sm border-2 transition-all ${
+              formData.STUDENT_PORTAL_MAINTENANCE === 'true' 
+                ? 'border-amber-400 bg-amber-50/30' 
+                : 'border-slate-200 bg-white'
+            }`}>
+              <CardHeader className={`border-b ${
+                formData.STUDENT_PORTAL_MAINTENANCE === 'true' 
+                  ? 'bg-amber-50/70 border-amber-200' 
+                  : 'bg-card'
+              }`}>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <CardTitle className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+                      <Wrench className={`h-5 w-5 ${formData.STUDENT_PORTAL_MAINTENANCE === 'true' ? 'text-amber-600' : 'text-slate-600'}`} />
+                      Chế độ Bảo trì Cổng Học sinh & Phụ huynh
+                    </CardTitle>
+                    <CardDescription>
+                      Tạm dừng truy cập của học sinh và phụ huynh khi nhà trường cần rà soát số liệu hoặc bảo trì hệ thống
+                    </CardDescription>
+                  </div>
+                  <div>
+                    {formData.STUDENT_PORTAL_MAINTENANCE === 'true' ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs">
+                        <span className="w-2 h-2 rounded-full bg-amber-600 animate-ping" />
+                        ĐANG BẬT BẢO TRÌ
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                        ĐANG HOẠT ĐỘNG
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </CardHeader>
+
+              <CardContent className="p-6 space-y-5">
+                {/* Công tắc Toggle Switch */}
+                <div className={`flex items-start sm:items-center justify-between gap-4 p-4 rounded-xl border transition-colors ${
+                  formData.STUDENT_PORTAL_MAINTENANCE === 'true'
+                    ? 'border-amber-300 bg-amber-100/40'
+                    : 'border-slate-200 bg-slate-50/80'
+                }`}>
+                  <div className="space-y-1">
+                    <label htmlFor="maintenance-toggle" className="text-sm font-bold text-slate-800 cursor-pointer block">
+                      Tạm dừng đường link học sinh (Hiện thông báo bảo trì)
+                    </label>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      Khi bật, mọi học sinh truy cập cổng thông tin (/student-login, /student) sẽ thấy màn hình thông báo hệ thống đang bảo trì. 
+                      Tài khoản Quản trị viên (Admin) và Cán bộ quản lý vẫn làm việc bình thường.
+                    </p>
+                  </div>
+                  <div className="shrink-0 flex items-center pt-1 sm:pt-0">
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        id="maintenance-toggle"
+                        type="checkbox"
+                        checked={formData.STUDENT_PORTAL_MAINTENANCE === 'true'}
+                        onChange={(e) => handleChange('STUDENT_PORTAL_MAINTENANCE', e.target.checked ? 'true' : 'false')}
+                        className="sr-only peer"
+                      />
+                      <div className="w-12 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-amber-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600"></div>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Tin nhắn thông báo tùy biến */}
+                <div className="space-y-2">
+                  <Label htmlFor="STUDENT_MAINTENANCE_MESSAGE" className="text-sm font-medium text-slate-800 flex items-center gap-1.5">
+                    Thông điệp hiển thị cho Phụ huynh & Học sinh (Tùy chọn)
+                  </Label>
+                  <Input
+                    id="STUDENT_MAINTENANCE_MESSAGE"
+                    type="text"
+                    placeholder="VD: Cổng thông tin bán trú đang tạm dừng để rà soát tiền ăn tháng 09/2026. Quý phụ huynh vui lòng quay lại sau."
+                    value={formData.STUDENT_MAINTENANCE_MESSAGE}
+                    onChange={(e) => handleChange('STUDENT_MAINTENANCE_MESSAGE', e.target.value)}
+                    className="h-10 text-sm"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Nếu để trống, hệ thống sẽ sử dụng thông điệp thông báo bảo trì mặc định chuẩn mực và lịch sự.
+                  </p>
+                </div>
+
+                {formData.STUDENT_PORTAL_MAINTENANCE === 'true' && (
+                  <div className="rounded-lg border border-amber-300 bg-amber-50 p-3.5 text-xs text-amber-900 flex items-start gap-2.5">
+                    <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+                    <div>
+                      <b>Đang ở chế độ bảo trì:</b> Học sinh và phụ huynh hiện không thể đăng nhập hoặc xem công nợ. Nhớ bấm <b>"Lưu Tất Cả Cài Đặt"</b> bên dưới để áp dụng thay đổi.
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+
+              <CardFooter className="flex justify-end gap-3 border-t bg-slate-50/50 p-4">
+                <Button
+                  type="submit"
+                  disabled={isSaving}
+                  className="min-w-[140px] gap-2 shadow-sm font-medium bg-blue-600 hover:bg-blue-700"
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Đang lưu...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4" />
+                      Lưu Tất Cả Cài Đặt
+                    </>
+                  )}
+                </Button>
+              </CardFooter>
+            </Card>
+
+            {/* CARD 6: KHU VỰC NGUY HIỂM - ĐẶT LẠI DỮ LIỆU HỆ THỐNG */}
             <Card className="shadow-sm border-rose-200 bg-rose-50/20">
               <CardHeader className="border-b border-rose-100 bg-rose-50/50">
                 <CardTitle className="text-lg font-semibold text-rose-800 flex items-center gap-2">

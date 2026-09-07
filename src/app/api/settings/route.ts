@@ -12,6 +12,8 @@ export async function GET() {
       CUTOFF_TIME: '07:30',
       SCHOOL_YEAR: '2025-2026',
       DEFAULT_VISIBLE_DAYS: '["monday", "tuesday", "wednesday", "thursday", "friday"]',
+      STUDENT_PORTAL_MAINTENANCE: 'false',
+      STUDENT_MAINTENANCE_MESSAGE: '',
     };
 
     settings.forEach((s) => {
