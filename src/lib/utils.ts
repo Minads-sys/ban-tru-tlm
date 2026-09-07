@@ -6,6 +6,13 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
+ * So sánh tên hoặc mã lớp theo thứ tự tự nhiên (Khối 10 -> 11 -> 12, lớp 1 -> 2 -> ... -> 13)
+ */
+export function compareClassNames(a: string, b: string): number {
+  return (a || "").localeCompare(b || "", "vi", { numeric: true, sensitivity: "base" });
+}
+
+/**
  * Format số tiền VND
  */
 export function formatCurrency(amount: number | string): string {

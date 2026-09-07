@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db";
 import ExcelJS from "exceljs";
+import { compareClassNames } from "@/lib/utils";
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,10 +17,11 @@ export async function GET(request: NextRequest) {
       targetWeek = parseInt(parts[1]);
     }
 
-    // Get all classes
+    // Get all classes and sort naturally by grade and class number
     const classes = await prisma.class.findMany({
       orderBy: { id: "asc" },
     });
+    classes.sort((a, b) => compareClassNames(a.id, b.id));
 
     // Get existing schedules for that week
     const schedules = await prisma.classWeeklySchedule.findMany({

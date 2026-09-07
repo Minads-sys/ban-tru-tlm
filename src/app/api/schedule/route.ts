@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db";
 import { broadcastChange } from "@/lib/realtime-hub";
 import { auth } from "@/lib/auth";
+import { compareClassNames } from "@/lib/utils";
 
 // GET: Lấy TKB tuần
 export async function GET(request: NextRequest) {
@@ -49,6 +50,9 @@ export async function GET(request: NextRequest) {
       saturday: schedule?.saturday ?? "NONE",
     };
   });
+
+  // Sắp xếp theo khối từ trên xuống và tăng dần (10A1 -> 10A13, 11A1 -> 11A12, 12A1 -> 12A13)
+  result.sort((a, b) => compareClassNames(a.classId, b.classId));
 
   return NextResponse.json({
     isNew: schedules.length === 0,

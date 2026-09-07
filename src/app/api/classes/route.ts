@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
 import { broadcastChange } from "@/lib/realtime-hub";
 import { logAudit, AUDIT_ACTIONS, AUDIT_MODULES } from "@/lib/audit-log";
+import { compareClassNames } from "@/lib/utils";
 
 export async function GET() {
   const classes = await prisma.class.findMany({
@@ -18,6 +19,8 @@ export async function GET() {
     },
     orderBy: { id: "asc" },
   });
+
+  classes.sort((a, b) => compareClassNames(a.id, b.id));
 
   return NextResponse.json(classes);
 }

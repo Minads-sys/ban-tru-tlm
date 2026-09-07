@@ -18,6 +18,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { CalendarDays, Save, Loader2, Copy, CheckCircle, X, ChevronLeft, ChevronRight, Trash2, Info } from "lucide-react";
 import { format, parse, startOfWeek, endOfWeek, addDays, addWeeks } from "date-fns";
+import { compareClassNames } from "@/lib/utils";
 
 interface ScheduleData {
   classId: string;
@@ -94,12 +95,16 @@ export default function SchedulePage() {
       const res = await fetch(`/api/schedule?year=${year}&weekNumber=${weekNumber}`);
       const data = await res.json();
       
+      const sortedList = (data.data || []).sort((a: ScheduleData, b: ScheduleData) =>
+        compareClassNames(a.classId, b.classId)
+      );
+
       if (data.isNew) {
         setSchedules([]);
-        setDraftSchedules(data.data);
+        setDraftSchedules(sortedList);
         setHasChanges(false);
       } else {
-        setSchedules(data.data);
+        setSchedules(sortedList);
         setDraftSchedules(null);
         setHasChanges(false);
       }

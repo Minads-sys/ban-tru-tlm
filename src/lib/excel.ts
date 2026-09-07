@@ -1,5 +1,5 @@
 import ExcelJS from "exceljs";
-import { removeVietnameseTones, formatDateDDMMYYYY, parseDateValue } from "./utils";
+import { removeVietnameseTones, formatDateDDMMYYYY, parseDateValue, compareClassNames } from "./utils";
 
 // ==================== TYPES ====================
 
@@ -800,6 +800,12 @@ export async function parseScheduleExcel(
       thu7: days.thu7,
       ghiChu: ghiChu || undefined,
     });
+  });
+
+  // Sắp xếp danh sách lớp theo khối từ trên xuống và tăng dần (10A1 -> 10A13, 11A1 -> 11A12, 12A1 -> 12A13)
+  data.sort((a, b) => compareClassNames(a.maLop, b.maLop));
+  data.forEach((row, idx) => {
+    row.stt = idx + 1;
   });
 
   return { data, errors, isValid: errors.length === 0 };
