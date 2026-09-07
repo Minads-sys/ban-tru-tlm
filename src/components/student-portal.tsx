@@ -138,6 +138,9 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
   const [selectedHistoryYear, setSelectedHistoryYear] = useState<number>(new Date().getFullYear());
   const [selectedHistoryMonth, setSelectedHistoryMonth] = useState<number | null>(null);
 
+  // Tạm ẩn Tab "DS công nợ" và "Lịch sử thanh toán" theo yêu cầu
+  const HIDE_BILLING_TABS = true;
+
   const formatMoney = (val: number | string) =>
     new Intl.NumberFormat("vi-VN").format(Math.max(0, Math.round(Number(val || 0)))) + "đ";
 
@@ -725,7 +728,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
       </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 mb-6 p-1.5 bg-slate-200 rounded-xl gap-1.5 h-auto border border-slate-300 shadow-2xs">
+        <TabsList className={`grid w-full ${HIDE_BILLING_TABS ? "grid-cols-2" : "grid-cols-2 sm:grid-cols-4"} mb-6 p-1.5 bg-slate-200 rounded-xl gap-1.5 h-auto border border-slate-300 shadow-2xs`}>
           <TabsTrigger
             value="cancel"
             className="cursor-pointer transition-all duration-150 text-slate-700 hover:text-red-900 hover:bg-red-100/70 data-[state=active]:bg-red-600 data-[state=active]:text-white font-semibold data-[state=active]:shadow-sm py-2 text-xs sm:text-sm group"
@@ -740,25 +743,29 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
             <RefreshCw className="h-4 w-4 mr-1.5 shrink-0 text-slate-600 group-data-[state=active]:text-white" />
             {readOnly ? 'Lịch sử Đổi món' : 'Đổi món ăn'}
           </TabsTrigger>
-          <TabsTrigger
-            value="debt"
-            className="cursor-pointer transition-all duration-150 text-slate-700 hover:text-amber-900 hover:bg-amber-100/70 data-[state=active]:bg-amber-600 data-[state=active]:text-white font-semibold data-[state=active]:shadow-sm py-2 text-xs sm:text-sm flex items-center justify-center gap-1 group"
-          >
-            <AlertCircle className="h-4 w-4 mr-1 shrink-0 text-slate-600 group-data-[state=active]:text-white" />
-            <span>DS công nợ</span>
-            {debtBills.length > 0 && (
-              <Badge className="bg-rose-600 group-data-[state=active]:bg-white group-data-[state=active]:text-amber-700 text-white text-[10px] px-1.5 py-0 h-4 min-w-4 flex items-center justify-center rounded-full ml-1 font-bold transition-colors">
-                {debtBills.length}
-              </Badge>
-            )}
-          </TabsTrigger>
-          <TabsTrigger
-            value="history"
-            className="cursor-pointer transition-all duration-150 text-slate-700 hover:text-blue-900 hover:bg-blue-100/70 data-[state=active]:bg-blue-600 data-[state=active]:text-white font-semibold data-[state=active]:shadow-sm py-2 text-xs sm:text-sm group"
-          >
-            <History className="h-4 w-4 mr-1.5 shrink-0 text-slate-600 group-data-[state=active]:text-white" />
-            Lịch sử thanh toán
-          </TabsTrigger>
+          {!HIDE_BILLING_TABS && (
+            <>
+              <TabsTrigger
+                value="debt"
+                className="cursor-pointer transition-all duration-150 text-slate-700 hover:text-amber-900 hover:bg-amber-100/70 data-[state=active]:bg-amber-600 data-[state=active]:text-white font-semibold data-[state=active]:shadow-sm py-2 text-xs sm:text-sm flex items-center justify-center gap-1 group"
+              >
+                <AlertCircle className="h-4 w-4 mr-1 shrink-0 text-slate-600 group-data-[state=active]:text-white" />
+                <span>DS công nợ</span>
+                {debtBills.length > 0 && (
+                  <Badge className="bg-rose-600 group-data-[state=active]:bg-white group-data-[state=active]:text-amber-700 text-white text-[10px] px-1.5 py-0 h-4 min-w-4 flex items-center justify-center rounded-full ml-1 font-bold transition-colors">
+                    {debtBills.length}
+                  </Badge>
+                )}
+              </TabsTrigger>
+              <TabsTrigger
+                value="history"
+                className="cursor-pointer transition-all duration-150 text-slate-700 hover:text-blue-900 hover:bg-blue-100/70 data-[state=active]:bg-blue-600 data-[state=active]:text-white font-semibold data-[state=active]:shadow-sm py-2 text-xs sm:text-sm group"
+              >
+                <History className="h-4 w-4 mr-1.5 shrink-0 text-slate-600 group-data-[state=active]:text-white" />
+                Lịch sử thanh toán
+              </TabsTrigger>
+            </>
+          )}
         </TabsList>
 
         <TabsContent value="cancel">
@@ -1017,8 +1024,10 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
             </div>
           </TabsContent>
 
-          {/* TAB 3: DANH SÁCH CÔNG NỢ (CHỈ HIỆN CÁC PHIẾU CÒN NỢ) */}
-          <TabsContent value="debt">
+          {/* TAB 3 & 4: DANH SÁCH CÔNG NỢ & LỊCH SỬ THANH TOÁN (TẠM ẨN) */}
+          {!HIDE_BILLING_TABS && (
+            <>
+              <TabsContent value="debt">
             <div className="space-y-6">
               {loadingBills ? (
                 <Card className="p-8 text-center text-slate-500">
@@ -1504,7 +1513,9 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
               })()}
             </div>
           </TabsContent>
-        </Tabs>
+        </>
+      )}
+    </Tabs>
     </div>
   );
 }
