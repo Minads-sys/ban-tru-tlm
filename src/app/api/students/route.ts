@@ -135,7 +135,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === "create") {
-      const { studentCode, boardingCode, fullName, classId, mealType, parentPhone, gender, birthDate, generateBill } = body;
+      const { studentCode, boardingCode, fullName, classId, mealType, parentPhone, gender, birthDate, mealStartDate, generateBill } = body;
       
       if (!studentCode || !fullName || !classId) {
         return NextResponse.json({ error: "Thiếu các thông tin bắt buộc" }, { status: 400 });
@@ -192,6 +192,19 @@ export async function POST(request: NextRequest) {
         parsedBirthDate = new Date(birthDate);
       }
 
+      // Parse mealStartDate (Ngày thực tế bắt đầu ăn bán trú)
+      let parsedMealStartDate: Date | null = null;
+      if (mealStartDate) {
+        const [msY, msM, msD] = String(mealStartDate).split("-").map(Number);
+        if (!isNaN(msY) && !isNaN(msM) && !isNaN(msD)) {
+          parsedMealStartDate = new Date(Date.UTC(msY, msM - 1, msD));
+        }
+      }
+      if (!parsedMealStartDate) {
+        const now = new Date();
+        parsedMealStartDate = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+      }
+
       // Generate password (ddmmyyyy) from birthDate or default "123456"
       const bcrypt = require("bcryptjs");
       let password = "123456";
@@ -225,20 +238,21 @@ export async function POST(request: NextRequest) {
           mealType: mealType || "MAN",
           boardingStatus: "ACTIVE",
           boardingRegisteredAt: new Date(),
+          mealStartDate: parsedMealStartDate,
           parentPhone: parentPhone || null,
           birthDate: parsedBirthDate
         }
       });
 
-      // Generate Bill if requested (Căn cứ nghiêm ngặt vào Thời khóa biểu tuần của lớp)
+      // Generate Bill if requested (Căn cứ nghiêm ngặt vào Thời khóa biểu tuần của lớp từ ngày bắt đầu ăn)
       let billCreated = false;
       let billWarningMessage = "";
       let scheduledDays = 0;
 
       if (generateBill) {
-        const now = new Date();
-        const month = now.getMonth() + 1;
-        const year = now.getFullYear();
+        const targetStartDate = parsedMealStartDate;
+        const month = targetStartDate.getUTCMonth() + 1;
+        const year = targetStartDate.getUTCFullYear();
 
         const dayFieldMap: Record<number, 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday'> = {
           1: 'monday',
@@ -256,10 +270,10 @@ export async function POST(request: NextRequest) {
           );
         };
 
-        // Tìm tất cả các tuần từ hôm nay đến hết tháng
+        // Tìm tất cả các tuần từ ngày bắt đầu ăn đến hết tháng
         const endOfMonth = new Date(Date.UTC(year, month, 0));
         const requiredWeekNumbers = new Set<number>();
-        const tempCheckDate = new Date(Date.UTC(year, month - 1, now.getDate()));
+        const tempCheckDate = new Date(Date.UTC(year, month - 1, targetStartDate.getUTCDate()));
 
         while (tempCheckDate <= endOfMonth) {
           const dayOfWeek = tempCheckDate.getUTCDay();
@@ -290,8 +304,8 @@ export async function POST(request: NextRequest) {
           // QUY TẮC BẮT BUỘC: Nếu bất kỳ tuần nào chưa có lịch học thì cảnh báo và chỉ ghi nhận đăng ký ăn, KHÔNG tạo hóa đơn
           billWarningMessage = `Chưa tạo hóa đơn tháng ${month}/${year} do Lớp ${classObj.name} chưa có Thời khóa biểu các tuần: ${missingWeeks.map(w => `Tuần ${w}`).join(', ')}. Vui lòng tạo TKB lớp trước khi tạo hóa đơn!`;
         } else {
-          // Đầy đủ TKB 100%: Quét từng ngày còn lại trong tháng đối chiếu theo TKB
-          const tempDate = new Date(Date.UTC(year, month - 1, now.getDate()));
+          // Đầy đủ TKB 100%: Quét từng ngày từ ngày bắt đầu ăn đến hết tháng đối chiếu theo TKB
+          const tempDate = new Date(Date.UTC(year, month - 1, targetStartDate.getUTCDate()));
           while (tempDate <= endOfMonth) {
             const dayOfWeek = tempDate.getUTCDay();
             if (dayOfWeek !== 0) {
@@ -348,10 +362,13 @@ export async function POST(request: NextRequest) {
       broadcastChange('students', 'INSERT', newStudent);
       broadcastChange('daily_meals', 'UPDATE');
 
-      let responseMsg = "Đăng ký học sinh thành công";
+      const formattedStartDate = `${String(parsedMealStartDate.getUTCDate()).padStart(2, '0')}/${String(parsedMealStartDate.getUTCMonth() + 1).padStart(2, '0')}/${parsedMealStartDate.getUTCFullYear()}`;
+      let responseMsg = `Đăng ký học sinh thành công (Bắt đầu ăn từ ngày ${formattedStartDate})`;
       if (generateBill) {
         if (billCreated) {
-          responseMsg = `Đăng ký học sinh thành công và đã tạo hóa đơn tháng ${new Date().getMonth() + 1}/${new Date().getFullYear()} (${scheduledDays} ngày ăn theo TKB).`;
+          const month = parsedMealStartDate.getUTCMonth() + 1;
+          const year = parsedMealStartDate.getUTCFullYear();
+          responseMsg = `Đăng ký học sinh thành công và đã tạo hóa đơn tháng ${month}/${year} (${scheduledDays} ngày ăn tính từ ngày ${formattedStartDate} theo TKB).`;
         } else if (billWarningMessage) {
           responseMsg = `Đăng ký học sinh thành công! ⚠️ ${billWarningMessage}`;
         }
@@ -449,6 +466,18 @@ async function calculateStudentSettlement({
       if (syDate > effectiveStartDate) {
         effectiveStartDate = syDate;
       }
+    }
+  }
+
+  // Căn cứ ngày học sinh thực tế bắt đầu ăn bán trú
+  const studentInfo = await prisma.student.findUnique({
+    where: { id: studentId },
+    select: { mealStartDate: true },
+  });
+  if (studentInfo?.mealStartDate) {
+    const studentMealStart = new Date(studentInfo.mealStartDate);
+    if (studentMealStart > effectiveStartDate) {
+      effectiveStartDate = studentMealStart;
     }
   }
 
@@ -622,11 +651,25 @@ async function calculateStudentSettlement({
 
     // ==================== ĐĂNG KÝ MỚI / MỞ LẠI BÁN TRÚ ====================
     if (action === "activate") {
+      const { mealStartDate } = body;
+      let parsedMealStartDate: Date | null = null;
+      if (mealStartDate) {
+        const [msY, msM, msD] = String(mealStartDate).split("-").map(Number);
+        if (!isNaN(msY) && !isNaN(msM) && !isNaN(msD)) {
+          parsedMealStartDate = new Date(Date.UTC(msY, msM - 1, msD));
+        }
+      }
+      if (!parsedMealStartDate) {
+        const today = new Date();
+        parsedMealStartDate = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
+      }
+
       await prisma.student.update({
         where: { id: studentId },
         data: {
           boardingStatus: BoardingStatus.ACTIVE,
           boardingRegisteredAt: new Date(),
+          mealStartDate: parsedMealStartDate,
           boardingCancelledAt: null,
         },
       });
@@ -793,7 +836,7 @@ export async function PUT(request: NextRequest) {
   try {
     const session = await auth();
     const body = await request.json();
-    const { studentId, studentCode, boardingCode, fullName, classId, mealType, parentPhone } = body;
+    const { studentId, studentCode, boardingCode, fullName, classId, mealType, parentPhone, mealStartDate } = body;
 
     if (!studentId) {
       return NextResponse.json({ error: "Thiếu studentId" }, { status: 400 });
@@ -847,6 +890,19 @@ export async function PUT(request: NextRequest) {
       });
     }
 
+    // Parse mealStartDate nếu có gửi lên
+    let parsedMealStartDate: Date | null | undefined = undefined;
+    if (mealStartDate !== undefined) {
+      if (mealStartDate) {
+        const [msY, msM, msD] = String(mealStartDate).split("-").map(Number);
+        if (!isNaN(msY) && !isNaN(msM) && !isNaN(msD)) {
+          parsedMealStartDate = new Date(Date.UTC(msY, msM - 1, msD));
+        }
+      } else {
+        parsedMealStartDate = null;
+      }
+    }
+
     // Cập nhật Student
     let updateClassId = student.classId;
     if (classId) {
@@ -866,6 +922,7 @@ export async function PUT(request: NextRequest) {
         classId: updateClassId,
         mealType: mealType || student.mealType,
         parentPhone: parentPhone !== undefined ? parentPhone : student.parentPhone,
+        ...(parsedMealStartDate !== undefined ? { mealStartDate: parsedMealStartDate } : {}),
       },
     });
 

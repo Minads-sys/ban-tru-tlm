@@ -210,6 +210,7 @@ export async function POST(request: NextRequest) {
               mealType: row.cheDoAn as MealType,
               boardingStatus: row.dangKyBanTru === "CO" ? BoardingStatus.ACTIVE : BoardingStatus.CANCELLED,
               boardingRegisteredAt: row.dangKyBanTru === "CO" ? new Date() : null,
+              mealStartDate: row.dangKyBanTru === "CO" ? new Date() : null,
               parentPhone: row.soDienThoaiPhuHuynh || null,
               birthDate: birthDateVal
             },

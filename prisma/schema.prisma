@@ -108,6 +108,7 @@ model Student {
   mealType             MealType       @default(MAN) @map("meal_type")
   boardingStatus       BoardingStatus @default(ACTIVE) @map("boarding_status")
   boardingRegisteredAt DateTime?      @map("boarding_registered_at")
+  mealStartDate        DateTime?      @map("meal_start_date") @db.Date
   boardingCancelledAt  DateTime?      @map("boarding_cancelled_at")
   birthDate            DateTime?      @map("birth_date") @db.Date
   parentPhone          String?        @map("parent_phone")

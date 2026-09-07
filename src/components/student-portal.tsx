@@ -56,6 +56,7 @@ interface StudentData {
   classId: string;
   mealType: "MAN" | "CHAY" | "CHAO";
   boardingStatus: "ACTIVE" | "CANCELLED" | "SUSPENDED";
+  mealStartDate?: string | Date | null;
   parentPhone?: string | null;
   birthDate?: string | Date | null;
   gender?: "MALE" | "FEMALE" | null;
@@ -583,6 +584,20 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                     <div className="min-w-0">
                       <span className="text-xs text-slate-500 block">SĐT Phụ huynh</span>
                       <span className="font-semibold text-slate-900 truncate block">{studentInfo.parentPhone}</span>
+                    </div>
+                  </div>
+                )}
+
+                {studentInfo.mealStartDate && (
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 border border-slate-100">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                      <Calendar className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <span className="text-xs text-slate-500 block">Ngày bắt đầu ăn</span>
+                      <span className="font-semibold text-slate-900 truncate block">
+                        {new Date(studentInfo.mealStartDate).toLocaleDateString('vi-VN', { timeZone: 'UTC' })}
+                      </span>
                     </div>
                   </div>
                 )}

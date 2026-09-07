@@ -260,12 +260,27 @@ export async function POST(request: NextRequest) {
       );
     };
 
-    // Hàm tính số ngày ăn theo TKB của 1 lớp trong bất kỳ tháng/năm nào (theo TKB hiện có)
-    const calculateScheduleDaysForMonth = (cId: string, targetMonth: number, targetYear: number): number => {
+    // Hàm tính số ngày ăn theo TKB của 1 lớp trong bất kỳ tháng/năm nào (theo TKB hiện có, có tính ngày bắt đầu ăn của HS)
+    const calculateScheduleDaysForMonth = (
+      cId: string, 
+      targetMonth: number, 
+      targetYear: number,
+      studentMealStartDate?: Date | null
+    ): number => {
       const numDays = new Date(Date.UTC(targetYear, targetMonth, 0)).getUTCDate();
       let count = 0;
       for (let day = 1; day <= numDays; day++) {
         const date = new Date(Date.UTC(targetYear, targetMonth - 1, day));
+
+        // Nếu học sinh có ngày bắt đầu ăn và ngày này trước ngày bắt đầu ăn -> Bỏ qua
+        if (studentMealStartDate) {
+          const mDate = new Date(studentMealStartDate);
+          const studentStartUTC = new Date(Date.UTC(mDate.getUTCFullYear(), mDate.getUTCMonth(), mDate.getUTCDate()));
+          if (date < studentStartUTC) {
+            continue;
+          }
+        }
+
         const dayOfWeek = date.getUTCDay(); // 0=CN, 1=T2..6=T7
         if (dayOfWeek === 0) continue; // CN không tính
 
@@ -415,12 +430,21 @@ export async function POST(request: NextRequest) {
         .map((b) => b.studentId)
     );
 
-    const studentsToProcess = studentsWithSchedule.filter((s) => !paidOrPartialStudentIds.has(s.id));
+    const endOfCurrentMonth = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
+    const studentsToProcess = studentsWithSchedule.filter((s) => {
+      if (paidOrPartialStudentIds.has(s.id)) return false;
+      // Nếu học sinh có ngày bắt đầu ăn ở tháng tương lai -> Chưa tính hóa đơn tháng này
+      if (s.mealStartDate) {
+        const mDate = new Date(s.mealStartDate);
+        if (mDate > endOfCurrentMonth) return false;
+      }
+      return true;
+    });
 
     if (studentsToProcess.length === 0 && studentsWithSchedule.length > 0) {
       return NextResponse.json({
         success: true,
-        message: `Tất cả ${studentsWithSchedule.length} học sinh đều đã có hóa đơn đã thanh toán (PAID/PARTIAL). Hệ thống giữ nguyên dữ liệu gốc, không ghi đè.`,
+        message: `Tất cả ${studentsWithSchedule.length} học sinh đều đã có hóa đơn đã thanh toán (PAID/PARTIAL) hoặc chưa đến tháng bắt đầu ăn. Hệ thống giữ nguyên dữ liệu gốc, không ghi đè.`,
         count: 0,
         preservedCount: paidOrPartialStudentIds.size,
         month,
@@ -438,7 +462,10 @@ export async function POST(request: NextRequest) {
 
       await prisma.$transaction(
         batch.map((student) => {
-          const scheduleMealDays = currentClassMealDays.get(student.classId) || 0;
+          let scheduleMealDays = currentClassMealDays.get(student.classId) || 0;
+          if (student.mealStartDate) {
+            scheduleMealDays = calculateScheduleDaysForMonth(student.classId, month, year, student.mealStartDate);
+          }
           let studentCanceledDays = 0;
           let scheduleReducedDays = 0;
           let extraMealDays = 0;

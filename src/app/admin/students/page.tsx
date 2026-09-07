@@ -75,6 +75,7 @@ interface StudentItem {
   mealType: 'MAN' | 'CHAY' | 'CHAO';
   boardingStatus: 'ACTIVE' | 'CANCELLED' | 'SUSPENDED';
   boardingRegisteredAt: string | null;
+  mealStartDate?: string | null;
   boardingCancelledAt: string | null;
   parentPhone: string | null;
   user: {
@@ -145,6 +146,7 @@ export default function AdminStudentsPage() {
 
   // Activate dialog states
   const [activatingStudent, setActivatingStudent] = useState<StudentItem | null>(null);
+  const [activateMealStartDate, setActivateMealStartDate] = useState<string>('');
   const [isSubmittingActivate, setIsSubmittingActivate] = useState<boolean>(false);
 
   // Viewing student portal state
@@ -158,6 +160,7 @@ export default function AdminStudentsPage() {
     classId: '',
     mealType: 'MAN',
     parentPhone: '',
+    mealStartDate: '',
   });
   const [isSubmittingEdit, setIsSubmittingEdit] = useState<boolean>(false);
 
@@ -172,6 +175,7 @@ export default function AdminStudentsPage() {
     parentPhone: '',
     gender: 'NAM',
     birthDate: '',
+    mealStartDate: new Date().toISOString().slice(0, 10),
     generateBill: true,
   });
   const [isSubmittingCreate, setIsSubmittingCreate] = useState<boolean>(false);
@@ -440,6 +444,11 @@ export default function AdminStudentsPage() {
   };
 
   // Handle Activate Boarding Action
+  const handleOpenActivate = (student: StudentItem) => {
+    setActivatingStudent(student);
+    setActivateMealStartDate(new Date().toISOString().slice(0, 10));
+  };
+
   const handleConfirmActivate = async () => {
     if (!activatingStudent) return;
     setIsSubmittingActivate(true);
@@ -452,6 +461,7 @@ export default function AdminStudentsPage() {
         body: JSON.stringify({
           action: 'activate',
           studentId: activatingStudent.id,
+          mealStartDate: activateMealStartDate,
         }),
       });
 
@@ -490,6 +500,7 @@ export default function AdminStudentsPage() {
       classId: student.classId,
       mealType: student.mealType || 'MAN',
       parentPhone: student.parentPhone || '',
+      mealStartDate: student.mealStartDate ? student.mealStartDate.slice(0, 10) : '',
     });
   };
 
@@ -557,6 +568,7 @@ export default function AdminStudentsPage() {
         parentPhone: '',
         gender: 'NAM',
         birthDate: '',
+        mealStartDate: new Date().toISOString().slice(0, 10),
         generateBill: true,
       });
       setStatusMessage({ type: 'success', text: data.message || 'Đăng ký học sinh mới thành công' });
@@ -1031,10 +1043,15 @@ export default function AdminStudentsPage() {
                           >
                             {student.user?.fullName || 'Chưa cập nhật'}
                           </div>
-                          <div className="flex items-center gap-3 text-xs text-slate-500">
+                          <div className="flex items-center gap-2 flex-wrap text-xs text-slate-500">
                             <span className="text-[11px] text-slate-400">
                               TK: @{student.user?.username}
                             </span>
+                            {student.mealStartDate && (
+                              <span className="text-[10.5px] font-medium text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200" title="Ngày bắt đầu ăn bán trú">
+                                Ăn từ: {new Date(student.mealStartDate).toLocaleDateString('vi-VN', { timeZone: 'UTC' })}
+                              </span>
+                            )}
                             {student.parentPhone && (
                               <span className="flex items-center gap-1 text-[11px] text-slate-600">
                                 <Phone className="h-3 w-3 text-slate-400" />
@@ -1104,7 +1121,7 @@ export default function AdminStudentsPage() {
                                   type="button"
                                   size="sm"
                                   variant="outline"
-                                  onClick={() => setActivatingStudent(student)}
+                                  onClick={() => handleOpenActivate(student)}
                                   className="h-8 px-2.5 text-xs font-medium border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 hover:border-emerald-300 gap-1.5 shadow-2xs cursor-pointer"
                                 >
                                   <UserPlus className="h-3.5 w-3.5" />
@@ -1115,7 +1132,7 @@ export default function AdminStudentsPage() {
                                   type="button"
                                   size="sm"
                                   variant="outline"
-                                  onClick={() => setActivatingStudent(student)}
+                                  onClick={() => handleOpenActivate(student)}
                                   className="h-8 px-2.5 text-xs font-medium border-blue-200 text-blue-700 hover:bg-blue-50 gap-1.5 shadow-2xs cursor-pointer"
                                 >
                                   <RefreshCw className="h-3.5 w-3.5" />
@@ -1682,6 +1699,19 @@ export default function AdminStudentsPage() {
                 </div>
               </div>
 
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-700 flex items-center gap-1">
+                  <span>Ngày bắt đầu ăn trở lại</span>
+                  <span className="text-red-500">*</span>
+                </label>
+                <Input
+                  type="date"
+                  value={activateMealStartDate}
+                  onChange={(e) => setActivateMealStartDate(e.target.value)}
+                  className="h-10 text-sm font-medium border-emerald-200 focus:border-emerald-500"
+                />
+              </div>
+
               <div className="flex items-center gap-2 rounded-md bg-emerald-50 p-2.5 text-xs text-emerald-800 border border-emerald-200">
                 <Sparkles className="h-4 w-4 shrink-0 text-emerald-600" />
                 <span>
@@ -1838,17 +1868,31 @@ export default function AdminStudentsPage() {
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-700">SĐT Phụ huynh</label>
-              <Input
-                value={createFormData.parentPhone}
-                onChange={(e) => setCreateFormData({ ...createFormData, parentPhone: e.target.value })}
-                placeholder="Số điện thoại"
-                className="h-10 text-sm"
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-700">SĐT Phụ huynh</label>
+                <Input
+                  value={createFormData.parentPhone}
+                  onChange={(e) => setCreateFormData({ ...createFormData, parentPhone: e.target.value })}
+                  placeholder="Số điện thoại"
+                  className="h-10 text-sm"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-rose-700 flex items-center gap-1">
+                  <span>Ngày bắt đầu ăn bán trú</span>
+                  <span className="text-red-500">*</span>
+                </label>
+                <Input
+                  type="date"
+                  value={createFormData.mealStartDate}
+                  onChange={(e) => setCreateFormData({ ...createFormData, mealStartDate: e.target.value })}
+                  className="h-10 text-sm font-medium border-rose-200 focus:border-rose-500"
+                />
+              </div>
             </div>
 
-            <div className="flex items-start space-x-2 pt-2 pb-1">
+            <div className="flex items-start space-x-2 pt-2 pb-1 bg-amber-50/60 p-2.5 rounded-lg border border-amber-200/70">
               <input
                 type="checkbox"
                 id="generateBill"
@@ -1863,8 +1907,8 @@ export default function AdminStudentsPage() {
                 >
                   Tạo hóa đơn thanh toán cho tháng này
                 </label>
-                <p className="text-[11.5px] text-slate-500">
-                  Hệ thống sẽ tính số ngày còn lại trong tháng từ hôm nay để lập hóa đơn. Nếu chưa cần thanh toán ngay, cứ chọn tạo hóa đơn để lưu hệ thống.
+                <p className="text-[11.5px] text-slate-500 leading-relaxed">
+                  Hệ thống sẽ tính số ngày ăn theo TKB của lớp từ <b>Ngày bắt đầu ăn</b> đến hết tháng để lập hóa đơn chuẩn xác.
                 </p>
               </div>
             </div>
@@ -1969,14 +2013,25 @@ export default function AdminStudentsPage() {
                 </Select>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700">SĐT Phụ huynh</label>
-                <Input
-                  value={editFormData.parentPhone}
-                  onChange={(e) => setEditFormData({ ...editFormData, parentPhone: e.target.value })}
-                  placeholder="SĐT Phụ huynh"
-                  className="h-10 text-sm"
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700">SĐT Phụ huynh</label>
+                  <Input
+                    value={editFormData.parentPhone}
+                    onChange={(e) => setEditFormData({ ...editFormData, parentPhone: e.target.value })}
+                    placeholder="SĐT Phụ huynh"
+                    className="h-10 text-sm"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700">Ngày bắt đầu ăn</label>
+                  <Input
+                    type="date"
+                    value={editFormData.mealStartDate}
+                    onChange={(e) => setEditFormData({ ...editFormData, mealStartDate: e.target.value })}
+                    className="h-10 text-sm"
+                  />
+                </div>
               </div>
             </div>
           )}
