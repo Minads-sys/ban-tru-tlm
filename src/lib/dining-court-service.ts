@@ -364,11 +364,15 @@ export function pairClassesIntoCourts(
   courts.forEach((court, idx) => {
     court.courtNumber = idx + 1;
     court.courtName = `Sân ${idx + 1}`;
-    // Sắp xếp danh sách học sinh theo Phương án A: Toàn bộ học sinh trong sân theo TÊN ABC (A - Z)
+
+    // Sắp xếp các lớp trong sân theo thứ tự số tự nhiên (VD: 10A3 trước 12A10)
+    court.classes.sort((a, b) => a.className.localeCompare(b.className, "vi", { numeric: true }));
+
+    // Sắp xếp danh sách học sinh: Theo từng LỚP, trong mỗi lớp sắp xếp theo TÊN ABC (A - Z)
     court.students.sort((a, b) => {
-      const cmp = compareVietnameseNames(a.fullName, b.fullName);
-      if (cmp !== 0) return cmp;
-      return a.className.localeCompare(b.className, "vi");
+      const cmpClass = a.className.localeCompare(b.className, "vi", { numeric: true });
+      if (cmpClass !== 0) return cmpClass;
+      return compareVietnameseNames(a.fullName, b.fullName);
     });
   });
 

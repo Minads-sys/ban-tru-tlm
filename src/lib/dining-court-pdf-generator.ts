@@ -1,5 +1,5 @@
 import { DiningCourt, DiningAllocationResult } from "@/lib/dining-court-service";
-import { splitVietnameseName } from "@/lib/utils";
+import { splitVietnameseName, compareVietnameseNames } from "@/lib/utils";
 
 // Lấy pdfmake và vfs_fonts (hỗ trợ đầy đủ tiếng Việt unicode)
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -90,6 +90,14 @@ export async function generateDiningCourtsPdfBuffer(
     const shiftLabel = court.shift === "TIET_4" ? "TIẾT 4 (ĂN CA 1)" : "TIẾT 5 (ĂN CA 2)";
     const statusText = allocation.isAfterLockTime ? "ĐÃ CHỐT SỐ BÁO BẾP" : "SỐ LIỆU TẠM (CHƯA CHỐT)";
     const statusColor = allocation.isAfterLockTime ? "#059669" : "#dc2626";
+
+    // Đảm bảo học sinh được sắp xếp theo từng Lớp, trong mỗi lớp theo TÊN ABC (A - Z)
+    court.classes.sort((a, b) => a.className.localeCompare(b.className, "vi", { numeric: true }));
+    court.students.sort((a, b) => {
+      const cmpClass = a.className.localeCompare(b.className, "vi", { numeric: true });
+      if (cmpClass !== 0) return cmpClass;
+      return compareVietnameseNames(a.fullName, b.fullName);
+    });
 
     // Danh sách lớp tại sân
     const classDetailStr = court.classes
