@@ -31,6 +31,10 @@ export async function GET(request: NextRequest) {
           select: { fullName: true, username: true, isActive: true },
         },
         class: { select: { name: true } },
+        settlementRecords: {
+          orderBy: { settlementDate: "desc" },
+          take: 1,
+        },
       },
       orderBy: [{ classId: "asc" }, { id: "asc" }],
     });
@@ -73,6 +77,10 @@ export async function GET(request: NextRequest) {
         select: { fullName: true, username: true, isActive: true },
       },
       class: { select: { name: true } },
+      settlementRecords: {
+        orderBy: { settlementDate: "desc" },
+        take: 1,
+      },
     },
     orderBy: [{ classId: "asc" }, { id: "asc" }],
   });
@@ -92,6 +100,10 @@ export async function GET(request: NextRequest) {
           select: { fullName: true, username: true, isActive: true },
         },
         class: { select: { name: true } },
+        settlementRecords: {
+          orderBy: { settlementDate: "desc" },
+          take: 1,
+        },
       },
       orderBy: [{ classId: "asc" }, { id: "asc" }],
     });

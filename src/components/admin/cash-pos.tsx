@@ -34,19 +34,41 @@ import {
   Loader2,
   ChevronRight,
   X,
+  UserX,
+  AlertTriangle,
+  CheckCircle2,
+  Scale,
+  ArrowDownLeft,
 } from "lucide-react";
-import { formatCurrency, numberToVietnameseWords, maskStudentCode, getVietnamTodayString } from "@/lib/utils";
+import { formatCurrency, numberToVietnameseWords, maskStudentCode, getVietnamTodayString, formatDate } from "@/lib/utils";
 import { generateMealPaymentQR, generateMealPaymentEMVCo } from "@/lib/vietqr";
 import { CashReceiptPrint, CashReceiptData } from "./cash-receipt-print";
 import { PaymentBillPrint, PaymentBillData } from "./payment-bill-print";
 
-interface StudentSearchResult {
+export interface SettlementRecordItem {
+  id: string;
+  settlementDate: string;
+  totalPaid: number;
+  actualUsedAmount: number;
+  refundOrDebt: number;
+  settlementType: "REFUND" | "ADDITIONAL_PAYMENT" | "BALANCED";
+  note?: string | null;
+  isRefunded?: boolean;
+  refundedAt?: string | null;
+  refundMethod?: string | null;
+}
+
+export interface StudentSearchResult {
   id: string;
   studentCode: string; // CCCD
   boardingCode: string | null;
   classId: string;
   class?: { name: string };
   user?: { fullName: string };
+  boardingStatus?: "ACTIVE" | "CANCELLED" | "SUSPENDED";
+  boardingCancelledAt?: string | null;
+  parentPhone?: string | null;
+  settlementRecords?: SettlementRecordItem[];
 }
 
 interface BillItem {
@@ -101,7 +123,28 @@ export function CashPos({ currentUser }: { currentUser: any }) {
   const [loadingReceipts, setLoadingReceipts] = useState(false);
   const [todayTotal, setTodayTotal] = useState(0);
 
+  // Danh sách học sinh hủy bán trú chờ quyết toán nợ (Dành cho Thu ngân)
+  const [pendingCollections, setPendingCollections] = useState<any[]>([]);
+  const [showPendingModal, setShowPendingModal] = useState(false);
+  const [loadingPending, setLoadingPending] = useState(false);
+
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Tải danh sách chờ quyết toán thu nợ
+  const fetchPendingCollections = useCallback(async () => {
+    setLoadingPending(true);
+    try {
+      const res = await fetch("/api/settlements/pending");
+      const data = await res.json();
+      if (data.success) {
+        setPendingCollections(data.pendingCollections || []);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingPending(false);
+    }
+  }, []);
 
   // Phím tắt bàn phím: F2 tìm kiếm, F9 thanh toán
   useEffect(() => {
@@ -140,13 +183,14 @@ export function CashPos({ currentUser }: { currentUser: any }) {
 
   useEffect(() => {
     fetchTodayReceipts();
+    fetchPendingCollections();
     fetch("/api/settings")
       .then((res) => res.json())
       .then((data) => {
         if (data && typeof data === "object") setSettings(data);
       })
       .catch((err) => console.error(err));
-  }, [fetchTodayReceipts]);
+  }, [fetchTodayReceipts, fetchPendingCollections]);
 
   // Tìm kiếm học sinh tự động (debounce)
   useEffect(() => {
@@ -185,10 +229,31 @@ export function CashPos({ currentUser }: { currentUser: any }) {
     setCollectAmount(0);
     setCustomerPaid(0);
 
+    // Gợi ý ghi chú nếu học sinh đã hủy ăn bán trú
+    if (student.boardingStatus === "CANCELLED") {
+      setNote("Thu quyết toán hủy bán trú");
+    } else {
+      setNote("");
+    }
+
     try {
       const res = await fetch(`/api/billing?studentId=${student.id}&limit=50`);
       const json = await res.json();
       const rawBills = Array.isArray(json) ? json : json.data || [];
+
+      // Cập nhật thông tin chi tiết nhất của học sinh từ hóa đơn (nếu có)
+      if (rawBills.length > 0 && rawBills[0].student) {
+        const bStudent = rawBills[0].student;
+        setSelectedStudent((prev) => ({
+          ...student,
+          ...prev,
+          boardingStatus: bStudent.boardingStatus || student.boardingStatus,
+          boardingCancelledAt: bStudent.boardingCancelledAt || student.boardingCancelledAt,
+          settlementRecords: bStudent.settlementRecords?.length
+            ? bStudent.settlementRecords
+            : student.settlementRecords || [],
+        }));
+      }
 
       // Sắp xếp: Ưu tiên tháng còn nợ lên trước, năm giảm dần, tháng giảm dần
       const formattedBills: BillItem[] = rawBills.map((b: any) => ({
@@ -372,9 +437,10 @@ export function CashPos({ currentUser }: { currentUser: any }) {
         setPrintReceiptData(data.receipt);
         setOpenPrintModal(true);
 
-        // Tải lại dữ liệu hóa đơn của học sinh và danh sách phiếu thu hôm nay
+        // Tải lại dữ liệu hóa đơn của học sinh, danh sách phiếu thu hôm nay và danh sách chờ quyết toán
         handleSelectStudent(selectedStudent);
         fetchTodayReceipts();
+        fetchPendingCollections();
         setNote("");
 
         Swal.fire({
@@ -454,6 +520,25 @@ export function CashPos({ currentUser }: { currentUser: any }) {
             </div>
 
             <div className="text-xs text-slate-500 flex items-center gap-2 whitespace-nowrap">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  fetchPendingCollections();
+                  setShowPendingModal(true);
+                }}
+                className="h-8 border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-100 hover:text-rose-800 font-semibold text-xs shadow-2xs flex items-center gap-1.5"
+                title="Xem danh sách học sinh đã hủy ăn nhưng còn nợ tiền chờ quyết toán"
+              >
+                <FileText className="h-3.5 w-3.5 text-rose-600" />
+                <span>DS Chờ Quyết Toán</span>
+                {pendingCollections.length > 0 && (
+                  <span className="px-1.5 py-0.2 bg-rose-600 text-white rounded-full text-[10px] font-bold">
+                    {pendingCollections.length}
+                  </span>
+                )}
+              </Button>
               <kbd className="px-2 py-1 bg-slate-200 text-slate-700 rounded font-mono font-bold">F2</kbd> Tìm kiếm
               <kbd className="px-2 py-1 bg-slate-200 text-slate-700 rounded font-mono font-bold ml-2">F9</kbd> Thu tiền
             </div>
@@ -473,8 +558,20 @@ export function CashPos({ currentUser }: { currentUser: any }) {
                       {st.user?.fullName?.charAt(0) || "H"}
                     </div>
                     <div>
-                      <div className="font-bold text-slate-900 text-sm sm:text-base">
-                        {st.user?.fullName}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <div className="font-bold text-slate-900 text-sm sm:text-base">
+                          {st.user?.fullName}
+                        </div>
+                        {st.boardingStatus === "CANCELLED" && (
+                          <Badge className="bg-rose-100 text-rose-800 border-rose-300 text-[10px] font-bold px-1.5 py-0.2">
+                            ĐÃ HỦY BÁN TRÚ
+                          </Badge>
+                        )}
+                        {st.boardingStatus === "SUSPENDED" && (
+                          <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-[10px] font-bold px-1.5 py-0.2">
+                            TẠM DỪNG
+                          </Badge>
+                        )}
                       </div>
                       <div className="text-xs text-slate-500 flex items-center gap-2 mt-0.5">
                         <span>Lớp: <b>{st.class?.name || st.classId}</b></span>
@@ -523,12 +620,25 @@ export function CashPos({ currentUser }: { currentUser: any }) {
                       Hồ Sơ Học Sinh
                     </CardTitle>
                   </div>
-                  <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 font-semibold">
-                    Đang ăn bán trú
-                  </Badge>
+                  {selectedStudent.boardingStatus === "CANCELLED" ? (
+                    <Badge variant="outline" className="bg-rose-50 text-rose-700 border-rose-300 font-bold flex items-center gap-1.5 shadow-2xs">
+                      <UserX className="h-3.5 w-3.5 text-rose-600" />
+                      ĐÃ HỦY BÁN TRÚ (CHỜ QUYẾT TOÁN)
+                    </Badge>
+                  ) : selectedStudent.boardingStatus === "SUSPENDED" ? (
+                    <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 font-bold flex items-center gap-1.5 shadow-2xs">
+                      <Clock className="h-3.5 w-3.5 text-amber-600" />
+                      TẠM DỪNG BÁN TRÚ
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 font-semibold flex items-center gap-1.5 shadow-2xs">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                      Đang ăn bán trú
+                    </Badge>
+                  )}
                 </div>
               </CardHeader>
-              <CardContent className="pt-4 text-xs">
+              <CardContent className="pt-4 text-xs space-y-3">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-100">
                     <span className="text-slate-500 block text-[11px]">Họ tên học sinh:</span>
@@ -555,8 +665,106 @@ export function CashPos({ currentUser }: { currentUser: any }) {
                     </span>
                   </div>
                 </div>
+
+                {selectedStudent.boardingCancelledAt && (
+                  <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-lg flex items-center justify-between text-xs text-rose-800">
+                    <span className="flex items-center gap-1.5 font-semibold">
+                      <Clock className="h-3.5 w-3.5 text-rose-600" />
+                      Ngày bắt đầu ngừng ăn bán trú:
+                    </span>
+                    <span className="font-bold">
+                      {formatDate(selectedStudent.boardingCancelledAt)}
+                    </span>
+                  </div>
+                )}
               </CardContent>
             </Card>
+
+            {/* CẢNH BÁO QUYẾT TOÁN KHI HỌC SINH ĐÃ HỦY BÁN TRÚ */}
+            {selectedStudent.boardingStatus === "CANCELLED" && (
+              <Card className="border-rose-200 bg-rose-50/70 shadow-xs">
+                <CardContent className="p-4 space-y-2.5">
+                  <div className="flex items-start gap-2.5">
+                    <AlertCircle className="h-5 w-5 text-rose-600 shrink-0 mt-0.5" />
+                    <div className="flex-1 space-y-1.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-bold text-rose-900 text-sm">
+                          HỒ SƠ HỦY BÁN TRÚ & CHỜ QUYẾT TOÁN CÔNG NỢ
+                        </span>
+                        {selectedStudent.settlementRecords?.[0]?.settlementType === "REFUND" ? (
+                          <Badge className="bg-amber-600 text-white font-bold text-xs">
+                            CHỜ KẾ TOÁN HOÀN TIỀN THỪA
+                          </Badge>
+                        ) : selectedStudent.settlementRecords?.[0]?.settlementType === "ADDITIONAL_PAYMENT" ? (
+                          <Badge className="bg-rose-600 text-white font-bold text-xs">
+                            CẦN THU BỔ SUNG TIỀN ĂN THỰC TẾ
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-slate-600 text-white font-bold text-xs">
+                            ĐÃ CÂN BẰNG CÔNG NỢ
+                          </Badge>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 text-xs">
+                        <div className="bg-white/90 p-2.5 rounded-lg border border-rose-100">
+                          <span className="text-slate-500 block text-[11px]">Hình thức quyết toán:</span>
+                          <span className="font-bold text-slate-900">
+                            {selectedStudent.settlementRecords?.[0]?.settlementType === "REFUND"
+                              ? "Hoàn trả tiền ăn thừa"
+                              : selectedStudent.settlementRecords?.[0]?.settlementType === "ADDITIONAL_PAYMENT"
+                              ? "Thu thêm tiền ăn thực tế"
+                              : "Cân bằng công nợ (0đ)"}
+                          </span>
+                        </div>
+                        <div className="bg-white/90 p-2.5 rounded-lg border border-rose-100">
+                          <span className="text-slate-500 block text-[11px]">
+                            {selectedStudent.settlementRecords?.[0]?.settlementType === "REFUND"
+                              ? "Số tiền nhà trường cần hoàn:"
+                              : "Số tiền cần thanh toán dứt điểm:"}
+                          </span>
+                          <span className="font-black text-rose-700 text-sm">
+                            {formatCurrency(
+                              selectedStudent.settlementRecords?.[0]?.refundOrDebt ||
+                                studentBills.reduce((sum, b) => sum + getBillRemainingDebt(b), 0)
+                            )}
+                          </span>
+                        </div>
+                        <div className="bg-white/90 p-2.5 rounded-lg border border-rose-100">
+                          <span className="text-slate-500 block text-[11px]">Ngày ngừng ăn bán trú:</span>
+                          <span className="font-bold text-slate-800">
+                            {selectedStudent.boardingCancelledAt
+                              ? formatDate(selectedStudent.boardingCancelledAt)
+                              : "Đã hủy"}
+                          </span>
+                        </div>
+                      </div>
+
+                      {selectedStudent.settlementRecords?.[0]?.note && (
+                        <div className="text-[11px] text-slate-600 bg-white/80 p-2 rounded border border-rose-100 italic">
+                          <b>Ghi chú quyết toán:</b> {selectedStudent.settlementRecords[0].note}
+                        </div>
+                      )}
+
+                      {/* CẢNH BÁO PHÂN QUYỀN NẾU THUỘC DIỆN HOÀN TIỀN */}
+                      {selectedStudent.settlementRecords?.[0]?.settlementType === "REFUND" && (
+                        <div className="p-2.5 bg-amber-100 border border-amber-300 rounded-lg text-amber-900 text-xs flex items-start gap-2">
+                          <AlertTriangle className="h-4 w-4 text-amber-700 shrink-0 mt-0.5" />
+                          <div>
+                            <span className="font-bold text-rose-700 block">
+                              ⛔ THU NGÂN TUYỆT ĐỐI KHÔNG ĐƯỢC PHÉP CHI TIỀN TẠI QUẦY!
+                            </span>
+                            <span className="text-slate-700 text-[11px]">
+                              Nghiệp vụ chi hoàn tiền do <b>Kế toán</b> phụ trách. Vui lòng hướng dẫn phụ huynh liên hệ Phòng Kế toán để làm thủ tục nhận tiền hoàn qua chuyển khoản hoặc tiền mặt.
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {/* DANH SÁCH CÁC THÁNG HÓA ĐƠN & NỢ CŨ */}
             <Card className="border-slate-200 shadow-xs">
@@ -619,7 +827,14 @@ export function CashPos({ currentUser }: { currentUser: any }) {
                                 />
                               </TableCell>
                               <TableCell className="font-semibold text-slate-900 text-xs">
-                                Tháng {String(b.month).padStart(2, "0")}/{b.year}
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span>Tháng {String(b.month).padStart(2, "0")}/{b.year}</span>
+                                  {selectedStudent.boardingStatus === "CANCELLED" && b.paymentStatus !== "PAID" && (
+                                    <Badge variant="outline" className="text-[10px] text-rose-700 border-rose-300 bg-rose-50 font-bold px-1.5 py-0">
+                                      Quyết toán ngừng ăn ({b.scheduleMealDays} bữa)
+                                    </Badge>
+                                  )}
+                                </div>
                               </TableCell>
                               <TableCell className="text-right text-xs">
                                 {formatCurrency(b.finalAmount)}
@@ -636,6 +851,8 @@ export function CashPos({ currentUser }: { currentUser: any }) {
                                   <Badge className="bg-emerald-100 text-emerald-800 text-[10px]">Đã nộp đủ</Badge>
                                 ) : b.paymentStatus === "PARTIAL" ? (
                                   <Badge className="bg-amber-100 text-amber-800 text-[10px]">Nộp 1 phần</Badge>
+                                ) : b.paymentStatus === "SETTLED" ? (
+                                  <Badge className="bg-slate-100 text-slate-700 border-slate-300 text-[10px]">Đã quyết toán</Badge>
                                 ) : (
                                   <Badge className="bg-rose-100 text-rose-800 text-[10px]">Còn nợ</Badge>
                                 )}
@@ -673,18 +890,55 @@ export function CashPos({ currentUser }: { currentUser: any }) {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Banknote className="h-5 w-5" />
-                    <CardTitle className="text-base font-bold">Thao Tác Thu Tiền Mặt</CardTitle>
+                    <CardTitle className="text-base font-bold">
+                      {selectedStudent.boardingStatus === "CANCELLED" ? "Thu Tiền Quyết Toán" : "Thao Tác Thu Tiền Mặt"}
+                    </CardTitle>
                   </div>
                   {selectedBill && (
                     <Badge className="bg-blue-500 text-white border-blue-400 text-xs">
                       T{String(selectedBill.month).padStart(2, "0")}/{selectedBill.year}
+                      {selectedStudent.boardingStatus === "CANCELLED" ? " (Q.Toán)" : ""}
                     </Badge>
                   )}
                 </div>
               </CardHeader>
 
               <CardContent className="p-5 space-y-4 text-xs">
-                {selectedBill ? (
+                {selectedStudent.boardingStatus === "CANCELLED" &&
+                selectedStudent.settlementRecords?.[0]?.settlementType === "REFUND" &&
+                !selectedStudent.settlementRecords[0]?.isRefunded ? (
+                  /* NẾU HỌC SINH THUỘC DIỆN HOÀN TIỀN THỪA -> KHÓA THU VÀ CẢNH BÁO */
+                  <div className="p-4 bg-amber-50 rounded-xl border-2 border-amber-300 space-y-3 text-center">
+                    <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center mx-auto">
+                      <AlertTriangle className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-amber-900">
+                        HỒ SƠ CHỜ KẾ TOÁN HOÀN TIỀN THỪA
+                      </h3>
+                      <p className="text-xs text-amber-800 mt-1">
+                        Số tiền nhà trường cần hoàn trả lại cho phụ huynh:
+                      </p>
+                      <p className="text-xl font-black text-amber-900 mt-0.5">
+                        {formatCurrency(selectedStudent.settlementRecords?.[0]?.refundOrDebt || 0)}
+                      </p>
+                    </div>
+
+                    <div className="p-3 bg-white rounded-lg border border-amber-200 text-left text-xs space-y-1.5 text-slate-700">
+                      <p className="font-bold text-rose-700 flex items-center gap-1.5">
+                        <UserX className="h-4 w-4 shrink-0" />
+                        Thu ngân tuyệt đối không được phép chi tiền tại quầy!
+                      </p>
+                      <p className="text-slate-600 text-[11px] leading-relaxed">
+                        Theo quy định phân quyền, việc chi trả tiền hoàn do <b>Kế toán</b> phụ trách thực hiện (chuyển khoản hoặc xuất quỹ tiền mặt phòng kế toán). Vui lòng hướng dẫn phụ huynh liên hệ Phòng Kế toán để nhận tiền.
+                      </p>
+                    </div>
+
+                    <Button disabled className="w-full bg-slate-200 text-slate-500 font-bold py-4 text-xs cursor-not-allowed">
+                      Khóa chức năng thu tiền (Học sinh được hoàn tiền)
+                    </Button>
+                  </div>
+                ) : selectedBill ? (
                   <>
                     {/* Số tiền cần thu */}
                     <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
@@ -943,6 +1197,102 @@ export function CashPos({ currentUser }: { currentUser: any }) {
               onClose={() => setOpenPrintBillModal(false)}
             />
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* DIALOG DANH SÁCH CHỜ QUYẾT TOÁN THU NỢ DÀNH CHO THU NGÂN */}
+      <Dialog open={showPendingModal} onOpenChange={setShowPendingModal}>
+        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <div className="flex items-center gap-2 text-rose-600">
+              <FileText className="h-5 w-5" />
+              <DialogTitle className="text-base font-bold text-slate-900">
+                Danh Sách Học Sinh Hủy Bán Trú Chờ Quyết Toán Thu Nợ
+              </DialogTitle>
+            </div>
+            <p className="text-xs text-slate-500">
+              Các học sinh đã làm thủ tục ngừng ăn bán trú nhưng còn nợ tiền ăn theo ngày thực tế. Bấm &quot;Chọn thu&quot; để nạp học sinh lên quầy thu tiền ngay.
+            </p>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto py-2">
+            {loadingPending ? (
+              <div className="py-12 text-center text-slate-500 text-xs">
+                <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2 text-rose-600" />
+                Đang tải danh sách chờ thu nợ...
+              </div>
+            ) : pendingCollections.length === 0 ? (
+              <div className="py-12 text-center text-slate-500 text-xs space-y-1">
+                <CheckCircle2 className="h-8 w-8 text-emerald-500 mx-auto" />
+                <p className="font-semibold text-slate-700">Không có học sinh nào nợ tiền quyết toán.</p>
+                <p className="text-slate-400">Tất cả các học sinh đã hủy ăn đều đã thanh toán đủ tiền.</p>
+              </div>
+            ) : (
+              <div className="border border-slate-200 rounded-lg overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <tr className="bg-slate-50 text-[11px]">
+                      <TableHead className="w-10 text-center">STT</TableHead>
+                      <TableHead>Họ tên</TableHead>
+                      <TableHead className="text-center">Lớp</TableHead>
+                      <TableHead>Mã BT</TableHead>
+                      <TableHead className="text-right">Tiền còn nợ</TableHead>
+                      <TableHead className="text-right">Thao tác</TableHead>
+                    </tr>
+                  </TableHeader>
+                  <TableBody>
+                    {pendingCollections.map((item, index) => (
+                      <TableRow key={item.studentId} className="hover:bg-slate-50 text-xs">
+                        <TableCell className="text-center font-medium text-slate-500">
+                          {index + 1}
+                        </TableCell>
+                        <TableCell className="font-bold text-slate-900 uppercase">
+                          {item.fullName}
+                        </TableCell>
+                        <TableCell className="text-center font-bold text-blue-700">
+                          {item.className}
+                        </TableCell>
+                        <TableCell className="font-mono text-slate-800">
+                          {item.boardingCode || "—"}
+                        </TableCell>
+                        <TableCell className="text-right font-extrabold text-rose-600">
+                          {formatCurrency(item.totalRemainingDebt)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              setShowPendingModal(false);
+                              handleSelectStudent({
+                                id: item.studentId,
+                                studentCode: item.studentCode,
+                                boardingCode: item.boardingCode,
+                                classId: item.className,
+                                class: { name: item.className },
+                                user: { fullName: item.fullName },
+                                boardingStatus: "CANCELLED",
+                                boardingCancelledAt: item.boardingCancelledAt,
+                                settlementRecords: item.settlementRecord ? [item.settlementRecord] : [],
+                              });
+                            }}
+                            className="h-7 text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white"
+                          >
+                            Chọn thu
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setShowPendingModal(false)} className="text-xs">
+              Đóng
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

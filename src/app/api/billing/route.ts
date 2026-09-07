@@ -92,6 +92,10 @@ export async function GET(request: NextRequest) {
               },
             },
             mealCancellations: mealCancellationsQuery,
+            settlementRecords: {
+              orderBy: { settlementDate: 'desc' },
+              take: 1,
+            },
           },
         },
         transactions: {

@@ -43,7 +43,8 @@ export interface DiningCourt {
   chayCount: number;
   chaoCount: number;
   isSingleClass: boolean;
-  isInIdealRange: boolean; // 40 - 55 suất
+  isInIdealRange: boolean; // 40 - 60 suất
+  isOverCapacity: boolean; // > 60 suất
   students: StudentMealInfo[];
 }
 
@@ -52,10 +53,21 @@ export interface DiningAllocationResult {
   dayOfWeekName: string; // Thứ Hai, Thứ Ba...
   lockTime2: string;
   isAfterLockTime: boolean; // true: số liệu đã chốt, false: số liệu tạm
+  isConfigured: boolean;    // true: đã tạo phân bổ (tự động hoặc thủ công), false: chưa tạo
+  allocationMode?: "AUTO" | "MANUAL";
+  updatedAt?: string;
   totalCourts: number;
   totalCarts: number; // Tổng số xe cơm cần dùng (1 xe chứa 2 sân)
   totalClasses: number;
   totalMeals: number;
+  unassignedClasses?: {
+    TIET_4: ClassMealSummary[];
+    TIET_5: ClassMealSummary[];
+  };
+  availableClasses?: {
+    TIET_4: ClassMealSummary[];
+    TIET_5: ClassMealSummary[];
+  };
   shifts: {
     TIET_4: {
       totalCourts: number;
@@ -73,10 +85,15 @@ export interface DiningAllocationResult {
 }
 
 export const MAX_COURTS_PER_SHIFT = 16;
+export const COURT_MAX_CAPACITY = 60;
+export const COURT_IDEAL_MIN = 40;
+export const COURT_IDEAL_MAX = 60;
+export const COURT_TARGET_SUM = 50;
 
 /**
  * Thuật toán ghép lớp vào sân theo tiêu chuẩn:
- * - Ưu tiên 2 lớp / sân sao cho tổng số suất dao động từ 40 - 55
+ * - Ưu tiên 2 lớp / sân sao cho tổng số suất dao động từ 40 - 60
+ * - Sức chứa tối đa 60 suất / sân
  * - Nếu số lớp lẻ hoặc lớp không ghép được thỏa điều kiện thì xếp sân lẻ 1 lớp
  * - Tối đa 16 sân trong 1 tiết ăn
  */
@@ -94,17 +111,17 @@ export function pairClassesIntoCourts(
   const courts: DiningCourt[] = [];
   const usedClassIds = new Set<string>();
 
-  // 1. Kiểm tra các lớp bản thân đã có số suất lớn trong khoảng 40 - 55 hoặc > 50
-  // (Nếu ghép thêm lớp khác sẽ chắc chắn vượt quá 55 suất)
+  // 1. Kiểm tra các lớp bản thân đã có số suất lớn trong khoảng 40 - 60 hoặc > 50
+  // (Nếu ghép thêm lớp khác sẽ chắc chắn vượt quá 60 suất)
   for (const c of available) {
     if (usedClassIds.has(c.classId)) continue;
 
-    // Nếu lớp có >= 42 suất, thử xem có thể ghép với lớp siêu nhỏ (< 13 suất) không
-    const canPairUnder55 = available.some(
-      (other) => other.classId !== c.classId && !usedClassIds.has(other.classId) && c.totalMeals + other.totalMeals <= 55
+    // Nếu lớp có số suất lớn, thử xem có thể ghép với lớp siêu nhỏ nào mà tổng <= 60 không
+    const canPairUnder60 = available.some(
+      (other) => other.classId !== c.classId && !usedClassIds.has(other.classId) && c.totalMeals + other.totalMeals <= COURT_MAX_CAPACITY
     );
 
-    if (!canPairUnder55 && c.totalMeals >= 38) {
+    if (!canPairUnder60 && c.totalMeals >= 42) {
       // Độc lập 1 sân
       usedClassIds.add(c.classId);
       courts.push({
@@ -128,13 +145,14 @@ export function pairClassesIntoCourts(
         chayCount: c.chayCount,
         chaoCount: c.chaoCount,
         isSingleClass: true,
-        isInIdealRange: c.totalMeals >= 40 && c.totalMeals <= 55,
+        isInIdealRange: c.totalMeals >= COURT_IDEAL_MIN && c.totalMeals <= COURT_IDEAL_MAX,
+        isOverCapacity: c.totalMeals > COURT_MAX_CAPACITY,
         students: [...c.students],
       });
     }
   }
 
-  // 2. Tìm cặp 2 lớp sao cho tổng suất nằm trong khoảng [40, 55]
+  // 2. Tìm cặp 2 lớp sao cho tổng suất nằm trong khoảng [40, 60]
   for (let i = 0; i < available.length; i++) {
     const classA = available[i];
     if (usedClassIds.has(classA.classId)) continue;
@@ -148,9 +166,9 @@ export function pairClassesIntoCourts(
       if (usedClassIds.has(classB.classId)) continue;
 
       const sum = classA.totalMeals + classB.totalMeals;
-      if (sum >= 40 && sum <= 55) {
-        // Điểm số: ưu tiên tổng gần 48 nhất + cùng khối lớp
-        const diffFromTarget = Math.abs(sum - 48);
+      if (sum >= COURT_IDEAL_MIN && sum <= COURT_MAX_CAPACITY) {
+        // Điểm số: ưu tiên tổng gần COURT_TARGET_SUM (50) nhất + cùng khối lớp
+        const diffFromTarget = Math.abs(sum - COURT_TARGET_SUM);
         const gradeA = classA.className.replace(/[^0-9]/g, "").slice(0, 2);
         const gradeB = classB.className.replace(/[^0-9]/g, "").slice(0, 2);
         const sameGradeBonus = gradeA === gradeB ? 15 : 0;
@@ -203,12 +221,13 @@ export function pairClassesIntoCourts(
         chaoCount,
         isSingleClass: false,
         isInIdealRange: true,
+        isOverCapacity: totalMeals > COURT_MAX_CAPACITY,
         students: [...classA.students, ...classB.students],
       });
     }
   }
 
-  // 3. Các lớp còn lại chưa ghép được vào khoảng [40, 55]:
+  // 3. Các lớp còn lại chưa ghép được vào khoảng [40, 60]:
   // Ghép các cặp còn lại với nhau (nếu còn >= 2 lớp)
   const remaining = available.filter((c) => !usedClassIds.has(c.classId));
   for (let i = 0; i < remaining.length; i += 2) {
@@ -249,7 +268,8 @@ export function pairClassesIntoCourts(
         chayCount,
         chaoCount,
         isSingleClass: false,
-        isInIdealRange: totalMeals >= 40 && totalMeals <= 55,
+        isInIdealRange: totalMeals >= COURT_IDEAL_MIN && totalMeals <= COURT_IDEAL_MAX,
+        isOverCapacity: totalMeals > COURT_MAX_CAPACITY,
         students: [...classA.students, ...classB.students],
       });
     } else {
@@ -276,14 +296,15 @@ export function pairClassesIntoCourts(
         chayCount: classSingle.chayCount,
         chaoCount: classSingle.chaoCount,
         isSingleClass: true,
-        isInIdealRange: classSingle.totalMeals >= 40 && classSingle.totalMeals <= 55,
+        isInIdealRange: classSingle.totalMeals >= COURT_IDEAL_MIN && classSingle.totalMeals <= COURT_IDEAL_MAX,
+        isOverCapacity: classSingle.totalMeals > COURT_MAX_CAPACITY,
         students: [...classSingle.students],
       });
     }
   }
 
-  // 4. BƯỚC TỐI ƯU HÓA: Tự động gộp các sân dưới chuẩn (< 40 suất) nếu tổng <= 55 suất
-  // Đặc biệt ưu tiên đưa tổng suất về khoảng lý tưởng [40, 55] (Ví dụ: 36 suất + 13 suất = 49 suất)
+  // 4. BƯỚC TỐI ƯU HÓA: Tự động gộp các sân dưới chuẩn (< 40 suất) nếu tổng <= 60 suất
+  // Đặc biệt ưu tiên đưa tổng suất về khoảng lý tưởng [40, 60] (Ví dụ: 36 suất + 13 suất = 49 suất)
   let canMergeMore = true;
   while (canMergeMore) {
     canMergeMore = false;
@@ -294,12 +315,12 @@ export function pairClassesIntoCourts(
     for (let i = 0; i < courts.length; i++) {
       for (let j = i + 1; j < courts.length; j++) {
         const sum = courts[i].totalMeals + courts[j].totalMeals;
-        // Chỉ gộp khi tổng không vượt quá 55 suất và có ít nhất 1 sân đang dưới 40 suất
-        if (sum <= 55 && (courts[i].totalMeals < 40 || courts[j].totalMeals < 40)) {
+        // Chỉ gộp khi tổng không vượt quá 60 suất và có ít nhất 1 sân đang dưới 40 suất
+        if (sum <= COURT_MAX_CAPACITY && (courts[i].totalMeals < COURT_IDEAL_MIN || courts[j].totalMeals < COURT_IDEAL_MIN)) {
           let score = 0;
-          if (sum >= 40 && sum <= 55) {
-            // Rất ưu tiên vì đưa cả 2 sân vào khoảng chuẩn lý tưởng [40, 55]
-            score = 1000 - Math.abs(sum - 48) * 10;
+          if (sum >= COURT_IDEAL_MIN && sum <= COURT_MAX_CAPACITY) {
+            // Rất ưu tiên vì đưa cả 2 sân vào khoảng chuẩn lý tưởng [40, 60]
+            score = 1000 - Math.abs(sum - COURT_TARGET_SUM) * 10;
           } else {
             // Tổng vẫn < 40 nhưng gộp 2 sân lẻ lại vẫn tốt hơn để rời rạc
             score = 500 + sum;
@@ -332,7 +353,8 @@ export function pairClassesIntoCourts(
         chayCount: c1.chayCount + c2.chayCount,
         chaoCount: c1.chaoCount + c2.chaoCount,
         isSingleClass: mergedClasses.length === 1,
-        isInIdealRange: mergedTotalMeals >= 40 && mergedTotalMeals <= 55,
+        isInIdealRange: mergedTotalMeals >= COURT_IDEAL_MIN && mergedTotalMeals <= COURT_IDEAL_MAX,
+        isOverCapacity: mergedTotalMeals > COURT_MAX_CAPACITY,
         students: [...c1.students, ...c2.students],
       };
 
@@ -368,7 +390,8 @@ export function pairClassesIntoCourts(
       chayCount: mergedChay,
       chaoCount: mergedChao,
       isSingleClass: mergedClasses.length === 1,
-      isInIdealRange: mergedTotalMeals >= 40 && mergedTotalMeals <= 55,
+      isInIdealRange: mergedTotalMeals >= COURT_IDEAL_MIN && mergedTotalMeals <= COURT_IDEAL_MAX,
+      isOverCapacity: mergedTotalMeals > COURT_MAX_CAPACITY,
       students: [...smallest1.students, ...smallest2.students],
     };
 
@@ -376,7 +399,7 @@ export function pairClassesIntoCourts(
     courts.splice(0, 2, mergedCourt);
   }
 
-  // 5. Đánh số thứ tự sân và xe cơm liên tục
+  // 6. Đánh số thứ tự sân và xe cơm liên tục
   courts.forEach((court, idx) => {
     const num = startCourtNumber + idx;
     court.courtNumber = num;
@@ -399,9 +422,9 @@ export function pairClassesIntoCourts(
 }
 
 /**
- * Lấy toàn bộ phân bổ chia sân cho 1 ngày cụ thể
+ * Lấy dữ liệu học sinh & lớp ăn bán trú của một ngày
  */
-export async function getDiningCourtAllocation(dateStr: string): Promise<DiningAllocationResult> {
+export async function getDayMealClasses(dateStr: string) {
   const [y, m, d] = dateStr.split("-").map(Number);
   const date = new Date(Date.UTC(y, m - 1, d));
   const dayOfWeek = date.getUTCDay(); // 0: CN, 1: T2, ..., 6: T7
@@ -427,7 +450,6 @@ export async function getDiningCourtAllocation(dateStr: string): Promise<DiningA
   };
   const dayField = dayFieldMap[dayOfWeek];
 
-  // Lấy cấu hình giờ chốt MEAL_LOCK_TIME_2
   const settings = await prisma.systemSetting.findMany({
     where: { key: { in: ["MEAL_LOCK_TIME_2", "CUTOFF_TIME"] } },
   });
@@ -436,7 +458,6 @@ export async function getDiningCourtAllocation(dateStr: string): Promise<DiningA
     settings.find((s) => s.key === "CUTOFF_TIME")?.value ||
     "07:00";
 
-  // Xác định trạng thái trước/sau giờ chốt: Đã chốt nếu qua giờ hoặc user đã chốt trong DB
   const localToday = getVietnamTodayUTC();
   const isPastDate = date < localToday;
   const isToday = date.getTime() === localToday.getTime();
@@ -449,26 +470,21 @@ export async function getDiningCourtAllocation(dateStr: string): Promise<DiningA
   const isAfterLockTime = isLockedInDb || isPastCutoff;
 
   if (!dayField) {
-    // Chủ nhật không có lịch ăn
     return {
-      date: dateStr,
+      date,
+      dateStr,
       dayOfWeekName,
       lockTime2,
       isAfterLockTime,
-      totalCourts: 0,
-      totalCarts: 0,
-      totalClasses: 0,
-      totalMeals: 0,
-      shifts: {
-        TIET_4: { totalCourts: 0, totalClasses: 0, totalMeals: 0, courts: [] },
-        TIET_5: { totalCourts: 0, totalClasses: 0, totalMeals: 0, courts: [] },
-      },
+      dayField: null,
+      classSummariesTiet4: [] as ClassMealSummary[],
+      classSummariesTiet5: [] as ClassMealSummary[],
+      classMap: new Map<string, ClassMealSummary>(),
     };
   }
 
   const weekNumber = getWeekNumber(date);
 
-  // Lấy thời khóa biểu các lớp có lịch ăn ngày này
   const schedules = await prisma.classWeeklySchedule.findMany({
     where: {
       year: y,
@@ -497,7 +513,6 @@ export async function getDiningCourtAllocation(dateStr: string): Promise<DiningA
     },
   });
 
-  // Lấy danh sách cắt suất đã duyệt của ngày này
   const approvedCancellations = await prisma.mealCancellation.findMany({
     where: {
       cancelDate: date,
@@ -507,15 +522,14 @@ export async function getDiningCourtAllocation(dateStr: string): Promise<DiningA
   });
   const cancelledStudentIds = new Set(approvedCancellations.map((c) => c.studentId));
 
-  // Lấy danh sách đổi món của ngày này
   const mealOverrides = await prisma.mealOverride.findMany({
     where: { date },
   });
   const overrideMap = new Map(mealOverrides.map((o) => [o.studentId, o.mealType]));
 
-  // Phân bổ danh sách học sinh và số suất từng lớp
   const classSummariesTiet4: ClassMealSummary[] = [];
   const classSummariesTiet5: ClassMealSummary[] = [];
+  const classMap = new Map<string, ClassMealSummary>();
 
   for (const schedule of schedules) {
     const shift = (schedule as any)[dayField] as "TIET_4" | "TIET_5";
@@ -560,6 +574,8 @@ export async function getDiningCourtAllocation(dateStr: string): Promise<DiningA
       students: studentList,
     };
 
+    classMap.set(schedule.classId, summaryItem);
+
     if (shift === "TIET_4") {
       classSummariesTiet4.push(summaryItem);
     } else {
@@ -567,39 +583,366 @@ export async function getDiningCourtAllocation(dateStr: string): Promise<DiningA
     }
   }
 
-  // Chạy thuật toán chia sân cho từng tiết (đánh số liên tục giữa các ca)
-  const courtsTiet4 = pairClassesIntoCourts(classSummariesTiet4, "TIET_4", 1);
-  const courtsTiet5 = pairClassesIntoCourts(classSummariesTiet5, "TIET_5", courtsTiet4.length + 1);
+  return {
+    date,
+    dateStr,
+    dayOfWeekName,
+    lockTime2,
+    isAfterLockTime,
+    dayField,
+    classSummariesTiet4,
+    classSummariesTiet5,
+    classMap,
+  };
+}
 
-  const totalCourts = courtsTiet4.length + courtsTiet5.length;
-  const totalCarts = Math.ceil(totalCourts / 2);
+/**
+ * Lấy toàn bộ phân bổ chia sân cho 1 ngày cụ thể.
+ * Nếu đã được tạo trong DailyDiningCourt: load từ database và ánh xạ số học sinh realtime.
+ * Nếu chưa tạo: trả về isConfigured = false kèm danh sách các lớp có lịch ăn.
+ */
+export async function getDiningCourtAllocation(dateStr: string): Promise<DiningAllocationResult> {
+  const dayData = await getDayMealClasses(dateStr);
+  const { date, dayOfWeekName, lockTime2, isAfterLockTime, classSummariesTiet4, classSummariesTiet5, classMap } = dayData;
+
+  if (!dayData.dayField) {
+    // Chủ nhật không có lịch ăn
+    return {
+      date: dateStr,
+      dayOfWeekName,
+      lockTime2,
+      isAfterLockTime,
+      isConfigured: false,
+      totalCourts: 0,
+      totalCarts: 0,
+      totalClasses: 0,
+      totalMeals: 0,
+      shifts: {
+        TIET_4: { totalCourts: 0, totalClasses: 0, totalMeals: 0, courts: [] },
+        TIET_5: { totalCourts: 0, totalClasses: 0, totalMeals: 0, courts: [] },
+      },
+    };
+  }
+
+  // Lấy các bản ghi đã lưu trong DailyDiningCourt
+  const savedCourts = await prisma.dailyDiningCourt.findMany({
+    where: { date },
+    orderBy: [
+      { shift: "asc" },
+      { courtNumber: "asc" },
+    ],
+  });
+
+  const isConfigured = savedCourts.length > 0;
+  const allocationMode = isConfigured ? (savedCourts[0].mode as "AUTO" | "MANUAL") : undefined;
+  const updatedAt = isConfigured ? savedCourts[0].updatedAt.toISOString() : undefined;
+
+  let courtsTiet4: DiningCourt[] = [];
+  let courtsTiet5: DiningCourt[] = [];
+
+  if (isConfigured) {
+    const assignedClassIds = new Set<string>();
+
+    for (const sc of savedCourts) {
+      const courtShift = sc.shift as "TIET_4" | "TIET_5";
+      const courtClassesInfo: DiningCourt["classes"] = [];
+      const courtStudents: StudentMealInfo[] = [];
+      let totalMeals = 0;
+      let manCount = 0;
+      let chayCount = 0;
+      let chaoCount = 0;
+
+      for (const cid of sc.classIds) {
+        assignedClassIds.add(cid);
+        const clsInfo = classMap.get(cid);
+        if (clsInfo) {
+          courtClassesInfo.push({
+            classId: clsInfo.classId,
+            className: clsInfo.className,
+            totalMeals: clsInfo.totalMeals,
+            manCount: clsInfo.manCount,
+            chayCount: clsInfo.chayCount,
+            chaoCount: clsInfo.chaoCount,
+          });
+          totalMeals += clsInfo.totalMeals;
+          manCount += clsInfo.manCount;
+          chayCount += clsInfo.chayCount;
+          chaoCount += clsInfo.chaoCount;
+          courtStudents.push(...clsInfo.students);
+        } else {
+          courtClassesInfo.push({
+            classId: cid,
+            className: cid,
+            totalMeals: 0,
+            manCount: 0,
+            chayCount: 0,
+            chaoCount: 0,
+          });
+        }
+      }
+
+      // Sắp xếp các lớp trong sân theo thứ tự số tự nhiên
+      courtClassesInfo.sort((a, b) => a.className.localeCompare(b.className, "vi", { numeric: true }));
+      // Sắp xếp học sinh trong sân theo từng lớp, trong mỗi lớp theo tên A - Z
+      courtStudents.sort((a, b) => {
+        const cmpClass = a.className.localeCompare(b.className, "vi", { numeric: true });
+        if (cmpClass !== 0) return cmpClass;
+        return compareVietnameseNames(a.fullName, b.fullName);
+      });
+
+      const courtObj: DiningCourt = {
+        courtNumber: sc.courtNumber,
+        courtName: sc.courtName,
+        cartNumber: sc.cartNumber || Math.ceil(sc.courtNumber / 2),
+        cartName: sc.cartName || `Xe ${sc.cartNumber || Math.ceil(sc.courtNumber / 2)}`,
+        shift: courtShift,
+        classes: courtClassesInfo,
+        totalMeals,
+        manCount,
+        chayCount,
+        chaoCount,
+        isSingleClass: courtClassesInfo.length === 1,
+        isInIdealRange: totalMeals >= COURT_IDEAL_MIN && totalMeals <= COURT_IDEAL_MAX,
+        isOverCapacity: totalMeals > COURT_MAX_CAPACITY,
+        students: courtStudents,
+      };
+
+      if (courtShift === "TIET_4") {
+        courtsTiet4.push(courtObj);
+      } else {
+        courtsTiet5.push(courtObj);
+      }
+    }
+
+    // Kiểm tra xem có lớp nào trong ngày có suất ăn mà chưa được xếp vào sân không
+    const unassignedT4 = classSummariesTiet4.filter((c) => c.totalMeals > 0 && !assignedClassIds.has(c.classId));
+    const unassignedT5 = classSummariesTiet5.filter((c) => c.totalMeals > 0 && !assignedClassIds.has(c.classId));
+
+    const totalCourts = courtsTiet4.length + courtsTiet5.length;
+    const totalCarts = Math.ceil(totalCourts / 2);
+    const totalClasses =
+      courtsTiet4.reduce((sum, c) => sum + c.classes.length, 0) +
+      courtsTiet5.reduce((sum, c) => sum + c.classes.length, 0);
+    const totalMeals =
+      courtsTiet4.reduce((sum, c) => sum + c.totalMeals, 0) +
+      courtsTiet5.reduce((sum, c) => sum + c.totalMeals, 0);
+
+    return {
+      date: dateStr,
+      dayOfWeekName,
+      lockTime2,
+      isAfterLockTime,
+      isConfigured: true,
+      allocationMode,
+      updatedAt,
+      totalCourts,
+      totalCarts,
+      totalClasses,
+      totalMeals,
+      unassignedClasses: {
+        TIET_4: unassignedT4,
+        TIET_5: unassignedT5,
+      },
+      availableClasses: {
+        TIET_4: classSummariesTiet4,
+        TIET_5: classSummariesTiet5,
+      },
+      shifts: {
+        TIET_4: {
+          totalCourts: courtsTiet4.length,
+          totalClasses: courtsTiet4.reduce((sum, c) => sum + c.classes.length, 0),
+          totalMeals: courtsTiet4.reduce((sum, c) => sum + c.totalMeals, 0),
+          courts: courtsTiet4,
+        },
+        TIET_5: {
+          totalCourts: courtsTiet5.length,
+          totalClasses: courtsTiet5.reduce((sum, c) => sum + c.classes.length, 0),
+          totalMeals: courtsTiet5.reduce((sum, c) => sum + c.totalMeals, 0),
+          courts: courtsTiet5,
+        },
+      },
+    };
+  }
+
+  // Trường hợp CHƯA CÓ CẤU HÌNH PHÂN SÂN TRONG CSDL:
   const totalClasses = classSummariesTiet4.length + classSummariesTiet5.length;
   const totalMeals =
-    courtsTiet4.reduce((sum, c) => sum + c.totalMeals, 0) +
-    courtsTiet5.reduce((sum, c) => sum + c.totalMeals, 0);
+    classSummariesTiet4.reduce((sum, c) => sum + c.totalMeals, 0) +
+    classSummariesTiet5.reduce((sum, c) => sum + c.totalMeals, 0);
 
   return {
     date: dateStr,
     dayOfWeekName,
     lockTime2,
     isAfterLockTime,
-    totalCourts,
-    totalCarts,
+    isConfigured: false,
+    totalCourts: 0,
+    totalCarts: 0,
     totalClasses,
     totalMeals,
+    availableClasses: {
+      TIET_4: classSummariesTiet4,
+      TIET_5: classSummariesTiet5,
+    },
     shifts: {
       TIET_4: {
-        totalCourts: courtsTiet4.length,
+        totalCourts: 0,
         totalClasses: classSummariesTiet4.length,
-        totalMeals: courtsTiet4.reduce((sum, c) => sum + c.totalMeals, 0),
-        courts: courtsTiet4,
+        totalMeals: classSummariesTiet4.reduce((sum, c) => sum + c.totalMeals, 0),
+        courts: [],
       },
       TIET_5: {
-        totalCourts: courtsTiet5.length,
+        totalCourts: 0,
         totalClasses: classSummariesTiet5.length,
-        totalMeals: courtsTiet5.reduce((sum, c) => sum + c.totalMeals, 0),
-        courts: courtsTiet5,
+        totalMeals: classSummariesTiet5.reduce((sum, c) => sum + c.totalMeals, 0),
+        courts: [],
       },
     },
   };
+}
+
+/**
+ * TẠO PHÂN BỔ SÂN TỰ ĐỘNG VÀ LƯU VÀO DATABASE
+ */
+export async function saveAutoDiningCourtAllocation(dateStr: string): Promise<DiningAllocationResult> {
+  const dayData = await getDayMealClasses(dateStr);
+  const { date, classSummariesTiet4, classSummariesTiet5 } = dayData;
+
+  const courtsTiet4 = pairClassesIntoCourts(classSummariesTiet4, "TIET_4", 1);
+  const courtsTiet5 = pairClassesIntoCourts(classSummariesTiet5, "TIET_5", courtsTiet4.length + 1);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.dailyDiningCourt.deleteMany({
+      where: { date },
+    });
+
+    const toCreate = [...courtsTiet4, ...courtsTiet5].map((court) => ({
+      date,
+      shift: court.shift,
+      courtNumber: court.courtNumber,
+      courtName: court.courtName,
+      cartNumber: court.cartNumber,
+      cartName: court.cartName,
+      classIds: court.classes.map((c) => c.classId),
+      mode: "AUTO",
+    }));
+
+    if (toCreate.length > 0) {
+      await tx.dailyDiningCourt.createMany({
+        data: toCreate,
+      });
+    }
+  });
+
+  return await getDiningCourtAllocation(dateStr);
+}
+
+export interface ManualCourtInput {
+  shift: "TIET_4" | "TIET_5";
+  courtNumber?: number;
+  courtName?: string;
+  cartNumber?: number;
+  cartName?: string;
+  classIds: string[];
+  note?: string;
+}
+
+/**
+ * TẠO / CẬP NHẬT PHÂN BỔ SÂN THỦ CÔNG VÀ LƯU VÀO DATABASE
+ */
+export async function saveManualDiningCourtAllocation(
+  dateStr: string,
+  courtsData: ManualCourtInput[]
+): Promise<DiningAllocationResult> {
+  const dayData = await getDayMealClasses(dateStr);
+  const { date } = dayData;
+
+  // Validate: không để trùng lặp classId giữa các sân
+  const seenClasses = new Set<string>();
+  for (const c of courtsData) {
+    for (const cid of c.classIds) {
+      if (seenClasses.has(cid)) {
+        throw new Error(`Lớp ${cid} bị phân bổ trùng lặp ở nhiều hơn 1 sân.`);
+      }
+      seenClasses.add(cid);
+    }
+  }
+
+  // Sắp xếp các sân theo ca và gán số thứ tự liên tục
+  const tiet4Inputs = courtsData.filter((c) => c.shift === "TIET_4");
+  const tiet5Inputs = courtsData.filter((c) => c.shift === "TIET_5");
+
+  const normalizedCourts: Array<{
+    date: Date;
+    shift: string;
+    courtNumber: number;
+    courtName: string;
+    cartNumber: number;
+    cartName: string;
+    classIds: string[];
+    mode: string;
+    note: string | null;
+  }> = [];
+
+  let currentCourtNumber = 1;
+
+  for (const c of tiet4Inputs) {
+    const num = currentCourtNumber++;
+    const cartNum = Math.ceil(num / 2);
+    normalizedCourts.push({
+      date,
+      shift: "TIET_4",
+      courtNumber: num,
+      courtName: c.courtName || `Sân ${num}`,
+      cartNumber: cartNum,
+      cartName: c.cartName || `Xe ${cartNum}`,
+      classIds: c.classIds,
+      mode: "MANUAL",
+      note: c.note || null,
+    });
+  }
+
+  for (const c of tiet5Inputs) {
+    const num = currentCourtNumber++;
+    const cartNum = Math.ceil(num / 2);
+    normalizedCourts.push({
+      date,
+      shift: "TIET_5",
+      courtNumber: num,
+      courtName: c.courtName || `Sân ${num}`,
+      cartNumber: cartNum,
+      cartName: c.cartName || `Xe ${cartNum}`,
+      classIds: c.classIds,
+      mode: "MANUAL",
+      note: c.note || null,
+    });
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.dailyDiningCourt.deleteMany({
+      where: { date },
+    });
+
+    if (normalizedCourts.length > 0) {
+      await tx.dailyDiningCourt.createMany({
+        data: normalizedCourts,
+      });
+    }
+  });
+
+  return await getDiningCourtAllocation(dateStr);
+}
+
+/**
+ * XÓA PHÂN BỔ SÂN CỦA 1 NGÀY
+ */
+export async function deleteDiningCourtAllocation(dateStr: string) {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d));
+
+  await prisma.dailyDiningCourt.deleteMany({
+    where: { date },
+  });
+
+  return { success: true, message: "Đã xóa phân bổ sân cho ngày này" };
 }

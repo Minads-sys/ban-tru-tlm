@@ -30,6 +30,13 @@ export async function GET(request: NextRequest) {
 
     const allocation = await getDiningCourtAllocation(dateStr);
 
+    if (!allocation.isConfigured || allocation.totalCourts === 0) {
+      return NextResponse.json(
+        { error: "Ngày này chưa được tạo phân bổ chia sân. Vui lòng bấm 'Tạo tự động' hoặc 'Tạo thủ công' trước khi xuất PDF." },
+        { status: 400 }
+      );
+    }
+
     const shiftSuffix = shift === "TIET_4" ? "Tiet_4" : shift === "TIET_5" ? "Tiet_5" : "Tat_Ca";
 
     let pdfBuffer: Buffer;

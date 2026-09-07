@@ -46,11 +46,13 @@ import {
   UtensilsCrossed,
   Trash2,
   RotateCcw,
+  Scale,
 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useRealtime } from "@/hooks/use-realtime";
 import { CashPos } from "@/components/admin/cash-pos";
 import { CashClosingManager } from "@/components/admin/cash-closing-manager";
+import { SettlementManager } from "@/components/admin/settlement-manager";
 
 interface BillData {
   id: string;
@@ -868,7 +870,7 @@ export default function BillingPage() {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="no-print">
         <TabsList
           className={`grid ${
-            isCashier ? "grid-cols-2 max-w-md" : "grid-cols-2 sm:grid-cols-4 max-w-3xl"
+            isCashier ? "grid-cols-2 max-w-md" : "grid-cols-2 sm:grid-cols-5 max-w-4xl"
           } w-full h-auto p-1.5 gap-1 bg-slate-100 rounded-xl border border-slate-200 shadow-2xs`}
         >
           {isCashier ? (
@@ -878,7 +880,7 @@ export default function BillingPage() {
                 className="flex items-center justify-center gap-2 py-2.5 font-bold cursor-pointer transition-all duration-150 text-slate-700 hover:text-emerald-900 hover:bg-emerald-100/70 data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm group"
               >
                 <Banknote className="h-4 w-4 text-emerald-600 group-data-[state=active]:text-white" />
-                💵 Quầy Thu Tiền Mặt
+                💵 Quầy Thu Tiền
               </TabsTrigger>
               <TabsTrigger
                 value="cash-closing"
@@ -902,7 +904,14 @@ export default function BillingPage() {
                 className="flex items-center justify-center gap-2 py-2.5 font-semibold cursor-pointer transition-all duration-150 text-emerald-700 hover:text-emerald-900 hover:bg-emerald-100/80 data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm group"
               >
                 <Banknote className="h-4 w-4 text-emerald-600 group-data-[state=active]:text-white" />
-                Quầy Thu Tiền Mặt
+                Quầy Thu Tiền
+              </TabsTrigger>
+              <TabsTrigger
+                value="settlements"
+                className="flex items-center justify-center gap-2 py-2.5 font-semibold cursor-pointer transition-all duration-150 text-rose-700 hover:text-rose-900 hover:bg-rose-100/80 data-[state=active]:bg-rose-600 data-[state=active]:text-white data-[state=active]:shadow-sm group"
+              >
+                <Scale className="h-4 w-4 text-rose-600 group-data-[state=active]:text-white" />
+                Quyết Toán Hủy Ăn
               </TabsTrigger>
               <TabsTrigger
                 value="cash-closing"
@@ -927,7 +936,7 @@ export default function BillingPage() {
           )}
         </TabsList>
 
-        {/* ================= TAB: QUẦY THU TIỀN MẶT ================= */}
+        {/* ================= TAB: QUẦY THU TIỀN ================= */}
         <TabsContent value="pos" className="space-y-4 pt-2">
           <CashPos currentUser={session?.user} />
         </TabsContent>
@@ -939,6 +948,16 @@ export default function BillingPage() {
 
         {!isCashier && (
           <>
+            {/* ================= TAB: QUYẾT TOÁN HỦY BÁN TRÚ (KẾ TOÁN & ADMIN) ================= */}
+            <TabsContent value="settlements" className="space-y-4 pt-2">
+              <SettlementManager
+                currentUser={session?.user}
+                onSelectStudentToCollect={() => {
+                  setActiveTab("pos");
+                }}
+              />
+            </TabsContent>
+
             {/* ================= TAB 1: DANH SÁCH HÓA ĐƠN ================= */}
             <TabsContent value="bills" className="space-y-4 pt-2">
           {/* Bộ lọc */}

@@ -381,11 +381,19 @@ model SettlementRecord {
   note             String?
   createdBy        String         @map("created_by")
 
+  // Thông tin hoàn tiền (Do Kế toán phụ trách)
+  isRefunded       Boolean        @default(false) @map("is_refunded")
+  refundedAt       DateTime?      @map("refunded_at")
+  refundedBy       String?        @map("refunded_by")
+  refundMethod     String?        @map("refund_method")
+  refundNote       String?        @map("refund_note")
+
   // Quan hệ
   student Student @relation(fields: [studentId], references: [id])
   creator User    @relation("SettlementCreator", fields: [createdBy], references: [id])
 
   @@index([studentId])
+  @@index([isRefunded])
   @@map("settlement_records")
 }
 
@@ -411,5 +419,26 @@ model AuditLog {
   @@index([module])
   @@index([action])
   @@map("audit_logs")
+}
+
+// ==================== PHÂN BỔ CHIA SÂN ĂN BÁN TRÚ ====================
+
+model DailyDiningCourt {
+  id          String   @id @default(cuid())
+  date        DateTime @db.Date
+  shift       String   // "TIET_4" | "TIET_5"
+  courtNumber Int      @map("court_number")
+  courtName   String   @map("court_name")
+  cartNumber  Int      @map("cart_number")
+  cartName    String   @map("cart_name")
+  classIds    String[] @map("class_ids")
+  mode        String   @default("AUTO") // "AUTO" | "MANUAL"
+  note        String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([date, shift, courtNumber])
+  @@index([date])
+  @@map("daily_dining_courts")
 }
 
