@@ -255,12 +255,12 @@ export async function GET(request: NextRequest) {
       finalChay: chay,
       finalChao: chao,
       finalTotal: man + chay + chao,
-      expectedMan: 0,
-      expectedChay: 0,
-      expectedChao: 0,
-      expectedTotal: 0,
-      expectedLockedAt: null,
-      isLocked: false,
+      expectedMan: existingSummaries.some(s => s.expectedLockedAt !== null) ? man : 0,
+      expectedChay: existingSummaries.some(s => s.expectedLockedAt !== null) ? chay : 0,
+      expectedChao: existingSummaries.some(s => s.expectedLockedAt !== null) ? chao : 0,
+      expectedTotal: existingSummaries.some(s => s.expectedLockedAt !== null) ? (man + chay + chao) : 0,
+      expectedLockedAt: existingSummaries.find(s => s.expectedLockedAt !== null)?.expectedLockedAt || null,
+      isLocked: isAfterLockTime,
     });
   }
 
