@@ -147,10 +147,6 @@ export default function AdminImportPage() {
   const [specialMealErrors, setSpecialMealErrors] = useState<ValidationError[]>([]);
   const [specialMealPreviewDone, setSpecialMealPreviewDone] = useState<boolean>(false);
   const [specialMealScheduleName, setSpecialMealScheduleName] = useState<string>("");
-  const [specialMealMonth, setSpecialMealMonth] = useState<string>(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  });
 
   // Loading states
   const [isPreviewLoading, setIsPreviewLoading] = useState<boolean>(false);
@@ -294,13 +290,7 @@ export default function AdminImportPage() {
           return;
         }
         formData.append("scheduleName", specialMealScheduleName.trim());
-        if (specialMealMonth) {
-          const [y, m] = specialMealMonth.split("-").map(Number);
-          formData.append("year", (y || new Date().getFullYear()).toString());
-          formData.append("month", (m || (new Date().getMonth() + 1)).toString());
-        } else {
-          formData.append("year", new Date().getFullYear().toString());
-        }
+        formData.append("year", new Date().getFullYear().toString());
       }
 
       const res = await fetch("/api/excel/import", {
@@ -390,13 +380,7 @@ export default function AdminImportPage() {
           return;
         }
         formData.append("scheduleName", specialMealScheduleName.trim());
-        if (specialMealMonth) {
-          const [y, m] = specialMealMonth.split("-").map(Number);
-          formData.append("year", (y || new Date().getFullYear()).toString());
-          formData.append("month", (m || (new Date().getMonth() + 1)).toString());
-        } else {
-          formData.append("year", new Date().getFullYear().toString());
-        }
+        formData.append("year", new Date().getFullYear().toString());
       }
 
       const res = await fetch("/api/excel/import", {
@@ -708,7 +692,7 @@ export default function AdminImportPage() {
                 Cấu hình Lịch Ăn Đặc Biệt
               </CardTitle>
               <CardDescription>
-                Nhập tên phân loại cho lịch ăn đặc biệt này (ví dụ: Ngoại Ngữ, GDQP...). Hệ thống sẽ xem đây là 1 lớp riêng biệt khi phân bổ sân ăn.
+                Hệ thống đồng bộ trực tiếp với Lịch Sân Ăn: Tuần 1 niên bán trú bắt đầu từ 07/09 đến 13/09/2026 (tương ứng Tuần 37 năm dương lịch quốc tế).
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -719,37 +703,19 @@ export default function AdminImportPage() {
                   </Label>
                   <Input
                     id="special-schedule-name"
-                    placeholder="Ví dụ: Ngoại Ngữ, GDQP..."
+                    placeholder="Ví dụ: NN2 Tieng Han, GDQP..."
                     value={specialMealScheduleName}
                     onChange={(e) => setSpecialMealScheduleName(e.target.value)}
                     className="h-10"
                   />
                 </div>
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="special-meal-month" className="text-sm font-medium">
-                      Tháng áp dụng <span className="text-red-500">*</span>
-                    </Label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const now = new Date();
-                        setSpecialMealMonth(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`);
-                      }}
-                      className="text-xs text-blue-600 hover:text-blue-700 underline font-normal"
-                    >
-                      Tháng hiện tại
-                    </button>
+                  <Label className="text-sm font-medium">Niên khóa / Tuần áp dụng</Label>
+                  <div className="h-10 px-3 py-2 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 rounded-md text-xs font-semibold text-blue-800 dark:text-blue-200 flex items-center">
+                    Năm học 2026 - 2027 (Tuần 1: 07/09 - 13/09/2026 | Tuần 37 DL)
                   </div>
-                  <Input
-                    id="special-meal-month"
-                    type="month"
-                    value={specialMealMonth}
-                    onChange={(e) => setSpecialMealMonth(e.target.value)}
-                    className="h-10 bg-white dark:bg-slate-900"
-                  />
                   <p className="text-[11px] text-slate-500">
-                    Cột &quot;TUẦN 1&quot; đến &quot;TUẦN 4&quot; trong file sẽ tự động khớp theo các tuần của tháng này.
+                    File Excel có thể điền TUẦN 1..4 (tuần niên bán trú) hoặc TUẦN 37..40 (tuần dương lịch).
                   </p>
                 </div>
               </div>
@@ -1552,6 +1518,8 @@ function SpecialMealPreviewTable({
                         <div className="flex flex-wrap gap-1.5 py-1">
                           {row.entries.map((entry: any, eIdx: number) => {
                             const dateLabel = entry.date ? entry.date.split("-").reverse().slice(0, 2).join("/") : "";
+                            const schoolWk = entry.schoolWeekNumber || entry.weekNumber;
+                            const isoWk = entry.weekNumber;
                             return (
                               <span
                                 key={eIdx}
@@ -1560,12 +1528,9 @@ function SpecialMealPreviewTable({
                                     ? "bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/50 dark:text-amber-200"
                                     : "bg-blue-50 text-blue-800 border-blue-200 dark:bg-blue-950/50 dark:text-blue-200"
                                 }`}
-                                title={`Ngày ${entry.date} (Tuần năm: ${entry.weekNumber})`}
+                                title={`Ngày ${entry.date} - Tuần ${schoolWk} Niên bán trú (Tuần ${isoWk} DL)`}
                               >
-                                {entry.monthWeekIndex
-                                  ? `Tuần ${entry.monthWeekIndex} (${dateLabel}): `
-                                  : `Tuần ${entry.weekNumber}: `}
-                                {entry.shift === "TIET_4" ? "Tiết 4" : "Tiết 5"}
+                                Tuần {schoolWk} ({dateLabel}): {entry.shift === "TIET_4" ? "Tiết 4" : "Tiết 5"}
                                 {entry.note && (
                                   <span className="ml-1 text-[10px] text-slate-500 font-normal">
                                     ({entry.note})

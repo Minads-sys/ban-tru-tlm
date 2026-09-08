@@ -1,5 +1,5 @@
 import ExcelJS from "exceljs";
-import { removeVietnameseTones, formatDateDDMMYYYY, parseDateValue, compareClassNames, getWeekNumber } from "./utils";
+import { removeVietnameseTones, formatDateDDMMYYYY, parseDateValue, compareClassNames, getWeekNumber, getSchoolWeekFromNumber, getSchoolWeekInfo } from "./utils";
 
 // ==================== TYPES ====================
 
@@ -818,22 +818,12 @@ export interface SpecialMealImportRow {
   hoTen: string;
   maLop: string;
   entries: Array<{
-    weekNumber: number;
-    monthWeekIndex?: number;
+    weekNumber: number;        // Tuần dương lịch quốc tế: 37, 38...
+    schoolWeekNumber: number;  // Tuần niên bán trú: 1, 2...
     dayOfWeek: number;
     shift: "TIET_4" | "TIET_5";
-    date: string;
+    date: string;              // "2026-09-09"
   }>;
-}
-
-function nthDayOfWeekInMonth(year: number, month: number, dayOfWeek: number, nth: number): Date {
-  const targetIsoDay = dayOfWeek === 0 ? 7 : dayOfWeek;
-  const firstDay = new Date(Date.UTC(year, month - 1, 1));
-  const firstDayIso = firstDay.getUTCDay() || 7;
-  let daysUntilFirst = targetIsoDay - firstDayIso;
-  if (daysUntilFirst < 0) daysUntilFirst += 7;
-  const day = 1 + daysUntilFirst + (nth - 1) * 7;
-  return new Date(Date.UTC(year, month - 1, day));
 }
 
 function isoWeekToDate(year: number, week: number, dayOfWeek: number): Date {
@@ -906,8 +896,7 @@ function extractExcelCellString(cell: ExcelJS.Cell): string {
 export async function parseSpecialMealExcel(
   buffer: Uint8Array,
   year: number,
-  classIds: string[],
-  month?: number
+  classIds: string[]
 ): Promise<ImportResult<SpecialMealImportRow>> {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buffer as any);
@@ -1044,22 +1033,27 @@ export async function parseSpecialMealExcel(
       } else {
         let d: Date;
         let isoWeek: number;
-        let monthWeekIndex: number | undefined;
+        let schoolWeekNumber: number;
 
-        if (month && col.weekNumber <= 5) {
-          // Người dùng chọn tháng và cột là Tuần 1..5 trong tháng
-          d = nthDayOfWeekInMonth(year, month, col.dayOfWeek, col.weekNumber);
-          isoWeek = getWeekNumber(d);
-          monthWeekIndex = col.weekNumber;
+        // Nếu số tuần <= 35: Tính theo Tuần niên bán trú (Tuần 1 bắt đầu từ 07/09 đến 13/09/2026, tức Tuần 37 DL)
+        if (col.weekNumber <= 35) {
+          const weekInfo = getSchoolWeekFromNumber(col.weekNumber, year);
+          const mon = new Date(weekInfo.startDate);
+          // dayOfWeek: 1=T2, 2=T3, 3=T4, 4=T5, 5=T6, 6=T7
+          d = new Date(Date.UTC(mon.getUTCFullYear(), mon.getUTCMonth(), mon.getUTCDate() + (col.dayOfWeek - 1)));
+          isoWeek = weekInfo.calendarWeekNumber;
+          schoolWeekNumber = col.weekNumber;
         } else {
-          // Mặc định tính theo tuần ISO trong năm
+          // Người dùng ghi trực tiếp số tuần dương lịch quốc tế (VD: TUẦN 37, TUẦN 38...)
           d = isoWeekToDate(year, col.weekNumber, col.dayOfWeek);
+          const weekInfo = getSchoolWeekInfo(d);
           isoWeek = col.weekNumber;
+          schoolWeekNumber = weekInfo.schoolWeekNumber;
         }
 
         entries.push({
           weekNumber: isoWeek,
-          monthWeekIndex,
+          schoolWeekNumber,
           dayOfWeek: col.dayOfWeek,
           shift,
           date: d.toISOString().split("T")[0],
@@ -1111,7 +1105,7 @@ export async function generateSpecialMealTemplate(): Promise<Buffer> {
   // Instruction row
   sheet.mergeCells("A2:G2");
   const instrCell = sheet.getCell("A2");
-  instrCell.value = "Điền TIẾT 4 hoặc TIẾT 5 vào các ô. Để trống nếu không ăn. Số tuần phải đúng theo quy ước ISO của hệ thống.";
+  instrCell.value = "Điền TIẾT 4 hoặc TIẾT 5 vào các ô. Để trống nếu không ăn. Tuần 1 bắt đầu niên bán trú từ 07/09/2026 (tức Tuần 37 năm dương lịch).";
   instrCell.font = { italic: true, color: { argb: "FF6B7280" } };
   instrCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE0F2FE" } };
 
