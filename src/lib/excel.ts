@@ -859,13 +859,18 @@ function parseSpecialMealWeekNumber(text: string): number | null {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/đ/g, "d")
     .trim();
-  const m = s.match(/(?:tuan|w|t)\s*(\d+)/);
+  // Bỏ qua nếu là văn bản hướng dẫn chứa 'tiet' (VD: 'Điền TIẾT 4 hoặc TIẾT 5...')
+  if (/tiet/i.test(s)) return null;
+  // Khớp 'tuan 1', 'w1', hoặc 't1' (tại ranh giới từ)
+  const m = s.match(/(?:\btuan|\bw|\bt)\s*0*(\d+)\b/i);
   if (m) {
     const num = parseInt(m[1], 10);
     if (!isNaN(num) && num >= 1 && num <= 53) return num;
   }
-  const num = parseInt(s, 10);
-  if (!isNaN(num) && num >= 1 && num <= 53) return num;
+  const pureNum = parseInt(s, 10);
+  if (!isNaN(pureNum) && pureNum >= 1 && pureNum <= 53 && String(pureNum) === s) {
+    return pureNum;
+  }
   return null;
 }
 
@@ -904,13 +909,16 @@ export async function parseSpecialMealExcel(
   // 1. Quét tìm dòng header chứa "STT" trong 10 dòng đầu
   for (let r = 1; r <= 10; r++) {
     const row = sheet.getRow(r);
+    let found = false;
     for (let c = 1; c <= 20; c++) {
       const val = extractExcelCellString(row.getCell(c)).toUpperCase();
       if (val.includes("STT")) {
         headerRowIndex = r;
+        found = true;
         break;
       }
     }
+    if (found) break;
   }
 
   // 2. Quét thứ trong tuần chung (nếu có ghi trên tiêu đề hoặc dòng đầu)
@@ -946,18 +954,22 @@ export async function parseSpecialMealExcel(
   // 4. Nhận diện các cột tuần (từ minDataCol trở đi)
   const maxCol = Math.max(sheet.columnCount || 0, sheet.actualColumnCount || 0, 30);
   for (let c = minDataCol; c <= maxCol; c++) {
-    let weekNum: number | null = null;
-    let colDay: number | null = null;
+    const headerCell = headerRow.getCell(c);
+    let valHeader = extractExcelCellString(headerCell);
 
-    for (let r = 1; r <= headerRowIndex; r++) {
-      const cell = sheet.getRow(r).getCell(c);
-      let val = extractExcelCellString(cell);
-      if (!val && cell.isMerged && cell.master) {
-        val = extractExcelCellString(cell.master);
+    // Kiểm tra tuần và thứ trên chính dòng header trước (ví dụ: 'Thứ Tư TUẦN 1' hoặc 'TUẦN 1')
+    let weekNum = parseSpecialMealWeekNumber(valHeader);
+    let colDay = parseSpecialMealDayOfWeek(valHeader);
+
+    // Nếu không thấy, kiểm tra dòng ngay phía trên (trường hợp tiêu đề 2 tầng: Dòng trên 'Thứ Tư', dòng dưới 'TUẦN 1')
+    if (headerRowIndex > 1) {
+      const prevCell = sheet.getRow(headerRowIndex - 1).getCell(c);
+      let valPrev = extractExcelCellString(prevCell);
+      if (!valPrev && prevCell.isMerged && prevCell.master) {
+        valPrev = extractExcelCellString(prevCell.master);
       }
-
-      if (!colDay) colDay = parseSpecialMealDayOfWeek(val);
-      if (!weekNum) weekNum = parseSpecialMealWeekNumber(val);
+      if (!weekNum) weekNum = parseSpecialMealWeekNumber(valPrev);
+      if (!colDay) colDay = parseSpecialMealDayOfWeek(valPrev);
     }
 
     if (weekNum) {
