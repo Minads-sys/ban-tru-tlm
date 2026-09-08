@@ -90,6 +90,7 @@ interface BillItem {
 }
 
 export function CashPos({ currentUser }: { currentUser: any }) {
+  const canCollectCash = currentUser?.role === "CASHIER" || currentUser?.role === "ADMIN";
   // Tìm kiếm học sinh
   const [searchTerm, setSearchTerm] = useState("");
   const [searchResults, setSearchResults] = useState<StudentSearchResult[]>([]);
@@ -607,9 +608,9 @@ export function CashPos({ currentUser }: { currentUser: any }) {
 
       {/* NỘI DUNG CHÍNH KHI ĐÃ CHỌN HỌC SINH */}
       {selectedStudent && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className={`grid grid-cols-1 ${canCollectCash ? "lg:grid-cols-12" : "lg:grid-cols-1"} gap-6`}>
           {/* CỘT TRÁI (7 CỘT): THÔNG TIN HỌC SINH & DANH SÁCH HÓA ĐƠN */}
-          <div className="lg:col-span-7 space-y-6">
+          <div className={`${canCollectCash ? "lg:col-span-7" : ""} space-y-6`}>
             {/* THẺ THÔNG TIN HỌC SINH (ÁP DỤNG BẢO MẬT CHE CCCD) */}
             <Card className="border-slate-200 shadow-xs">
               <CardHeader className="pb-3 border-b bg-slate-50/80">
@@ -884,6 +885,7 @@ export function CashPos({ currentUser }: { currentUser: any }) {
           </div>
 
           {/* CỘT PHẢI (5 CỘT): FORM THU TIỀN MẶT POS */}
+          {canCollectCash && (
           <div className="lg:col-span-5 space-y-6">
             <Card className="border-blue-300 shadow-md bg-white">
               <CardHeader className="bg-blue-600 text-white rounded-t-xl pb-4">
@@ -1070,6 +1072,7 @@ export function CashPos({ currentUser }: { currentUser: any }) {
               </CardContent>
             </Card>
           </div>
+          )}
         </div>
       )}
 

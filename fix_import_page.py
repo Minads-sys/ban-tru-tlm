@@ -1,65 +1,76 @@
-import re
+import paramiko
+import sys
 
-with open("src/app/admin/import/page.tsx", "r", encoding="utf-8") as f:
-    content = f.read()
+sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
-# Fix ImportSectionProps
-content = re.sub(
-    r"interface ImportSectionProps \{([\s\S]*?)templateFilename: string;",
-    r"interface ImportSectionProps {\1templateFilename: string;\n    exportUrl?: string;\n    exportFilename?: string;",
-    content
-)
+client = paramiko.SSHClient()
+client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+client.connect("14.225.224.121", port=22, username="root", password="mFCDAPzdO7XZq7Q6szVe", timeout=15)
 
-# Fix ImportSection arguments
-content = re.sub(
-    r"function ImportSection\(\{([\s\S]*?)templateFilename,",
-    r"function ImportSection({\1templateFilename,\n    exportUrl,\n    exportFilename,",
-    content
-)
+script = """
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
 
-# Fix CardHeader buttons
-# Since the previous replacement messed up the DOM for CardHeader, let's just find the entire CardHeader inside ImportSection.
-import_section_header = r"<CardHeader className=\"flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4\">[\s\S]*?</CardHeader>"
+async function run() {
+  const student = await prisma.student.findFirst({
+    where: { boardingCode: 'BT00163' },
+    include: {
+      user: true,
+      class: true,
+      monthlyBills: {
+        include: {
+          transactions: true
+        }
+      },
+      settlementRecords: true,
+      paymentTransactions: true
+    }
+  });
 
-new_header = """<CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4">
-          <div>
-            <CardTitle className="text-lg font-semibold">{title}</CardTitle>
-            <CardDescription className="mt-1">{description}</CardDescription>
-          </div>
-          <div className="flex gap-2">
-            {exportUrl && (
-              <Button
-                variant="outline"
-                className="border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 shrink-0 flex items-center gap-2"
-                asChild
-              >
-                <a href={exportUrl} download={exportFilename}>
-                  <Download className="h-4 w-4 text-emerald-600" />
-                  Tải danh sách hiện hành
-                </a>
-              </Button>
-            )}
-            <Button
-              variant="outline"
-              className="border-blue-200 text-blue-700 hover:bg-blue-50 hover:text-blue-800 dark:border-blue-800 dark:text-blue-400 dark:hover:bg-blue-950 shrink-0 flex items-center gap-2"
-              asChild
-            >
-              <a href={templateUrl} download={templateFilename}>
-                <Download className="h-4 w-4 text-blue-600" />
-                Tải file mẫu Excel
-              </a>
-            </Button>
-          </div>
-        </CardHeader>"""
+  console.log('STUDENT INFO:');
+  console.log({
+    id: student?.id,
+    boardingCode: student?.boardingCode,
+    name: student?.user?.fullName,
+    boardingStatus: student?.boardingStatus,
+    boardingCancelledAt: student?.boardingCancelledAt
+  });
 
-content = re.sub(import_section_header, new_header, content, count=1)
+  console.log('SETTLEMENTS:');
+  console.log(student?.settlementRecords);
 
-# Now inject exportUrl and exportFilename for Student tab
-content = re.sub(
-    r"templateUrl=\"/api/excel/template\?type=student\"\s*\n\s*templateFilename=\"Template_DanhSach_HocSinh.xlsx\"",
-    r"templateUrl=\"/api/excel/template?type=student\"\n              templateFilename=\"Template_DanhSach_HocSinh.xlsx\"\n              exportUrl=\"/api/excel/export/students\"\n              exportFilename=\"DanhSachHocSinh_Export.xlsx\"",
-    content
-)
+  console.log('BILLS:');
+  console.log(JSON.stringify(student?.monthlyBills, null, 2));
 
-with open("src/app/admin/import/page.tsx", "w", encoding="utf-8") as f:
-    f.write(content)
+  console.log('ALL PAYMENT TRANSACTIONS:');
+  console.log(JSON.stringify(student?.paymentTransactions, null, 2));
+
+  const logs = await prisma.auditLog.findMany({
+    where: {
+      OR: [
+        { targetId: student?.id },
+        { description: { contains: 'BT00163' } }
+      ]
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 10
+  });
+  console.log('AUDIT LOGS:');
+  console.log(logs);
+}
+
+run().finally(() => prisma.$disconnect());
+"""
+
+sftp = client.open_sftp()
+with sftp.open('/var/www/bantrutlm/check_full.js', 'w') as f:
+    f.write(script)
+sftp.close()
+
+stdin, stdout, stderr = client.exec_command('cd /var/www/bantrutlm && node check_full.js')
+print(stdout.read().decode('utf-8', errors='replace'))
+print(stderr.read().decode('utf-8', errors='replace'))
+client.close()
+
+

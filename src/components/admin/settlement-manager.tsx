@@ -39,9 +39,13 @@ import {
   Banknote,
   Loader2,
   FileText,
+  QrCode,
 } from "lucide-react";
 import { formatCurrency, formatDate, maskStudentCode } from "@/lib/utils";
 import ExcelJS from "exceljs";
+import QRCode from "qrcode";
+import { generateMealPaymentEMVCo } from "@/lib/vietqr";
+import { PaymentBillPrint, PaymentBillData } from "./payment-bill-print";
 
 interface Props {
   currentUser?: any;
@@ -70,12 +74,29 @@ export function SettlementManager({ currentUser, onSelectStudentToCollect }: Pro
   const [refundNote, setRefundNote] = useState<string>("");
   const [submittingRefund, setSubmittingRefund] = useState(false);
 
+  // Modal in phiếu quyết toán có mã QR
+  const [settlementBillData, setSettlementBillData] = useState<PaymentBillData | null>(null);
+  const [showSettlementBillModal, setShowSettlementBillModal] = useState(false);
+
+  // Cài đặt hệ thống
+  const [settings, setSettings] = useState<Record<string, string>>({});
+
   // Tải danh sách lớp học
   useEffect(() => {
     fetch("/api/classes")
       .then((res) => res.json())
       .then((data) => {
         if (Array.isArray(data)) setClasses(data);
+      })
+      .catch((err) => console.error(err));
+  }, []);
+
+  // Tải cài đặt hệ thống (thông tin ngân hàng)
+  useEffect(() => {
+    fetch("/api/settings")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && typeof data === "object") setSettings(data);
       })
       .catch((err) => console.error(err));
   }, []);
@@ -249,6 +270,105 @@ export function SettlementManager({ currentUser, onSelectStudentToCollect }: Pro
     } catch (err) {
       console.error("Export excel error:", err);
       Swal.fire("Lỗi", "Không thể xuất file Excel", "error");
+    }
+  };
+
+  // Mở phiếu quyết toán có mã QR khi bấm "Thu tiền" ở danh sách chờ thu nợ
+  const handleCollectMoney = async (item: any) => {
+    try {
+      // Lấy hóa đơn nợ của học sinh
+      const res = await fetch(`/api/billing?studentId=${item.studentId}&limit=50`);
+      const json = await res.json();
+      const rawBills = Array.isArray(json) ? json : json.data || [];
+
+      // Tìm hóa đơn còn nợ gần nhất
+      const unpaidBill = rawBills.find(
+        (b: any) => b.paymentStatus === "UNPAID" || b.paymentStatus === "PARTIAL"
+      );
+
+      if (!unpaidBill) {
+        const Swal = (await import("sweetalert2")).default;
+        Swal.fire("Thông báo", "Không tìm thấy hóa đơn còn nợ của học sinh này.", "info");
+        return;
+      }
+
+      const paid = (unpaidBill.transactions || [])
+        .filter((t: any) => !t.isVoided)
+        .reduce((sum: number, t: any) => sum + Number(t.amount), 0);
+      const remainingDebt = Math.max(0, Number(unpaidBill.finalAmount) - paid);
+
+      const code = item.boardingCode || item.studentCode;
+      let dataUrl = "";
+
+      // Tạo mã QR EMVCo nếu còn nợ
+      if (remainingDebt > 0) {
+        const bankBin = settings.BANK_BIN || "970418";
+        const accountNo = settings.BANK_ACCOUNT_NO || "96247BANTRUTLM08";
+        const accountName = settings.BANK_ACCOUNT_NAME || "HOANG KIM";
+        const bankName = settings.BANK_NAME || "BIDV";
+
+        const emvcoPayload = generateMealPaymentEMVCo(code, unpaidBill.month, unpaidBill.year, remainingDebt, {
+          bankBin,
+          accountNo,
+          accountName,
+          bankName,
+        });
+
+        try {
+          dataUrl = await QRCode.toDataURL(emvcoPayload, {
+            margin: 1,
+            width: 360,
+            errorCorrectionLevel: "M",
+          });
+        } catch (err) {
+          console.error("QR generation error:", err);
+        }
+      }
+
+      const mm = String(unpaidBill.month).padStart(2, "0");
+      const yy = String(unpaidBill.year).slice(-2);
+      const content = `BSTLM ${code} T${mm}${yy}`;
+
+      setSettlementBillData({
+        schoolName: settings.SCHOOL_NAME || "TR\u01af\u1edcNG B\u00c1N TR\u00da TI\u1ec2U H\u1eccC & THCS TH\u0102NG LONG",
+        schoolAddress: settings.SCHOOL_ADDRESS || "H\u00e0 N\u1ed9i",
+        schoolPhone: settings.SCHOOL_PHONE || "(024) 3888.xxxx",
+        student: {
+          fullName: item.fullName,
+          studentCode: item.studentCode,
+          boardingCode: item.boardingCode,
+          className: item.className,
+        },
+        bill: {
+          id: unpaidBill.id,
+          month: unpaidBill.month,
+          year: unpaidBill.year,
+          finalAmount: Number(unpaidBill.finalAmount),
+          paidAmount: paid,
+          remainingDebt,
+          paymentStatus: unpaidBill.paymentStatus,
+          scheduleMealDays: unpaidBill.scheduleMealDays,
+          canceledDays: unpaidBill.canceledDays,
+          scheduleReducedDays: unpaidBill.scheduleReducedDays,
+          extraMealDays: unpaidBill.extraMealDays,
+          unitPrice: Number(unpaidBill.unitPrice || 0),
+          previousDeduction: Number(unpaidBill.previousDeduction || 0),
+          previousAddition: Number(unpaidBill.previousAddition || 0),
+        },
+        bankInfo: {
+          bankName: settings.BANK_NAME || "BIDV",
+          accountNo: settings.BANK_ACCOUNT_NO || "96247BANTRUTLM08",
+          accountName: settings.BANK_ACCOUNT_NAME || "HOANG KIM",
+        },
+        qrCodeDataUrl: dataUrl,
+        transferContent: content,
+      });
+
+      setShowSettlementBillModal(true);
+    } catch (err) {
+      console.error("Error loading settlement bill:", err);
+      const Swal = (await import("sweetalert2")).default;
+      Swal.fire("L\u1ed7i", "Kh\u00f4ng th\u1ec3 t\u1ea3i th\u00f4ng tin h\u00f3a \u0111\u01a1n", "error");
     }
   };
 
@@ -483,16 +603,14 @@ export function SettlementManager({ currentUser, onSelectStudentToCollect }: Pro
                             ))}
                           </TableCell>
                           <TableCell className="text-right">
-                            {onSelectStudentToCollect && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => onSelectStudentToCollect(item)}
-                                className="h-7 text-xs font-semibold text-blue-700 border-blue-300 hover:bg-blue-50"
-                              >
-                                Thu tiền <Banknote className="h-3.5 w-3.5 ml-1" />
-                              </Button>
-                            )}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleCollectMoney(item)}
+                              className="h-7 text-xs font-semibold text-blue-700 border-blue-300 hover:bg-blue-50"
+                            >
+                              Thu tiền <QrCode className="h-3.5 w-3.5 ml-1" />
+                            </Button>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -696,6 +814,18 @@ export function SettlementManager({ currentUser, onSelectStudentToCollect }: Pro
               Xác Nhận Đã Hoàn Tiền
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog hiển phiếu quyết toán có mã QR */}
+      <Dialog open={showSettlementBillModal} onOpenChange={setShowSettlementBillModal}>
+        <DialogContent className="max-w-4xl max-h-[95vh] overflow-y-auto p-0">
+          {settlementBillData && (
+            <PaymentBillPrint
+              data={settlementBillData}
+              onClose={() => setShowSettlementBillModal(false)}
+            />
+          )}
         </DialogContent>
       </Dialog>
     </div>
