@@ -23,6 +23,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     
     if (password) {
       updateData.passwordHash = await bcrypt.hash(password, 10);
+      updateData.passwordChangedAt = new Date();
     }
 
     const updatedUser = await prisma.user.update({

@@ -1,10 +1,18 @@
-import NextAuth from 'next-auth';
+import NextAuth, { CredentialsSignin } from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
 import prisma from '@/lib/db';
 import '@/lib/auth-types';
 import { removeVietnameseTones } from '@/lib/utils';
 import { logAudit, AUDIT_ACTIONS, AUDIT_MODULES } from '@/lib/audit-log';
+
+export class CustomAuthError extends CredentialsSignin {
+  code: string;
+  constructor(code: string) {
+    super();
+    this.code = code;
+  }
+}
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
@@ -73,6 +81,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         if (!user || !user.passwordHash) {
           log('User still null or no password hash');
+          if (verificationCode) {
+            throw new CustomAuthError('STUDENT_NOT_FOUND');
+          }
           return null;
         }
 
@@ -80,22 +91,40 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (verificationCode && user.student) {
           if (!user.student.studentCode.endsWith(verificationCode)) {
             log('vCode mismatch on selected user');
-            throw new Error('Mã xác nhận (6 số cuối Mã học sinh) không chính xác');
+            throw new CustomAuthError('STUDENT_NOT_FOUND');
           }
         }
 
         const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
         log(`isPasswordValid: ${isPasswordValid}`);
         if (!isPasswordValid) {
+          if (verificationCode) {
+            // Check if user has changed password
+            let daysAgo: number | null = null;
+            if (user.passwordChangedAt) {
+              const diffTime = Math.max(0, Date.now() - new Date(user.passwordChangedAt).getTime());
+              daysAgo = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+            } else if (!user.requiresPasswordChange && user.updatedAt) {
+              // Fallback if passwordChangedAt not yet set but requiresPasswordChange is false
+              const diffTime = Math.max(0, Date.now() - new Date(user.updatedAt).getTime());
+              daysAgo = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+            }
+
+            if (daysAgo !== null) {
+              throw new CustomAuthError(`PASSWORD_INCORRECT_DAYS_${daysAgo}`);
+            } else {
+              throw new CustomAuthError('PASSWORD_INCORRECT_DEFAULT');
+            }
+          }
           return null;
         }
 
         if (!user.isActive) {
-          throw new Error('Tài khoản bán trú của bạn đã bị ngưng hoạt động');
+          throw new CustomAuthError('ACCOUNT_INACTIVE');
         }
 
         if (user.role === 'STUDENT' && user.student?.boardingStatus === 'CANCELLED') {
-          throw new Error('Tài khoản bán trú của bạn đã bị ngưng hoạt động');
+          throw new CustomAuthError('ACCOUNT_INACTIVE');
         }
 
         if (user.role !== 'STUDENT') {

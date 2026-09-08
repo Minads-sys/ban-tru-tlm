@@ -1,6 +1,6 @@
 import prisma from "@/lib/db";
 import { BoardingStatus, CancellationStatus } from "@prisma/client";
-import { getWeekNumber, getVietnamTodayUTC, isPastCutoffTime, splitVietnameseName, compareVietnameseNames } from "@/lib/utils";
+import { getWeekNumber, getVietnamTodayUTC, isPastCutoffTime, splitVietnameseName, compareVietnameseNames, getSchoolWeekInfo, SchoolWeekInfo } from "@/lib/utils";
 
 export interface StudentMealInfo {
   id: string;
@@ -945,4 +945,253 @@ export async function deleteDiningCourtAllocation(dateStr: string) {
   });
 
   return { success: true, message: "Đã xóa phân bổ sân cho ngày này" };
+}
+
+// ==================== BẢNG MA TRẬN THỐNG KÊ SÂN THEO TUẦN ====================
+
+export interface WeeklyMatrixCell {
+  courtName: string;
+  courtNumber: number;
+  cartName: string;
+  shift: string;
+}
+
+export interface WeeklyMatrixRow {
+  classId: string;
+  className: string;
+  totalStudents: number;
+  courts: Record<string, WeeklyMatrixCell | null>; // dateStr -> cell
+}
+
+export interface WeeklyDiningMatrixResult {
+  weekInfo: SchoolWeekInfo;
+  distinctCourts: string[];
+  days: Array<{ dateStr: string; dayOfWeek: number; dayLabel: string; shortDate: string }>;
+  rows: WeeklyMatrixRow[];
+  hasAnyAllocation: boolean;
+  totalCourtsUsed: number;
+}
+
+/**
+ * LẤY DỮ LIỆU MA TRẬN PHÂN BỔ SÂN THEO TUẦN (THỨ 2 -> THỨ 6)
+ */
+export async function getWeeklyDiningMatrix(referenceDate: Date | string): Promise<WeeklyDiningMatrixResult> {
+  const weekInfo = getSchoolWeekInfo(referenceDate);
+  const { startDate, endDate, days } = weekInfo;
+
+  // 1. Lấy tất cả các lớp học
+  const allClasses = await prisma.class.findMany({
+    orderBy: { id: "asc" },
+    include: {
+      _count: {
+        select: {
+          students: {
+            where: { boardingStatus: "ACTIVE" },
+          },
+        },
+      },
+    },
+  });
+
+  // Sắp xếp tự nhiên theo khối lớp (10A1 -> 12A13)
+  allClasses.sort((a, b) => a.id.localeCompare(b.id, "vi", { numeric: true }));
+
+  // 2. Lấy các bản ghi chia sân trong tuần
+  const courts = await prisma.dailyDiningCourt.findMany({
+    where: {
+      date: {
+        gte: startDate,
+        lte: endDate,
+      },
+    },
+    orderBy: [{ date: "asc" }, { courtNumber: "asc" }],
+  });
+
+  // 3. Ánh xạ classId + dateStr -> court
+  const cellMap = new Map<string, WeeklyMatrixCell>();
+  const courtNamesSet = new Set<string>();
+
+  for (const c of courts) {
+    const dStr = c.date.toISOString().split("T")[0];
+    courtNamesSet.add(c.courtName);
+    for (const cid of c.classIds) {
+      cellMap.set(`${cid}_${dStr}`, {
+        courtName: c.courtName,
+        courtNumber: c.courtNumber,
+        cartName: c.cartName,
+        shift: c.shift,
+      });
+    }
+  }
+
+  // Sắp xếp danh sách sân tự nhiên (SÂN 1 -> SÂN 16)
+  const distinctCourts = Array.from(courtNamesSet).sort((a, b) =>
+    a.localeCompare(b, "vi", { numeric: true })
+  );
+
+  // 4. Lập các hàng ma trận cho từng lớp
+  const rows: WeeklyMatrixRow[] = allClasses.map((cls) => {
+    const classCourts: Record<string, WeeklyMatrixCell | null> = {};
+    for (const day of days) {
+      const cell = cellMap.get(`${cls.id}_${day.dateStr}`) || null;
+      classCourts[day.dateStr] = cell;
+    }
+    return {
+      classId: cls.id,
+      className: cls.name || cls.id,
+      totalStudents: cls._count.students,
+      courts: classCourts,
+    };
+  });
+
+  return {
+    weekInfo,
+    distinctCourts,
+    days,
+    rows,
+    hasAnyAllocation: courts.length > 0,
+    totalCourtsUsed: distinctCourts.length,
+  };
+}
+
+/**
+ * TỰ ĐỘNG PHÂN BỔ SÂN CHO CẢ TUẦN (THỨ 2 -> THỨ 6)
+ */
+export async function autoAllocateWeek(referenceDate: Date | string): Promise<WeeklyDiningMatrixResult> {
+  const weekInfo = getSchoolWeekInfo(referenceDate);
+
+  for (const day of weekInfo.days) {
+    await saveAutoDiningCourtAllocation(day.dateStr);
+  }
+
+  return await getWeeklyDiningMatrix(referenceDate);
+}
+
+/**
+ * SAO CHÉP PHÂN BỔ SÂN TỪ TUẦN NGUỒN SANG TUẦN ĐÍCH
+ */
+export async function copyDiningCourtWeek(
+  sourceDate: Date | string,
+  targetDate: Date | string
+): Promise<WeeklyDiningMatrixResult> {
+  const sourceWeek = getSchoolWeekInfo(sourceDate);
+  const targetWeek = getSchoolWeekInfo(targetDate);
+
+  for (let i = 0; i < 5; i++) {
+    const srcDay = sourceWeek.days[i];
+    const tgtDay = targetWeek.days[i];
+
+    const [sy, sm, sd] = srcDay.dateStr.split("-").map(Number);
+    const srcDateObj = new Date(Date.UTC(sy, sm - 1, sd));
+
+    const [ty, tm, td] = tgtDay.dateStr.split("-").map(Number);
+    const tgtDateObj = new Date(Date.UTC(ty, tm - 1, td));
+
+    const sourceCourts = await prisma.dailyDiningCourt.findMany({
+      where: { date: srcDateObj },
+    });
+
+    await prisma.$transaction(async (tx) => {
+      await tx.dailyDiningCourt.deleteMany({
+        where: { date: tgtDateObj },
+      });
+
+      if (sourceCourts.length > 0) {
+        await tx.dailyDiningCourt.createMany({
+          data: sourceCourts.map((c) => ({
+            date: tgtDateObj,
+            shift: c.shift,
+            courtNumber: c.courtNumber,
+            courtName: c.courtName,
+            cartNumber: c.cartNumber,
+            cartName: c.cartName,
+            classIds: c.classIds,
+            mode: "MANUAL",
+            note: `Sao chép từ tuần ${sourceWeek.schoolWeekNumber}`,
+          })),
+        });
+      }
+    });
+  }
+
+  return await getWeeklyDiningMatrix(targetDate);
+}
+
+/**
+ * ĐIỀU CHỈNH SÂN CỦA 1 LỚP TRONG 1 NGÀY CỤ THỂ
+ */
+export async function updateClassCourtCell(
+  dateStr: string,
+  classId: string,
+  newCourtName: string | null
+): Promise<void> {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const dateObj = new Date(Date.UTC(y, m - 1, d));
+
+  const existingCourts = await prisma.dailyDiningCourt.findMany({
+    where: { date: dateObj },
+  });
+
+  if (existingCourts.length === 0) {
+    throw new Error("Ngày này chưa được tạo phân bổ sân. Vui lòng tạo phân bổ trước khi chỉnh sửa.");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    // 1. Xóa classId khỏi bất kỳ sân nào trước đó
+    for (const court of existingCourts) {
+      if (court.classIds.includes(classId)) {
+        const nextClasses = court.classIds.filter((id) => id !== classId);
+        await tx.dailyDiningCourt.update({
+          where: { id: court.id },
+          data: { classIds: nextClasses },
+        });
+      }
+    }
+
+    // 2. Nếu gán vào sân mới (newCourtName != null)
+    if (newCourtName) {
+      const targetCourt = existingCourts.find((c) => c.courtName === newCourtName);
+      if (targetCourt) {
+        const updatedIds = Array.from(new Set([...targetCourt.classIds, classId]));
+        await tx.dailyDiningCourt.update({
+          where: { id: targetCourt.id },
+          data: { classIds: updatedIds },
+        });
+      } else {
+        // Tìm số thứ tự sân từ tên sân
+        const numMatch = newCourtName.match(/\d+/);
+        const courtNumber = numMatch ? parseInt(numMatch[0], 10) : existingCourts.length + 1;
+        const cartNumber = Math.ceil(courtNumber / 2);
+        await tx.dailyDiningCourt.create({
+          data: {
+            date: dateObj,
+            shift: "TIET_4",
+            courtNumber,
+            courtName: newCourtName,
+            cartNumber,
+            cartName: `Xe ${cartNumber}`,
+            classIds: [classId],
+            mode: "MANUAL",
+          },
+        });
+      }
+    }
+  });
+}
+
+/**
+ * XÓA PHÂN BỔ SÂN CỦA CẢ TUẦN
+ */
+export async function deleteWeeklyDiningAllocation(referenceDate: Date | string): Promise<void> {
+  const weekInfo = getSchoolWeekInfo(referenceDate);
+  const { startDate, endDate } = weekInfo;
+
+  await prisma.dailyDiningCourt.deleteMany({
+    where: {
+      date: {
+        gte: startDate,
+        lte: endDate,
+      },
+    },
+  });
 }

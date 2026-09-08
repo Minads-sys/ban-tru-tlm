@@ -7,35 +7,41 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { User, Lock, KeyRound, Loader2, AlertCircle, HelpCircle } from "lucide-react";
+import { User, Lock, KeyRound, Loader2, AlertCircle, HelpCircle, Eye, EyeOff } from "lucide-react";
 
 export default function StudentLoginForm({ schoolName }: { schoolName: string }) {
   const router = useRouter();
   const [fullNameInput, setFullNameInput] = useState("");
   const [password, setPassword] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorField, setErrorField] = useState<"name_code" | "password" | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    setErrorField(null);
 
     if (!fullNameInput.trim()) {
       setError("Vui lòng nhập Họ và Tên học sinh");
+      setErrorField("name_code");
       setLoading(false);
       return;
     }
 
     if (!password) {
       setError("Vui lòng nhập Mật khẩu (Ngày sinh ddmmyyyy)");
+      setErrorField("password");
       setLoading(false);
       return;
     }
 
     if (!verificationCode || verificationCode.length < 6) {
       setError("Vui lòng nhập Mã xác nhận (6 số cuối của Số CCCD)");
+      setErrorField("name_code");
       setLoading(false);
       return;
     }
@@ -49,12 +55,27 @@ export default function StudentLoginForm({ schoolName }: { schoolName: string })
       });
 
       if (res?.error) {
-        if (res.error.includes("ngưng hoạt động")) {
+        const code = res.code || "";
+        if (code === "STUDENT_NOT_FOUND") {
+          setError("Không tìm thấy học sinh phù hợp, vui lòng kiểm tra Họ tên và mã xác nhận");
+          setErrorField("name_code");
+        } else if (code.startsWith("PASSWORD_INCORRECT_DAYS_")) {
+          const days = parseInt(code.replace("PASSWORD_INCORRECT_DAYS_", ""), 10);
+          if (days === 0) {
+            setError("Mật khẩu chưa chính xác, bạn đã đổi mật khẩu hôm nay");
+          } else {
+            setError(`Mật khẩu chưa chính xác, bạn đã đổi mật khẩu ${days} ngày trước`);
+          }
+          setErrorField("password");
+        } else if (code === "PASSWORD_INCORRECT_DEFAULT") {
+          setError("Mật khẩu chưa chính xác (Mật khẩu mặc định là Ngày tháng năm sinh ddmmyyyy)");
+          setErrorField("password");
+        } else if (code === "ACCOUNT_INACTIVE" || res.error.includes("ngưng hoạt động")) {
           setError("⚠️ Tài khoản bán trú của bạn đã bị ngưng hoạt động. Vui lòng liên hệ Nhà trường.");
-        } else if (res.error.includes("Mã xác nhận")) {
-          setError("⚠️ Mã xác nhận (6 số cuối Số CCCD) không chính xác.");
+          setErrorField(null);
         } else {
-          setError("⚠️ Thông tin đăng nhập không chính xác. Vui lòng kiểm tra lại Họ tên, Ngày sinh và Mã xác nhận.");
+          setError("Không tìm thấy học sinh phù hợp, vui lòng kiểm tra Họ tên và mã xác nhận");
+          setErrorField("name_code");
         }
       } else {
         router.push("/student");
@@ -117,8 +138,13 @@ export default function StudentLoginForm({ schoolName }: { schoolName: string })
                     type="text"
                     placeholder="Ví dụ: Nguyễn Văn An"
                     value={fullNameInput}
-                    onChange={(e) => setFullNameInput(e.target.value)}
-                    className="pl-9 text-sm focus:border-emerald-500 focus:ring-emerald-500"
+                    onChange={(e) => {
+                      setFullNameInput(e.target.value);
+                      if (errorField === "name_code") setErrorField(null);
+                    }}
+                    className={`pl-9 text-sm focus:border-emerald-500 focus:ring-emerald-500 transition-colors ${
+                      errorField === "name_code" ? "border-red-400 ring-1 ring-red-400 bg-red-50/20" : ""
+                    }`}
                     required
                   />
                 </div>
@@ -133,13 +159,31 @@ export default function StudentLoginForm({ schoolName }: { schoolName: string })
                   <Lock className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                   <Input
                     id="password"
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     placeholder="Dạng ddmmyyyy (VD: 15082011)"
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="pl-9 text-sm focus:border-emerald-500 focus:ring-emerald-500"
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      if (errorField === "password") setErrorField(null);
+                    }}
+                    className={`pl-9 pr-10 text-sm focus:border-emerald-500 focus:ring-emerald-500 transition-colors ${
+                      errorField === "password" ? "border-red-400 ring-1 ring-red-400 bg-red-50/20" : ""
+                    }`}
                     required
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 focus:outline-none cursor-pointer"
+                    tabIndex={-1}
+                    title={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
                 </div>
                 <p className="text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-2 py-1.5 mt-1 font-medium leading-relaxed">
                   Lưu ý: Nếu đăng nhập lần đầu sinh ngày 15/08/2011 thì nhập <code className="bg-white px-1.5 py-0.5 rounded border border-emerald-300 text-emerald-700 font-bold">15082011</code>
@@ -159,8 +203,13 @@ export default function StudentLoginForm({ schoolName }: { schoolName: string })
                     maxLength={6}
                     placeholder="Ví dụ: 123456"
                     value={verificationCode}
-                    onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, ""))}
-                    className="pl-9 text-sm font-mono tracking-widest focus:border-emerald-500 focus:ring-emerald-500"
+                    onChange={(e) => {
+                      setVerificationCode(e.target.value.replace(/\D/g, ""));
+                      if (errorField === "name_code") setErrorField(null);
+                    }}
+                    className={`pl-9 text-sm font-mono tracking-widest focus:border-emerald-500 focus:ring-emerald-500 transition-colors ${
+                      errorField === "name_code" ? "border-red-400 ring-1 ring-red-400 bg-red-50/20" : ""
+                    }`}
                     required
                   />
                 </div>

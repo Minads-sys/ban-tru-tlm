@@ -52,6 +52,116 @@ export function getWeekNumber(date: Date): number {
   return Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
 }
 
+export interface SchoolWeekInfo {
+  schoolYear: string;        // "2026 - 2027"
+  schoolWeekNumber: number;  // 1
+  calendarWeekNumber: number;// 37
+  calendarYear: number;      // 2026
+  startDate: Date;           // Thứ 2
+  endDate: Date;             // Thứ 6
+  startDateStr: string;      // "2026-09-07"
+  endDateStr: string;        // "2026-09-11"
+  formattedRange: string;    // "7/9/2026 ĐẾN 11/9/2026"
+  days: Array<{
+    dateStr: string;
+    dayOfWeek: number;       // 2..6
+    dayLabel: string;        // "Thứ 2" .. "Thứ 6"
+    shortDate: string;       // "07/09"
+  }>;
+}
+
+/**
+ * Lấy thông tin tuần năm học và tuần dương lịch từ ngày bất kỳ
+ */
+export function getSchoolWeekInfo(dateInput: Date | string): SchoolWeekInfo {
+  const date = typeof dateInput === 'string' ? new Date(dateInput + 'T00:00:00') : new Date(dateInput);
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  
+  // Xác định Thứ 2 của tuần chứa ngày này
+  const day = d.getDay(); // 0: CN, 1: T2...
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+  const monday = new Date(d);
+  monday.setDate(d.getDate() + diffToMonday);
+  monday.setHours(0, 0, 0, 0);
+
+  const friday = new Date(monday);
+  friday.setDate(monday.getDate() + 4);
+  friday.setHours(23, 59, 59, 999);
+
+  // Xác định Năm học
+  const monMonth = monday.getMonth(); // 0..11 (tháng 9 là 8)
+  const monYear = monday.getFullYear();
+  let schoolStartYear = monYear;
+  if (monMonth < 7) { // Tháng 1 - Tháng 7 thuộc học kỳ 2 của năm học bắt đầu từ năm trước
+    schoolStartYear = monYear - 1;
+  }
+  const schoolYear = `${schoolStartYear} - ${schoolStartYear + 1}`;
+
+  // Tìm Thứ 2 đầu tiên của tháng 9 trong schoolStartYear (Tuần 1)
+  const sept1 = new Date(schoolStartYear, 8, 1);
+  const sept1Day = sept1.getDay();
+  const diffToFirstMon = sept1Day === 1 ? 0 : (8 - (sept1Day === 0 ? 7 : sept1Day)) % 7;
+  const firstMondaySept = new Date(schoolStartYear, 8, 1 + diffToFirstMon);
+  firstMondaySept.setHours(0, 0, 0, 0);
+
+  // Tính số tuần năm học
+  const diffMs = monday.getTime() - firstMondaySept.getTime();
+  const diffWeeks = Math.round(diffMs / (7 * 24 * 60 * 60 * 1000));
+  const schoolWeekNumber = Math.max(1, diffWeeks + 1);
+
+  // Tính tuần dương lịch (ISO Week)
+  const calendarWeekNumber = getWeekNumber(monday);
+  const calendarYear = monday.getFullYear();
+
+  // Định dạng ngày yyyy-MM-dd
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const formatDateStr = (dt: Date) => `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+
+  const startDateStr = formatDateStr(monday);
+  const endDateStr = formatDateStr(friday);
+  const formattedRange = `${monday.getDate()}/${monday.getMonth() + 1}/${monday.getFullYear()} ĐẾN ${friday.getDate()}/${friday.getMonth() + 1}/${friday.getFullYear()}`;
+
+  const days = [0, 1, 2, 3, 4].map((i) => {
+    const dt = new Date(monday);
+    dt.setDate(monday.getDate() + i);
+    return {
+      dateStr: formatDateStr(dt),
+      dayOfWeek: i + 2,
+      dayLabel: `Thứ ${i + 2}`,
+      shortDate: `${pad(dt.getDate())}/${pad(dt.getMonth() + 1)}`,
+    };
+  });
+
+  return {
+    schoolYear,
+    schoolWeekNumber,
+    calendarWeekNumber,
+    calendarYear,
+    startDate: monday,
+    endDate: friday,
+    startDateStr,
+    endDateStr,
+    formattedRange,
+    days,
+  };
+}
+
+/**
+ * Lấy thông tin tuần từ số tuần năm học và năm bắt đầu
+ */
+export function getSchoolWeekFromNumber(weekNumber: number, schoolStartYear: number): SchoolWeekInfo {
+  const sept1 = new Date(schoolStartYear, 8, 1);
+  const sept1Day = sept1.getDay();
+  const diffToFirstMon = sept1Day === 1 ? 0 : (8 - (sept1Day === 0 ? 7 : sept1Day)) % 7;
+  const firstMondaySept = new Date(schoolStartYear, 8, 1 + diffToFirstMon);
+  firstMondaySept.setHours(0, 0, 0, 0);
+
+  const targetMonday = new Date(firstMondaySept);
+  targetMonday.setDate(firstMondaySept.getDate() + (weekNumber - 1) * 7);
+
+  return getSchoolWeekInfo(targetMonday);
+}
+
 /**
  * Lấy thứ trong tuần (2=T2, 3=T3, ..., 7=T7, CN=8)
  */

@@ -46,6 +46,7 @@ model User {
   permissions  String[] @default([]) // For fine-grained access control
   isActive     Boolean  @default(true) @map("is_active")
   requiresPasswordChange Boolean @default(false) @map("requires_password_change")
+  passwordChangedAt      DateTime? @map("password_changed_at")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 

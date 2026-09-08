@@ -32,6 +32,7 @@ import { format, addDays } from 'date-fns';
 import { DiningAllocationResult } from '@/lib/dining-court-service';
 import { DiningCourtSummaryPrint } from './dining-court-summary-print';
 import { DiningCourtManualDialog } from './dining-court-manual-dialog';
+import { DiningCourtWeeklyMatrix } from './dining-court-weekly-matrix';
 import { splitVietnameseName } from '@/lib/utils';
 import Swal from 'sweetalert2';
 import { useSession } from 'next-auth/react';
@@ -44,6 +45,7 @@ interface DiningCourtTabProps {
 export function DiningCourtTab({ cutoffTime, schoolName }: DiningCourtTabProps) {
   const { data: session } = useSession();
   const isCashier = session?.user?.role === "CASHIER";
+  const [courtViewMode, setCourtViewMode] = useState<'weekly_matrix' | 'daily_detail'>('weekly_matrix');
   const [selectedDate, setSelectedDate] = useState<string>(() => format(new Date(), 'yyyy-MM-dd'));
   const [data, setData] = useState<DiningAllocationResult | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -292,9 +294,42 @@ export function DiningCourtTab({ cutoffTime, schoolName }: DiningCourtTabProps) 
   }, [data]);
 
   return (
-    <div className="space-y-6">
-      {/* 1. Thanh điều khiển ngày & Nút hành động */}
-      <Card className="border-slate-200 shadow-2xs bg-white">
+    <div className="space-y-4">
+      {/* 0. Thanh chuyển đổi chế độ xem giữa Ma trận Tuần và Chi tiết Ngày */}
+      <div className="no-print flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 max-w-lg shadow-2xs">
+        <button
+          type="button"
+          onClick={() => setCourtViewMode('weekly_matrix')}
+          className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+            courtViewMode === 'weekly_matrix'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+          }`}
+        >
+          <Calendar className="h-4 w-4" />
+          <span>Thống kê theo Tuần (Ma trận)</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setCourtViewMode('daily_detail')}
+          className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+            courtViewMode === 'daily_detail'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+          }`}
+        >
+          <Layers className="h-4 w-4" />
+          <span>Chi tiết theo Ngày (Xe cơm & Điểm danh)</span>
+        </button>
+      </div>
+
+      {courtViewMode === 'weekly_matrix' ? (
+        <DiningCourtWeeklyMatrix schoolName={schoolName} />
+      ) : (
+        <div className="space-y-6">
+          {/* 1. Thanh điều khiển ngày & Nút hành động */}
+          <Card className="border-slate-200 shadow-2xs bg-white">
         <CardContent className="p-4 sm:p-5">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             {/* Chọn ngày */}
@@ -967,6 +1002,8 @@ export function DiningCourtTab({ cutoffTime, schoolName }: DiningCourtTabProps) 
           )}
         </DialogContent>
       </Dialog>
+        </div>
+      )}
     </div>
   );
 }

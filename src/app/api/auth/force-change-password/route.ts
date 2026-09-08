@@ -45,6 +45,7 @@ export async function POST(req: Request) {
       data: {
         passwordHash: newHash,
         requiresPasswordChange: false,
+        passwordChangedAt: new Date(),
       },
     });
 
