@@ -1,4 +1,4 @@
-﻿import ExcelJS from "exceljs";
+import ExcelJS from "exceljs";
 import { removeVietnameseTones, formatDateDDMMYYYY, parseDateValue, compareClassNames } from "./utils";
 
 // ==================== TYPES ====================
@@ -834,6 +834,59 @@ function isoWeekToDate(year: number, week: number, dayOfWeek: number): Date {
   return result;
 }
 
+function parseSpecialMealDayOfWeek(text: string): number | null {
+  if (!text) return null;
+  const s = text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d");
+
+  if (/thu\s*2|\bhai\b|\bt2\b/.test(s)) return 1;
+  if (/thu\s*3|\bba\b|\bt3\b/.test(s)) return 2;
+  if (/thu\s*4|thu\s*tu|\btu\b|\bt4\b/.test(s)) return 3;
+  if (/thu\s*5|\bnam\b|\bt5\b/.test(s)) return 4;
+  if (/thu\s*6|\bsau\b|\bt6\b/.test(s)) return 5;
+  if (/thu\s*7|\bbay\b|\bt7\b/.test(s)) return 6;
+  return null;
+}
+
+function parseSpecialMealWeekNumber(text: string): number | null {
+  if (!text) return null;
+  const s = text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .trim();
+  const m = s.match(/(?:tuan|w|t)\s*(\d+)/);
+  if (m) {
+    const num = parseInt(m[1], 10);
+    if (!isNaN(num) && num >= 1 && num <= 53) return num;
+  }
+  const num = parseInt(s, 10);
+  if (!isNaN(num) && num >= 1 && num <= 53) return num;
+  return null;
+}
+
+function extractExcelCellString(cell: ExcelJS.Cell): string {
+  if (!cell || cell.value === null || cell.value === undefined) return "";
+  const val = cell.value;
+  if (typeof val === "object") {
+    if ("richText" in val && Array.isArray(val.richText)) {
+      return val.richText.map((t: any) => t.text).join("");
+    }
+    if ("result" in val) {
+      return String(val.result || "");
+    }
+    if ("text" in val) {
+      return String(val.text || "");
+    }
+    return String(val);
+  }
+  return String(val);
+}
+
 export async function parseSpecialMealExcel(
   buffer: Uint8Array,
   year: number,
@@ -848,92 +901,89 @@ export async function parseSpecialMealExcel(
   const columns: Array<{ colIndex: number; weekNumber: number; dayOfWeek: number }> = [];
   let headerRowIndex = 3; // Default
 
-  // Scan rows 1-5 to find header structure
-  for (let r = 1; r <= 5; r++) {
+  // 1. Quét tìm dòng header chứa "STT" trong 10 dòng đầu
+  for (let r = 1; r <= 10; r++) {
     const row = sheet.getRow(r);
-    row.eachCell((cell) => {
-      const val = String(cell.value || "").toUpperCase();
+    for (let c = 1; c <= 20; c++) {
+      const val = extractExcelCellString(row.getCell(c)).toUpperCase();
       if (val.includes("STT")) {
         headerRowIndex = r;
-      }
-    });
-  }
-
-  const colDay: Record<number, number> = {};
-  const colWeek: Record<number, number> = {};
-
-  const dayMap: Record<string, number> = {
-    hai: 1, ba: 2, tu: 3, tư: 3, nam: 4, năm: 4, sau: 5, sáu: 5, bay: 6, bảy: 6,
-  };
-
-  for (let r = 1; r <= 5; r++) {
-    const row = sheet.getRow(r);
-    for (let c = 1; c <= sheet.columnCount; c++) {
-      const cell = row.getCell(c);
-
-      let valStr = "";
-      const valObj = cell.value;
-      if (valObj && typeof valObj === "object" && "richText" in valObj) {
-        valStr = (valObj.richText || []).map((rt: any) => rt.text).join("");
-      } else {
-        valStr = String(valObj || "");
-      }
-
-      if (!valStr && cell.isMerged && cell.master) {
-        const mValObj = cell.master.value;
-        if (mValObj && typeof mValObj === "object" && "richText" in mValObj) {
-          valStr = (mValObj.richText || []).map((rt: any) => rt.text).join("");
-        } else {
-          valStr = String(mValObj || "");
-        }
-      }
-
-      const s = removeVietnameseTones(valStr).toLowerCase().trim();
-
-      // Find day
-      for (const [key, num] of Object.entries(dayMap)) {
-        if (new RegExp(`\\bthu\\s*${key}\\b|\\b${key}\\b|\\bt${num + 1}\\b`).test(s)) {
-          colDay[c] = num;
-          break;
-        }
-      }
-
-      // Find week
-      const weekMatch = s.match(/tuan\s*(\d+)/);
-      if (weekMatch) {
-        colWeek[c] = parseInt(weekMatch[1], 10);
+        break;
       }
     }
   }
 
-  for (const c of Object.keys(colDay)) {
-    const colIdx = parseInt(c, 10);
-    if (colDay[colIdx] && colWeek[colIdx]) {
-      const weekNumber = colWeek[colIdx];
+  // 2. Quét thứ trong tuần chung (nếu có ghi trên tiêu đề hoặc dòng đầu)
+  let sheetDefaultDay: number | null = null;
+  for (let r = 1; r <= headerRowIndex; r++) {
+    const row = sheet.getRow(r);
+    for (let c = 1; c <= 30; c++) {
+      const val = extractExcelCellString(row.getCell(c));
+      const day = parseSpecialMealDayOfWeek(val);
+      if (day) {
+        sheetDefaultDay = day;
+        break;
+      }
+    }
+    if (sheetDefaultDay) break;
+  }
+  // Nếu hoàn toàn không phát hiện thứ nào, mặc định là Thứ 4 (Thứ Tư = 3)
+  if (!sheetDefaultDay) {
+    sheetDefaultDay = 3;
+  }
+
+  // 3. Xác định vị trí các cột STT, Họ và tên, Lớp
+  let sttCol = 1, nameCol = 2, classCol = 3;
+  const headerRow = sheet.getRow(headerRowIndex);
+  for (let c = 1; c <= 30; c++) {
+    const s = removeVietnameseTones(extractExcelCellString(headerRow.getCell(c))).toLowerCase().trim();
+    if (s.includes("stt")) sttCol = c;
+    else if (s.includes("ho ten") || s.includes("hovaten") || s.includes("ten")) nameCol = c;
+    else if (s.includes("lop")) classCol = c;
+  }
+  const minDataCol = Math.max(sttCol, nameCol, classCol) + 1;
+
+  // 4. Nhận diện các cột tuần (từ minDataCol trở đi)
+  const maxCol = Math.max(sheet.columnCount || 0, sheet.actualColumnCount || 0, 30);
+  for (let c = minDataCol; c <= maxCol; c++) {
+    let weekNum: number | null = null;
+    let colDay: number | null = null;
+
+    for (let r = 1; r <= headerRowIndex; r++) {
+      const cell = sheet.getRow(r).getCell(c);
+      let val = extractExcelCellString(cell);
+      if (!val && cell.isMerged && cell.master) {
+        val = extractExcelCellString(cell.master);
+      }
+
+      if (!colDay) colDay = parseSpecialMealDayOfWeek(val);
+      if (!weekNum) weekNum = parseSpecialMealWeekNumber(val);
+    }
+
+    if (weekNum) {
       columns.push({
-        colIndex: colIdx,
-        weekNumber: weekNumber,
-        dayOfWeek: colDay[colIdx],
+        colIndex: c,
+        weekNumber: weekNum,
+        dayOfWeek: colDay || sheetDefaultDay,
       });
     }
   }
 
-  // Find header row columns for STT, HoTen, MaLop
-  let sttCol = 1, nameCol = 2, classCol = 3;
-  const headerRow = sheet.getRow(headerRowIndex);
-  for (let c = 1; c <= sheet.columnCount; c++) {
-    const s = removeVietnameseTones(String(headerRow.getCell(c).value || "")).toLowerCase().trim();
-    if (s.includes("stt")) sttCol = c;
-    else if (s.includes("ho ten") || s.includes("hovaten")) nameCol = c;
-    else if (s.includes("lop")) classCol = c;
+  if (columns.length === 0) {
+    errors.push({
+      row: headerRowIndex,
+      column: "Tiêu đề",
+      message: "Không tìm thấy cột tuần học nào trong file Excel (VD: 'TUẦN 1', 'TUẦN 2'...). Vui lòng kiểm tra lại dòng tiêu đề các cột.",
+    });
   }
 
+  // 5. Đọc dữ liệu từng dòng học sinh
   const startDataRow = headerRowIndex + 1;
   sheet.eachRow((row, rowNumber) => {
     if (rowNumber < startDataRow) return;
 
-    const hoTen = String(row.getCell(nameCol).value || "").trim();
-    const maLopRaw = String(row.getCell(classCol).value || "").trim();
+    const hoTen = extractExcelCellString(row.getCell(nameCol)).trim();
+    const maLopRaw = extractExcelCellString(row.getCell(classCol)).trim();
 
     if (!hoTen && !maLopRaw) return;
 
@@ -957,7 +1007,7 @@ export async function parseSpecialMealExcel(
         continue;
       }
 
-      const cellVal = String(row.getCell(col.colIndex).value || "").trim();
+      const cellVal = extractExcelCellString(row.getCell(col.colIndex)).trim();
       if (!cellVal) continue;
 
       const norm = removeVietnameseTones(cellVal).toLowerCase().replace(/[^a-z0-9]/g, "");

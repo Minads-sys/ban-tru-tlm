@@ -1501,26 +1501,30 @@ function SpecialMealPreviewTable({
                       {row.maLop}
                     </TableCell>
                     <TableCell>
-                      <div className="flex flex-wrap gap-1.5 py-1">
-                        {row.entries?.map((entry: any, eIdx: number) => (
-                          <span
-                            key={eIdx}
-                            className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${
-                              entry.shift === "TIET_4"
-                                ? "bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/50 dark:text-amber-200"
-                                : "bg-blue-50 text-blue-800 border-blue-200 dark:bg-blue-950/50 dark:text-blue-200"
-                            }`}
-                            title={`Ngày ${entry.date}`}
-                          >
-                            Tuần {entry.weekNumber}: {entry.shift === "TIET_4" ? "Tiết 4" : "Tiết 5"}
-                            {entry.note && (
-                              <span className="ml-1 text-[10px] text-slate-500 font-normal">
-                                ({entry.note})
-                              </span>
-                            )}
-                          </span>
-                        ))}
-                      </div>
+                      {(!row.entries || row.entries.length === 0) ? (
+                        <span className="text-xs text-slate-400 italic">Không có ca ăn nào</span>
+                      ) : (
+                        <div className="flex flex-wrap gap-1.5 py-1">
+                          {row.entries.map((entry: any, eIdx: number) => (
+                            <span
+                              key={eIdx}
+                              className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${
+                                entry.shift === "TIET_4"
+                                  ? "bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/50 dark:text-amber-200"
+                                  : "bg-blue-50 text-blue-800 border-blue-200 dark:bg-blue-950/50 dark:text-blue-200"
+                              }`}
+                              title={`Ngày ${entry.date}`}
+                            >
+                              Tuần {entry.weekNumber}: {entry.shift === "TIET_4" ? "Tiết 4" : "Tiết 5"}
+                              {entry.note && (
+                                <span className="ml-1 text-[10px] text-slate-500 font-normal">
+                                  ({entry.note})
+                                </span>
+                              )}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell className="text-right">
                       {isRowError ? (
