@@ -15,10 +15,34 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { CalendarDays, Save, Loader2, Copy, CheckCircle, X, ChevronLeft, ChevronRight, Trash2, Info } from "lucide-react";
+import { CalendarDays, Save, Loader2, Copy, CheckCircle, X, ChevronLeft, ChevronRight, Trash2, Info, Sparkles, Search, Filter, ExternalLink } from "lucide-react";
 import { format, parse, startOfWeek, endOfWeek, addDays, addWeeks } from "date-fns";
 import { compareClassNames } from "@/lib/utils";
+
+interface SpecialMealItem {
+  id: string;
+  studentId: string;
+  studentCode: string;
+  boardingCode: string;
+  fullName: string;
+  classId: string;
+  className: string;
+  dateStr: string;
+  displayDate: string;
+  dayOfWeekName: string;
+  shift: "TIET_4" | "TIET_5";
+  scheduleName: string;
+  source: string;
+  createdAt: string;
+}
 
 interface ScheduleData {
   classId: string;
@@ -69,6 +93,108 @@ export default function SchedulePage() {
   const [defaultVisibleDays, setDefaultVisibleDays] = useState<string[]>(["monday", "tuesday", "wednesday", "thursday", "friday"]);
   const [visibleDays, setVisibleDays] = useState<string[]>(["monday", "tuesday", "wednesday", "thursday", "friday"]);
   const [hideEmptyClasses, setHideEmptyClasses] = useState(false);
+
+  // Special Meal States
+  const [specialMeals, setSpecialMeals] = useState<SpecialMealItem[]>([]);
+  const [specialScheduleNames, setSpecialScheduleNames] = useState<string[]>([]);
+  const [isSpecialModalOpen, setIsSpecialModalOpen] = useState(false);
+  const [specialFilterSchedule, setSpecialFilterSchedule] = useState("ALL");
+  const [specialSearchTerm, setSpecialSearchTerm] = useState("");
+  const [specialAllWeeks, setSpecialAllWeeks] = useState(false);
+  const [specialLoading, setSpecialLoading] = useState(false);
+
+  const fetchSpecialMeals = async () => {
+    if (!weekString) return;
+    const [y, w] = weekString.split("-W").map(Number);
+    const year = y || new Date().getFullYear();
+    const weekNumber = w || 1;
+
+    setSpecialLoading(true);
+    try {
+      let url = `/api/schedule/special-meals?year=${year}&weekNumber=${weekNumber}`;
+      if (specialAllWeeks) url += "&allWeeks=true";
+      if (specialFilterSchedule && specialFilterSchedule !== "ALL") {
+        url += `&scheduleName=${encodeURIComponent(specialFilterSchedule)}`;
+      }
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.success) {
+        setSpecialMeals(data.items || []);
+        setSpecialScheduleNames(data.scheduleNames || []);
+      }
+    } catch (e) {
+      console.error("Lỗi khi tải lịch ăn đặc biệt:", e);
+    } finally {
+      setSpecialLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSpecialMeals();
+  }, [weekString, specialAllWeeks, specialFilterSchedule]);
+
+  const handleDeleteSpecialMeal = async (id: string, studentName: string, dateStr: string) => {
+    if (isAccountant) return;
+    const result = await Swal.fire({
+      title: "Xác nhận xóa suất ăn đặc biệt?",
+      text: `Bạn có chắc chắn muốn xóa suất ăn đặc biệt của học sinh "${studentName}" vào ngày ${dateStr}?`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Xóa",
+      cancelButtonText: "Hủy",
+      confirmButtonColor: "#d33",
+    });
+
+    if (result.isConfirmed) {
+      try {
+        const res = await fetch(`/api/schedule/special-meals?id=${id}`, { method: "DELETE" });
+        const data = await res.json();
+        if (data.success) {
+          Swal.fire("Thành công", data.message, "success");
+          fetchSpecialMeals();
+        } else {
+          Swal.fire("Lỗi", data.error || "Không thể xóa", "error");
+        }
+      } catch {
+        Swal.fire("Lỗi", "Lỗi kết nối máy chủ", "error");
+      }
+    }
+  };
+
+  const handleDeleteBulkSpecialMeals = async (schedName: string) => {
+    if (isAccountant) return;
+    const [y, w] = weekString.split("-W").map(Number);
+    const year = y || new Date().getFullYear();
+    const weekNumber = w || 1;
+
+    const result = await Swal.fire({
+      title: `Xóa toàn bộ lịch "${schedName}"?`,
+      text: `Bạn có chắc muốn xóa tất cả suất ăn của lịch "${schedName}" trong Tuần ${weekNumber}/${year}?`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Xác nhận xóa hết",
+      cancelButtonText: "Hủy",
+      confirmButtonColor: "#d33",
+    });
+
+    if (result.isConfirmed) {
+      try {
+        const res = await fetch(
+          `/api/schedule/special-meals?scheduleName=${encodeURIComponent(schedName)}&year=${year}&weekNumber=${weekNumber}`,
+          { method: "DELETE" }
+        );
+        const data = await res.json();
+        if (data.success) {
+          Swal.fire("Thành công", data.message, "success");
+          fetchSpecialMeals();
+        } else {
+          Swal.fire("Lỗi", data.error || "Không thể xóa", "error");
+        }
+      } catch {
+        Swal.fire("Lỗi", "Lỗi kết nối máy chủ", "error");
+      }
+    }
+  };
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -319,10 +445,32 @@ export default function SchedulePage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6 flex items-center gap-2">
-        <CalendarDays className="h-6 w-6 text-blue-600" />
-        Thời khóa biểu Bán trú
-      </h1>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <h1 className="text-2xl font-bold flex items-center gap-2">
+          <CalendarDays className="h-6 w-6 text-blue-600" />
+          Thời khóa biểu Bán trú
+        </h1>
+
+        {/* Nút mở danh sách Lịch ăn đặc biệt */}
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => setIsSpecialModalOpen(true)}
+          className="h-10 border-purple-300 text-purple-700 bg-purple-50/90 hover:bg-purple-100 hover:text-purple-800 dark:border-purple-800 dark:bg-purple-950/40 dark:text-purple-300 flex items-center gap-2 shadow-2xs self-start sm:self-auto cursor-pointer"
+        >
+          <Sparkles className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+          <span className="font-semibold">Lịch ăn đặc biệt</span>
+          {specialMeals.length > 0 ? (
+            <Badge className="bg-purple-600 hover:bg-purple-600 text-white text-xs px-2 py-0.5 rounded-full font-bold">
+              {specialMeals.length} suất
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="text-xs text-purple-600 border-purple-200">
+              0
+            </Badge>
+          )}
+        </Button>
+      </div>
 
       {isAccountant && (
         <div className="mb-6 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50/80 p-4 text-sm text-amber-900 shadow-xs">
@@ -376,11 +524,23 @@ export default function SchedulePage() {
                   <ChevronRight className="h-5 w-5" />
                 </Button>
               </div>
-              {weekString && (
-                <p className="text-sm font-medium text-blue-600 bg-blue-50 p-2 rounded-md border border-blue-100 w-fit mt-2">
-                  {getWeekDateRange(weekString)}
-                </p>
-              )}
+              <div className="flex flex-wrap items-center gap-2 mt-2">
+                {weekString && (
+                  <p className="text-sm font-medium text-blue-600 bg-blue-50 p-2 rounded-md border border-blue-100 w-fit">
+                    {getWeekDateRange(weekString)}
+                  </p>
+                )}
+                {specialMeals.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setIsSpecialModalOpen(true)}
+                    className="text-xs font-semibold text-purple-700 bg-purple-100/80 hover:bg-purple-200 border border-purple-200 px-3 py-2 rounded-md flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Sparkles className="h-3.5 w-3.5 text-purple-600" />
+                    <span>Tuần này có {specialMeals.length} suất ăn đặc biệt ({Array.from(new Set(specialMeals.map(s => s.scheduleName))).join(", ")}) &rarr;</span>
+                  </button>
+                )}
+              </div>
             </div>
             
             {!isAccountant && (
@@ -640,6 +800,243 @@ export default function SchedulePage() {
           </p>
         </CardContent>
       </Card>
+
+      {/* Dialog Quản lý Lịch Ăn Đặc Biệt */}
+      <Dialog open={isSpecialModalOpen} onOpenChange={setIsSpecialModalOpen}>
+        <DialogContent className="max-w-4xl w-[95vw] max-h-[90vh] flex flex-col p-0 gap-0 overflow-hidden">
+          <DialogHeader className="p-6 pb-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
+            <div className="flex items-center justify-between pr-6">
+              <div className="space-y-1">
+                <DialogTitle className="text-xl font-bold flex items-center gap-2 text-slate-900 dark:text-slate-100">
+                  <Sparkles className="h-5 w-5 text-purple-600" />
+                  Danh Sách Lịch Ăn Đặc Biệt
+                </DialogTitle>
+                <DialogDescription>
+                  {specialAllWeeks
+                    ? "Hiển thị toàn bộ lịch ăn đặc biệt của tất cả các tuần"
+                    : `Lịch ăn đặc biệt trong Tuần ${currentWeek} / ${currentYear} (${getWeekDateRange(weekString)})`}
+                </DialogDescription>
+              </div>
+              <Badge className="bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-950 dark:text-purple-300 font-semibold px-3 py-1">
+                Tổng: {specialMeals.filter((sm) => {
+                  if (!specialSearchTerm.trim()) return true;
+                  const term = specialSearchTerm.toLowerCase();
+                  return (
+                    sm.fullName.toLowerCase().includes(term) ||
+                    sm.className.toLowerCase().includes(term) ||
+                    sm.boardingCode.toLowerCase().includes(term) ||
+                    sm.studentCode.toLowerCase().includes(term) ||
+                    sm.scheduleName.toLowerCase().includes(term)
+                  );
+                }).length} suất
+              </Badge>
+            </div>
+
+            {/* Filter toolbar */}
+            <div className="flex flex-wrap items-center gap-3 pt-4">
+              {/* Search input */}
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <Input
+                  placeholder="Tìm học sinh, lớp, mã bán trú..."
+                  value={specialSearchTerm}
+                  onChange={(e) => setSpecialSearchTerm(e.target.value)}
+                  className="pl-9 h-9 text-sm"
+                />
+              </div>
+
+              {/* Schedule Name Filter */}
+              <div className="flex items-center gap-1.5">
+                <Filter className="h-4 w-4 text-slate-500" />
+                <select
+                  value={specialFilterSchedule}
+                  onChange={(e) => setSpecialFilterSchedule(e.target.value)}
+                  className="h-9 px-3 rounded-md border border-slate-200 bg-white text-sm dark:bg-slate-900 dark:border-slate-800"
+                >
+                  <option value="ALL">Tất cả lịch ({specialScheduleNames.length})</option>
+                  {specialScheduleNames.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Toggle Current Week vs All Weeks */}
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  type="button"
+                  variant={specialAllWeeks ? "outline" : "default"}
+                  onClick={() => setSpecialAllWeeks(false)}
+                  className="h-9 text-xs font-semibold"
+                >
+                  Tuần hiện tại
+                </Button>
+                <Button
+                  size="sm"
+                  type="button"
+                  variant={specialAllWeeks ? "default" : "outline"}
+                  onClick={() => setSpecialAllWeeks(true)}
+                  className="h-9 text-xs font-semibold"
+                >
+                  Tất cả các tuần
+                </Button>
+              </div>
+
+              {/* Bulk delete button if specific schedule selected */}
+              {!isAccountant && specialFilterSchedule !== "ALL" && !specialAllWeeks && (
+                <Button
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                  onClick={() => handleDeleteBulkSpecialMeals(specialFilterSchedule)}
+                  className="h-9 text-xs text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+                >
+                  <Trash2 className="h-3.5 w-3.5 mr-1" />
+                  Xóa lịch "{specialFilterSchedule}" tuần này
+                </Button>
+              )}
+            </div>
+          </DialogHeader>
+
+          {/* Table container */}
+          <div className="flex-1 overflow-y-auto p-6 pt-2">
+            {specialLoading ? (
+              <div className="flex flex-col items-center justify-center py-16 text-slate-500">
+                <Loader2 className="h-8 w-8 animate-spin text-purple-600 mb-2" />
+                <p className="text-sm">Đang tải danh sách lịch đặc biệt...</p>
+              </div>
+            ) : (() => {
+              const filtered = specialMeals.filter((sm) => {
+                if (!specialSearchTerm.trim()) return true;
+                const term = specialSearchTerm.toLowerCase();
+                return (
+                  sm.fullName.toLowerCase().includes(term) ||
+                  sm.className.toLowerCase().includes(term) ||
+                  sm.boardingCode.toLowerCase().includes(term) ||
+                  sm.studentCode.toLowerCase().includes(term) ||
+                  sm.scheduleName.toLowerCase().includes(term)
+                );
+              });
+
+              if (filtered.length === 0) {
+                return (
+                  <div className="flex flex-col items-center justify-center py-16 text-center">
+                    <div className="h-12 w-12 rounded-full bg-purple-50 flex items-center justify-center text-purple-600 mb-3">
+                      <Sparkles className="h-6 w-6" />
+                    </div>
+                    <p className="text-base font-semibold text-slate-700 dark:text-slate-200">
+                      Không tìm thấy lịch ăn đặc biệt nào
+                    </p>
+                    <p className="text-xs text-slate-500 max-w-sm mt-1">
+                      {specialMeals.length === 0
+                        ? "Tuần này chưa có học sinh nào được import lịch ăn đặc biệt (ngoại ngữ, GDQP...)."
+                        : "Không có kết quả khớp với từ khóa tìm kiếm hoặc bộ lọc."}
+                    </p>
+                    {!isAccountant && (
+                      <Button
+                        size="sm"
+                        className="mt-4 bg-purple-600 hover:bg-purple-700 text-white"
+                        asChild
+                      >
+                        <a href="/admin/import">
+                          <ExternalLink className="h-4 w-4 mr-1.5" />
+                          Đi tới trang Import Excel
+                        </a>
+                      </Button>
+                    )}
+                  </div>
+                );
+              }
+
+              return (
+                <div className="border border-slate-200 dark:border-slate-800 rounded-lg overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-slate-50 dark:bg-slate-800/60">
+                        <TableHead className="w-12 text-center">STT</TableHead>
+                        <TableHead className="w-28 text-center font-semibold">Mã Bán Trú</TableHead>
+                        <TableHead className="font-semibold">Họ và tên</TableHead>
+                        <TableHead className="w-24 text-center font-semibold">Lớp gốc</TableHead>
+                        <TableHead className="w-32 text-center font-semibold">Tên Lịch</TableHead>
+                        <TableHead className="w-36 text-center font-semibold">Ngày ăn</TableHead>
+                        <TableHead className="w-24 text-center font-semibold">Ca ăn</TableHead>
+                        {!isAccountant && <TableHead className="w-16 text-center">Xóa</TableHead>}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filtered.map((sm, index) => (
+                        <TableRow key={sm.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-900/50">
+                          <TableCell className="text-center font-mono text-xs text-slate-500">{index + 1}</TableCell>
+                          <TableCell className="text-center font-mono text-xs font-semibold text-blue-700 dark:text-blue-400">
+                            {sm.boardingCode}
+                          </TableCell>
+                          <TableCell className="font-medium text-slate-900 dark:text-slate-100">
+                            {sm.fullName}
+                          </TableCell>
+                          <TableCell className="text-center font-bold text-slate-700 dark:text-slate-300">
+                            {sm.className}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Badge className="bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-950 dark:text-purple-300 font-semibold text-xs">
+                              {sm.scheduleName}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-center text-xs">
+                            <div className="font-medium text-slate-800 dark:text-slate-200">{sm.dayOfWeekName}</div>
+                            <div className="text-[11px] text-slate-500">{sm.displayDate}</div>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {sm.shift === "TIET_4" ? (
+                              <Badge className="bg-orange-100 text-orange-700 border-orange-200 text-xs">Tiết 4</Badge>
+                            ) : (
+                              <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-xs">Tiết 5</Badge>
+                            )}
+                          </TableCell>
+                          {!isAccountant && (
+                            <TableCell className="text-center">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => handleDeleteSpecialMeal(sm.id, sm.fullName, sm.displayDate)}
+                                className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50 cursor-pointer"
+                                title="Xóa suất ăn này"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          )}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              );
+            })()}
+          </div>
+
+          {/* Dialog Footer */}
+          <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 flex items-center justify-between">
+            <div className="text-xs text-slate-500">
+              * Suất ăn đặc biệt sẽ được ghép thành "Lớp ảo" khi phân bổ sân ăn tại mục <strong>Chia sân ăn</strong>.
+            </div>
+            <div className="flex items-center gap-2">
+              {!isAccountant && (
+                <Button variant="outline" size="sm" asChild>
+                  <a href="/admin/import" className="flex items-center gap-1.5">
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    <span>Import thêm lịch</span>
+                  </a>
+                </Button>
+              )}
+              <Button size="sm" variant="default" onClick={() => setIsSpecialModalOpen(false)}>
+                Đóng
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
