@@ -56,12 +56,20 @@ export function DiningCourtManualDialog({
   const [courts, setCourts] = useState<ManualCourtItem[]>([]);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
-  // Tạo map tra cứu nhanh thông tin lớp học từ availableClasses
+  // Tạo map tra cứu nhanh thông tin lớp học từ availableClasses (hỗ trợ theo ca để tránh đè dữ liệu)
   const classMap = useMemo(() => {
     const map = new Map<string, ClassMealSummary>();
     if (data?.availableClasses) {
-      data.availableClasses.TIET_4.forEach((c) => map.set(c.classId, c));
-      data.availableClasses.TIET_5.forEach((c) => map.set(c.classId, c));
+      data.availableClasses.TIET_4.forEach((c) => {
+        map.set(c.classId, c);
+        map.set(`${c.classId}::TIET_4`, c);
+      });
+      data.availableClasses.TIET_5.forEach((c) => {
+        if (!map.has(c.classId)) {
+          map.set(c.classId, c);
+        }
+        map.set(`${c.classId}::TIET_5`, c);
+      });
     }
     return map;
   }, [data]);
@@ -472,7 +480,7 @@ export function DiningCourtManualDialog({
                 {currentShiftCourts.map((court) => {
                   // Tính tổng suất của sân
                   const courtMeals = court.classIds.reduce((sum, cid) => {
-                    const cls = classMap.get(cid);
+                    const cls = classMap.get(`${cid}::${court.shift}`) || classMap.get(cid);
                     return sum + (cls ? cls.totalMeals : 0);
                   }, 0);
 
@@ -563,7 +571,7 @@ export function DiningCourtManualDialog({
                             <span className="text-xs text-slate-400 italic">Chưa có lớp nào trong sân này.</span>
                           ) : (
                             court.classIds.map((cid) => {
-                              const cls = classMap.get(cid);
+                              const cls = classMap.get(`${cid}::${court.shift}`) || classMap.get(cid);
                               return (
                                 <div
                                   key={cid}

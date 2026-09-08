@@ -91,6 +91,17 @@ export const COURT_IDEAL_MAX = 60;
 export const COURT_TARGET_SUM = 50;
 
 /**
+ * Rút trích tên lịch đặc biệt gốc từ classId lớp ảo
+ * Ví dụ: "SPECIAL::NN2 Tieng Han::TIET_4 (1)" -> "NN2 Tieng Han"
+ */
+export function extractSpecialScheduleName(classId: string): string {
+  return classId
+    .replace(/^SPECIAL::/, "")
+    .replace(/::TIET_[45]/, "")
+    .replace(/ \(\d+\)$/, "");
+}
+
+/**
  * Thuật toán ghép lớp vào sân theo tiêu chuẩn:
  * - Ưu tiên 2 lớp / sân sao cho tổng số suất dao động từ 40 - 60
  * - Sức chứa tối đa 60 suất / sân
@@ -170,8 +181,8 @@ export function pairClassesIntoCourts(
       const isSpecialA = classA.classId.startsWith("SPECIAL::");
       const isSpecialB = classB.classId.startsWith("SPECIAL::");
       if (isSpecialA && isSpecialB) {
-        const nameA = classA.classId.replace("SPECIAL::", "").replace(/ \(\d+\)$/, "");
-        const nameB = classB.classId.replace("SPECIAL::", "").replace(/ \(\d+\)$/, "");
+        const nameA = extractSpecialScheduleName(classA.classId);
+        const nameB = extractSpecialScheduleName(classB.classId);
         if (nameA !== nameB) continue;
       }
 
@@ -246,8 +257,8 @@ export function pairClassesIntoCourts(
     const isSpecialA = a.classId.startsWith("SPECIAL::");
     const isSpecialB = b.classId.startsWith("SPECIAL::");
     if (isSpecialA && isSpecialB) {
-      const nameA = a.classId.replace("SPECIAL::", "").replace(/ \(\d+\)$/, "");
-      const nameB = b.classId.replace("SPECIAL::", "").replace(/ \(\d+\)$/, "");
+      const nameA = extractSpecialScheduleName(a.classId);
+      const nameB = extractSpecialScheduleName(b.classId);
       return nameA === nameB;
     }
     return true; // Lớp thường + lớp thường hoặc lớp thường + lớp ảo: OK
@@ -321,8 +332,8 @@ export function pairClassesIntoCourts(
         const specialClassesI = courts[i].classes.filter((c) => c.classId.startsWith("SPECIAL::"));
         const specialClassesJ = courts[j].classes.filter((c) => c.classId.startsWith("SPECIAL::"));
         if (specialClassesI.length > 0 && specialClassesJ.length > 0) {
-          const namesI = new Set(specialClassesI.map((c) => c.classId.replace("SPECIAL::", "").replace(/ \(\d+\)$/, "")));
-          const namesJ = new Set(specialClassesJ.map((c) => c.classId.replace("SPECIAL::", "").replace(/ \(\d+\)$/, "")));
+          const namesI = new Set(specialClassesI.map((c) => extractSpecialScheduleName(c.classId)));
+          const namesJ = new Set(specialClassesJ.map((c) => extractSpecialScheduleName(c.classId)));
           let hasConflict = false;
           for (const n of namesI) {
             for (const m of namesJ) {
@@ -681,7 +692,7 @@ export async function getDayMealClasses(dateStr: string) {
         else if (s.mealType === "CHAO") chaoCount++;
       }
 
-      const virtualId = `SPECIAL::${group.scheduleName}${suffix}`;
+      const virtualId = `SPECIAL::${group.scheduleName}::${group.shift}${suffix}`;
       const virtualClass: ClassMealSummary = {
         classId: virtualId,
         className: `Lớp ${group.scheduleName}${suffix}`,
@@ -807,8 +818,10 @@ export async function getDiningCourtAllocation(dateStr: string): Promise<DiningA
         const specialStudentSet = new Set(sc.specialStudentIds);
         for (const [vId, vClass] of classMap) {
           if (!vId.startsWith("SPECIAL::")) continue;
+          if (vClass.shift !== courtShift) continue;
           const matchedStudents = vClass.students.filter((s) => specialStudentSet.has(s.id));
           if (matchedStudents.length > 0) {
+            assignedClassIds.add(vId);
             let vMan = 0, vChay = 0, vChao = 0;
             for (const s of matchedStudents) {
               if (s.mealType === "MAN") vMan++;
@@ -1031,14 +1044,16 @@ export async function saveManualDiningCourtAllocation(
   const dayData = await getDayMealClasses(dateStr);
   const { date } = dayData;
 
-  // Validate: không để trùng lặp classId giữa các sân
-  const seenClasses = new Set<string>();
+  // Validate: không để trùng lặp classId giữa các sân trong cùng một ca
+  const seenClassesT4 = new Set<string>();
+  const seenClassesT5 = new Set<string>();
   for (const c of courtsData) {
+    const seen = c.shift === "TIET_4" ? seenClassesT4 : seenClassesT5;
     for (const cid of c.classIds) {
-      if (seenClasses.has(cid)) {
-        throw new Error(`Lớp ${cid} bị phân bổ trùng lặp ở nhiều hơn 1 sân.`);
+      if (seen.has(cid)) {
+        throw new Error(`Lớp ${cid} bị phân bổ trùng lặp ở nhiều hơn 1 sân trong ca ${c.shift === "TIET_4" ? "Tiết 4" : "Tiết 5"}.`);
       }
-      seenClasses.add(cid);
+      seen.add(cid);
     }
   }
 
@@ -1054,6 +1069,7 @@ export async function saveManualDiningCourtAllocation(
     cartNumber: number;
     cartName: string;
     classIds: string[];
+    specialStudentIds: string[];
     mode: string;
     note: string | null;
   }> = [];
@@ -1063,6 +1079,16 @@ export async function saveManualDiningCourtAllocation(
   for (const c of tiet4Inputs) {
     const num = currentCourtNumber++;
     const cartNum = Math.ceil(num / 2);
+    const regularClassIds = c.classIds.filter((cid) => !cid.startsWith("SPECIAL::"));
+    const specialClassIds = c.classIds.filter((cid) => cid.startsWith("SPECIAL::"));
+    const specialStudentIds: string[] = [];
+    for (const sid of specialClassIds) {
+      const vClass = dayData.classMap.get(sid);
+      if (vClass) {
+        specialStudentIds.push(...vClass.students.map((s) => s.id));
+      }
+    }
+
     normalizedCourts.push({
       date,
       shift: "TIET_4",
@@ -1070,7 +1096,8 @@ export async function saveManualDiningCourtAllocation(
       courtName: c.courtName || `Sân ${num}`,
       cartNumber: cartNum,
       cartName: c.cartName || `Xe ${cartNum}`,
-      classIds: c.classIds,
+      classIds: regularClassIds,
+      specialStudentIds,
       mode: "MANUAL",
       note: c.note || null,
     });
@@ -1079,6 +1106,16 @@ export async function saveManualDiningCourtAllocation(
   for (const c of tiet5Inputs) {
     const num = currentCourtNumber++;
     const cartNum = Math.ceil(num / 2);
+    const regularClassIds = c.classIds.filter((cid) => !cid.startsWith("SPECIAL::"));
+    const specialClassIds = c.classIds.filter((cid) => cid.startsWith("SPECIAL::"));
+    const specialStudentIds: string[] = [];
+    for (const sid of specialClassIds) {
+      const vClass = dayData.classMap.get(sid);
+      if (vClass) {
+        specialStudentIds.push(...vClass.students.map((s) => s.id));
+      }
+    }
+
     normalizedCourts.push({
       date,
       shift: "TIET_5",
@@ -1086,7 +1123,8 @@ export async function saveManualDiningCourtAllocation(
       courtName: c.courtName || `Sân ${num}`,
       cartNumber: cartNum,
       cartName: c.cartName || `Xe ${cartNum}`,
-      classIds: c.classIds,
+      classIds: regularClassIds,
+      specialStudentIds,
       mode: "MANUAL",
       note: c.note || null,
     });
