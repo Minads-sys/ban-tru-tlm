@@ -835,7 +835,7 @@ export default function BillingPage() {
     }
   };
 
-  const txStatusBadge = (status: string) => {
+  const txStatusBadge = (status: string, unmatchedReason?: string | null) => {
     switch (status) {
       case "MATCHED":
         return (
@@ -850,6 +850,13 @@ export default function BillingPage() {
           </Badge>
         );
       case "UNMATCHED":
+        if (unmatchedReason && unmatchedReason.toUpperCase().includes('HOÀN TIỀN')) {
+          return (
+            <Badge className="bg-red-100 text-red-700 border-red-300 flex items-center gap-1">
+              <AlertTriangle className="h-3 w-3" /> Cần hoàn tiền
+            </Badge>
+          );
+        }
         return (
           <Badge className="bg-amber-100 text-amber-700 border-amber-300 flex items-center gap-1">
             <AlertTriangle className="h-3 w-3" /> Chưa khớp
@@ -1518,9 +1525,16 @@ export default function BillingPage() {
                           {tx.content}
                         </p>
                         {tx.unmatchedReason && tx.status === "UNMATCHED" && (
-                          <p className="text-[11px] text-amber-600 mt-0.5 line-clamp-1 italic">
-                            Lý do: {tx.unmatchedReason}
-                          </p>
+                          <>
+                            <p className="text-[11px] text-amber-600 mt-0.5 line-clamp-1 italic">
+                              Lý do: {tx.unmatchedReason}
+                            </p>
+                            {tx.unmatchedReason.toUpperCase().includes('HOÀN TIỀN') && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-100 text-red-700 border border-red-300 text-[10px] font-bold mt-1">
+                                ⚠️ Cần hoàn tiền cho phụ huynh
+                              </span>
+                            )}
+                          </>
                         )}
                       </TableCell>
                       <TableCell>
@@ -1550,7 +1564,7 @@ export default function BillingPage() {
                       <TableCell className="font-mono text-xs text-gray-500 whitespace-nowrap">
                         {tx.sepayTransId || tx.id.slice(0, 8)}
                       </TableCell>
-                      <TableCell>{txStatusBadge(tx.status)}</TableCell>
+                      <TableCell>{txStatusBadge(tx.status, tx.unmatchedReason)}</TableCell>
                       <TableCell className="text-center">
                         {tx.status === "UNMATCHED" ? (
                           <div className="flex items-center justify-center gap-1.5">

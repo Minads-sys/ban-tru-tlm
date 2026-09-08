@@ -310,6 +310,61 @@ export async function processSepayTransaction(payload: SePayWebhookPayload) {
     };
   }
 
+  // === BẢO VỆ 1: Kiểm tra học sinh đã HỦY BÁN TRÚ ===
+  if (student.boardingStatus === 'CANCELLED') {
+    // Tìm xem học sinh còn nợ quyết toán (ADDITIONAL_PAYMENT chưa thu) không
+    const pendingSettlement = await prisma.settlementRecord.findFirst({
+      where: {
+        studentId: student.id,
+        settlementType: 'ADDITIONAL_PAYMENT',
+        isRefunded: false,
+      },
+      orderBy: { settlementDate: 'desc' },
+    });
+
+    // Tìm hóa đơn UNPAID/PARTIAL còn lại
+    const unpaidBillsCheck = await prisma.monthlyBill.findMany({
+      where: {
+        studentId: student.id,
+        paymentStatus: { in: [PaymentStatus.UNPAID, PaymentStatus.PARTIAL] },
+      },
+      include: { transactions: { where: { isVoided: false } } },
+    });
+
+    const totalRemainingDebt = unpaidBillsCheck.reduce((sum, b) => {
+      const paid = b.transactions.reduce((s, t) => s + Number(t.amount), 0);
+      return sum + Math.max(0, Number(b.finalAmount) - paid);
+    }, 0);
+
+    // Nếu HS đã hủy VÀ không còn nợ gì → CHẶN, đưa vào UNMATCHED chờ hoàn tiền
+    if (totalRemainingDebt <= 0 && !pendingSettlement) {
+      const unmatchedTx = await prisma.paymentTransaction.create({
+        data: {
+          sepayTransId,
+          studentId: student.id,
+          amount: transferAmount,
+          content: rawText,
+          transDate,
+          gateway,
+          accountNumber: displayAccount,
+          status: PaymentTransactionStatus.UNMATCHED,
+          unmatchedReason: `⚠️ Học sinh ${student.user?.fullName} (${student.boardingCode || student.studentCode}) đã HỦY BÁN TRÚ và KHÔNG CÒN NỢ. Giao dịch ${transferAmount.toLocaleString('vi-VN')}đ cần được HOÀN TIỀN cho phụ huynh.`,
+          rawPayload: JSON.stringify(payload),
+        },
+      });
+
+      broadcastChange('payment_transactions', 'INSERT', { transactionId: unmatchedTx.id });
+
+      return {
+        success: true,
+        matched: false,
+        message: `Học sinh ${student.user?.fullName} đã hủy bán trú và không còn nợ. Giao dịch cần hoàn tiền.`,
+        transaction: unmatchedTx,
+      };
+    }
+    // Nếu còn nợ → cho phép tiếp tục xuống logic tìm hóa đơn bình thường
+  }
+
   // 1. Tìm hóa đơn đúng tháng và năm (targetYear)
   let bill = await prisma.monthlyBill.findFirst({
     where: {
@@ -377,6 +432,40 @@ export async function processSepayTransaction(payload: SePayWebhookPayload) {
       success: true,
       matched: false,
       message: `Không tìm thấy hóa đơn tháng ${month} cho học sinh ${student.user?.fullName}`,
+      transaction: unmatchedTx,
+    };
+  }
+
+  // === BẢO VỆ 2: Chặn gạch nợ cho hóa đơn đã thanh toán đủ ===
+  const existingPaidAmount = bill.transactions
+    .filter(t => !t.isVoided)
+    .reduce((sum, t) => sum + Number(t.amount), 0);
+  const billFinalAmount = Number(bill.finalAmount);
+
+  if (bill.paymentStatus === PaymentStatus.PAID || (existingPaidAmount >= billFinalAmount && billFinalAmount > 0)) {
+    const excessAmount = existingPaidAmount + transferAmount - billFinalAmount;
+    const unmatchedTx = await prisma.paymentTransaction.create({
+      data: {
+        sepayTransId,
+        billId: bill.id,
+        studentId: student.id,
+        amount: transferAmount,
+        content: rawText,
+        transDate,
+        gateway,
+        accountNumber: displayAccount,
+        status: PaymentTransactionStatus.UNMATCHED,
+        unmatchedReason: `⚠️ Hóa đơn T${month}/${bill.year} của ${student.user?.fullName} (${student.boardingCode || student.studentCode}) ĐÃ THANH TOÁN ĐỦ ${billFinalAmount.toLocaleString('vi-VN')}đ. Giao dịch ${transferAmount.toLocaleString('vi-VN')}đ là TIỀN THỪA (tổng dư: ${excessAmount.toLocaleString('vi-VN')}đ). Cần HOÀN TIỀN cho phụ huynh.`,
+        rawPayload: JSON.stringify(payload),
+      },
+    });
+
+    broadcastChange('payment_transactions', 'INSERT', { transactionId: unmatchedTx.id });
+
+    return {
+      success: true,
+      matched: false,
+      message: `Hóa đơn T${month}/${bill.year} đã thanh toán đủ. Giao dịch ${transferAmount.toLocaleString('vi-VN')}đ là tiền thừa cần hoàn.`,
       transaction: unmatchedTx,
     };
   }

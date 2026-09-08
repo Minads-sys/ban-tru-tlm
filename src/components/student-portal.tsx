@@ -1057,6 +1057,21 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                 </Card>
               ) : (
                 <div className="space-y-6">
+                  {/* Banner cảnh báo tiền dư nếu có hóa đơn nào bị nộp thừa */}
+                  {bills.some(b => {
+                    const p = (b.transactions || []).reduce((s, t) => s + Number(t.amount), 0);
+                    return p > Number(b.finalAmount) && Number(b.finalAmount) > 0;
+                  }) && (
+                    <div className="p-3 bg-amber-50 border-2 border-amber-300 rounded-xl flex items-start gap-2.5">
+                      <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                      <div className="text-xs">
+                        <p className="font-bold text-amber-900">Phát hiện giao dịch chuyển thừa tiền</p>
+                        <p className="text-amber-800 mt-0.5">
+                          Có hóa đơn đã được thanh toán vượt mức. Vui lòng liên hệ nhà trường để được hoàn tiền phần dư.
+                        </p>
+                      </div>
+                    </div>
+                  )}
                   {debtBills.map((bill, index) => {
                     const isLatest = index === 0;
                     const isPartial = bill.paymentStatus === "PARTIAL";
@@ -1465,14 +1480,20 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                         <div>
                           <span className="text-slate-400 block">Đã thanh toán:</span>
                           <span className="font-bold text-emerald-700">
-                            {formatMoney(isPaid ? billTotal : paidAmount)}
+                            {formatMoney(paidAmount)}
                           </span>
                         </div>
                         <div>
-                          <span className="text-slate-400 block">Còn nợ:</span>
-                          <span className={`font-bold ${isPaid ? "text-slate-400" : "text-rose-600"}`}>
-                            {formatMoney(isPaid ? 0 : Math.max(0, billTotal - paidAmount))}
-                          </span>
+                          <span className="text-slate-400 block">{paidAmount > billTotal ? 'Tiền dư:' : 'Còn nợ:'}</span>
+                          {paidAmount > billTotal ? (
+                            <span className="font-bold text-amber-600">
+                              {formatMoney(paidAmount - billTotal)} (Chờ hoàn tiền)
+                            </span>
+                          ) : (
+                            <span className={`font-bold ${isPaid ? "text-slate-400" : "text-rose-600"}`}>
+                              {formatMoney(Math.max(0, billTotal - paidAmount))}
+                            </span>
+                          )}
                         </div>
                       </div>
 
@@ -1500,7 +1521,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                                   )}
                                 </div>
                                 <Badge variant="outline" className="bg-white text-emerald-700 border-emerald-300 text-[10px] shrink-0">
-                                  Gạch nợ thành công
+                                  Đã ghi nhận
                                 </Badge>
                               </div>
                             ))}
