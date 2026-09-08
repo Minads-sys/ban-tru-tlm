@@ -317,6 +317,9 @@ export async function POST(request: NextRequest) {
       const scheduleName = formData.get("scheduleName") as string;
       const year = parseInt(formData.get("year") as string) || new Date().getFullYear();
 
+      const monthParam = formData.get("month") as string;
+      const month = monthParam ? parseInt(monthParam, 10) : undefined;
+
       if (!scheduleName) {
         return NextResponse.json(
           { error: "Vui lòng nhập tên lịch đặc biệt" },
@@ -326,7 +329,7 @@ export async function POST(request: NextRequest) {
 
       const existingClasses = await prisma.class.findMany({ select: { id: true } });
       const classIds = existingClasses.map((c) => c.id);
-      const result = await parseSpecialMealExcel(buffer, year, classIds);
+      const result = await parseSpecialMealExcel(buffer, year, classIds, month);
 
       // Lookup students by name + class for matching
       const allStudents = await prisma.student.findMany({

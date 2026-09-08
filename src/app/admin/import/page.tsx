@@ -147,6 +147,10 @@ export default function AdminImportPage() {
   const [specialMealErrors, setSpecialMealErrors] = useState<ValidationError[]>([]);
   const [specialMealPreviewDone, setSpecialMealPreviewDone] = useState<boolean>(false);
   const [specialMealScheduleName, setSpecialMealScheduleName] = useState<string>("");
+  const [specialMealMonth, setSpecialMealMonth] = useState<string>(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  });
 
   // Loading states
   const [isPreviewLoading, setIsPreviewLoading] = useState<boolean>(false);
@@ -290,7 +294,13 @@ export default function AdminImportPage() {
           return;
         }
         formData.append("scheduleName", specialMealScheduleName.trim());
-        formData.append("year", new Date().getFullYear().toString());
+        if (specialMealMonth) {
+          const [y, m] = specialMealMonth.split("-").map(Number);
+          formData.append("year", (y || new Date().getFullYear()).toString());
+          formData.append("month", (m || (new Date().getMonth() + 1)).toString());
+        } else {
+          formData.append("year", new Date().getFullYear().toString());
+        }
       }
 
       const res = await fetch("/api/excel/import", {
@@ -380,7 +390,13 @@ export default function AdminImportPage() {
           return;
         }
         formData.append("scheduleName", specialMealScheduleName.trim());
-        formData.append("year", new Date().getFullYear().toString());
+        if (specialMealMonth) {
+          const [y, m] = specialMealMonth.split("-").map(Number);
+          formData.append("year", (y || new Date().getFullYear()).toString());
+          formData.append("month", (m || (new Date().getMonth() + 1)).toString());
+        } else {
+          formData.append("year", new Date().getFullYear().toString());
+        }
       }
 
       const res = await fetch("/api/excel/import", {
@@ -696,17 +712,46 @@ export default function AdminImportPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="max-w-md space-y-2">
-                <Label htmlFor="special-schedule-name" className="text-sm font-medium">
-                  Tên lịch ăn đặc biệt <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  id="special-schedule-name"
-                  placeholder="Ví dụ: Ngoại Ngữ, GDQP..."
-                  value={specialMealScheduleName}
-                  onChange={(e) => setSpecialMealScheduleName(e.target.value)}
-                  className="h-10"
-                />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl">
+                <div className="space-y-2">
+                  <Label htmlFor="special-schedule-name" className="text-sm font-medium">
+                    Tên lịch ăn đặc biệt <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="special-schedule-name"
+                    placeholder="Ví dụ: Ngoại Ngữ, GDQP..."
+                    value={specialMealScheduleName}
+                    onChange={(e) => setSpecialMealScheduleName(e.target.value)}
+                    className="h-10"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="special-meal-month" className="text-sm font-medium">
+                      Tháng áp dụng <span className="text-red-500">*</span>
+                    </Label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const now = new Date();
+                        setSpecialMealMonth(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`);
+                      }}
+                      className="text-xs text-blue-600 hover:text-blue-700 underline font-normal"
+                    >
+                      Tháng hiện tại
+                    </button>
+                  </div>
+                  <Input
+                    id="special-meal-month"
+                    type="month"
+                    value={specialMealMonth}
+                    onChange={(e) => setSpecialMealMonth(e.target.value)}
+                    className="h-10 bg-white dark:bg-slate-900"
+                  />
+                  <p className="text-[11px] text-slate-500">
+                    Cột &quot;TUẦN 1&quot; đến &quot;TUẦN 4&quot; trong file sẽ tự động khớp theo các tuần của tháng này.
+                  </p>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -1505,24 +1550,30 @@ function SpecialMealPreviewTable({
                         <span className="text-xs text-slate-400 italic">Không có ca ăn nào</span>
                       ) : (
                         <div className="flex flex-wrap gap-1.5 py-1">
-                          {row.entries.map((entry: any, eIdx: number) => (
-                            <span
-                              key={eIdx}
-                              className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${
-                                entry.shift === "TIET_4"
-                                  ? "bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/50 dark:text-amber-200"
-                                  : "bg-blue-50 text-blue-800 border-blue-200 dark:bg-blue-950/50 dark:text-blue-200"
-                              }`}
-                              title={`Ngày ${entry.date}`}
-                            >
-                              Tuần {entry.weekNumber}: {entry.shift === "TIET_4" ? "Tiết 4" : "Tiết 5"}
-                              {entry.note && (
-                                <span className="ml-1 text-[10px] text-slate-500 font-normal">
-                                  ({entry.note})
-                                </span>
-                              )}
-                            </span>
-                          ))}
+                          {row.entries.map((entry: any, eIdx: number) => {
+                            const dateLabel = entry.date ? entry.date.split("-").reverse().slice(0, 2).join("/") : "";
+                            return (
+                              <span
+                                key={eIdx}
+                                className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${
+                                  entry.shift === "TIET_4"
+                                    ? "bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/50 dark:text-amber-200"
+                                    : "bg-blue-50 text-blue-800 border-blue-200 dark:bg-blue-950/50 dark:text-blue-200"
+                                }`}
+                                title={`Ngày ${entry.date} (Tuần năm: ${entry.weekNumber})`}
+                              >
+                                {entry.monthWeekIndex
+                                  ? `Tuần ${entry.monthWeekIndex} (${dateLabel}): `
+                                  : `Tuần ${entry.weekNumber}: `}
+                                {entry.shift === "TIET_4" ? "Tiết 4" : "Tiết 5"}
+                                {entry.note && (
+                                  <span className="ml-1 text-[10px] text-slate-500 font-normal">
+                                    ({entry.note})
+                                  </span>
+                                )}
+                              </span>
+                            );
+                          })}
                         </div>
                       )}
                     </TableCell>

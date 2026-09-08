@@ -1,5 +1,5 @@
 import ExcelJS from "exceljs";
-import { removeVietnameseTones, formatDateDDMMYYYY, parseDateValue, compareClassNames } from "./utils";
+import { removeVietnameseTones, formatDateDDMMYYYY, parseDateValue, compareClassNames, getWeekNumber } from "./utils";
 
 // ==================== TYPES ====================
 
@@ -819,10 +819,21 @@ export interface SpecialMealImportRow {
   maLop: string;
   entries: Array<{
     weekNumber: number;
+    monthWeekIndex?: number;
     dayOfWeek: number;
     shift: "TIET_4" | "TIET_5";
     date: string;
   }>;
+}
+
+function nthDayOfWeekInMonth(year: number, month: number, dayOfWeek: number, nth: number): Date {
+  const targetIsoDay = dayOfWeek === 0 ? 7 : dayOfWeek;
+  const firstDay = new Date(Date.UTC(year, month - 1, 1));
+  const firstDayIso = firstDay.getUTCDay() || 7;
+  let daysUntilFirst = targetIsoDay - firstDayIso;
+  if (daysUntilFirst < 0) daysUntilFirst += 7;
+  const day = 1 + daysUntilFirst + (nth - 1) * 7;
+  return new Date(Date.UTC(year, month - 1, day));
 }
 
 function isoWeekToDate(year: number, week: number, dayOfWeek: number): Date {
@@ -895,7 +906,8 @@ function extractExcelCellString(cell: ExcelJS.Cell): string {
 export async function parseSpecialMealExcel(
   buffer: Uint8Array,
   year: number,
-  classIds: string[]
+  classIds: string[],
+  month?: number
 ): Promise<ImportResult<SpecialMealImportRow>> {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buffer as any);
@@ -1030,9 +1042,24 @@ export async function parseSpecialMealExcel(
       if (!shift) {
         errors.push({ row: rowNumber, column: `Cột ${col.colIndex}`, message: `Giá trị "${cellVal}" không hợp lệ (TIET_4/TIET_5)` });
       } else {
-        const d = isoWeekToDate(year, col.weekNumber, col.dayOfWeek);
+        let d: Date;
+        let isoWeek: number;
+        let monthWeekIndex: number | undefined;
+
+        if (month && col.weekNumber <= 5) {
+          // Người dùng chọn tháng và cột là Tuần 1..5 trong tháng
+          d = nthDayOfWeekInMonth(year, month, col.dayOfWeek, col.weekNumber);
+          isoWeek = getWeekNumber(d);
+          monthWeekIndex = col.weekNumber;
+        } else {
+          // Mặc định tính theo tuần ISO trong năm
+          d = isoWeekToDate(year, col.weekNumber, col.dayOfWeek);
+          isoWeek = col.weekNumber;
+        }
+
         entries.push({
-          weekNumber: col.weekNumber,
+          weekNumber: isoWeek,
+          monthWeekIndex,
           dayOfWeek: col.dayOfWeek,
           shift,
           date: d.toISOString().split("T")[0],
