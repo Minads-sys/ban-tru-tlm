@@ -164,6 +164,54 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ success: true, message: "Đã xóa thành công suất ăn đặc biệt" });
     }
 
+    const allWeeks = searchParams.get("allWeeks") === "true";
+    const deleteAll = searchParams.get("deleteAll") === "true";
+
+    if (deleteAll) {
+      const deleteResult = await prisma.studentSpecialMeal.deleteMany();
+
+      await logAudit({
+        req: request,
+        userId: session.user.id,
+        userName: (session.user as any).name || (session.user as any).username || "Quản trị viên",
+        userRole: session.user.role,
+        action: AUDIT_ACTIONS.DELETE,
+        module: AUDIT_MODULES.SCHEDULE,
+        description: `Xóa sạch toàn bộ ${deleteResult.count} suất ăn đặc biệt trong hệ thống`,
+        metadata: { count: deleteResult.count },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: `Đã xóa sạch toàn bộ ${deleteResult.count} suất ăn đặc biệt trong hệ thống`,
+        deletedCount: deleteResult.count,
+      });
+    }
+
+    if (scheduleName && (allWeeks || (!yearParam && !weekParam))) {
+      // Xóa toàn bộ lịch này trên tất cả các tuần
+      const deleteResult = await prisma.studentSpecialMeal.deleteMany({
+        where: { scheduleName },
+      });
+
+      await logAudit({
+        req: request,
+        userId: session.user.id,
+        userName: (session.user as any).name || (session.user as any).username || "Quản trị viên",
+        userRole: session.user.role,
+        action: AUDIT_ACTIONS.DELETE,
+        module: AUDIT_MODULES.SCHEDULE,
+        description: `Xóa toàn bộ ${deleteResult.count} suất ăn của lịch '${scheduleName}' trên tất cả các tuần`,
+        metadata: { scheduleName, count: deleteResult.count },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: `Đã xóa sạch ${deleteResult.count} suất ăn của lịch '${scheduleName}' trên tất cả các tuần`,
+        deletedCount: deleteResult.count,
+      });
+    }
+
     if (scheduleName && yearParam && weekParam) {
       // Xóa toàn bộ lịch theo tên lịch và tuần
       const year = parseInt(yearParam, 10);
@@ -196,7 +244,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { error: "Thiếu tham số id hoặc (scheduleName, year, weekNumber)" },
+      { error: "Thiếu tham số id, deleteAll hoặc scheduleName" },
       { status: 400 }
     );
   } catch (error: any) {

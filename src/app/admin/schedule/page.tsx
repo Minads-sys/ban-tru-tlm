@@ -163,31 +163,53 @@ export default function SchedulePage() {
     }
   };
 
-  const handleDeleteBulkSpecialMeals = async (schedName: string) => {
+  const handleDeleteBulkSpecialMeals = async (schedName: string, isAllWeeks: boolean = false) => {
     if (isAccountant) return;
     const [y, w] = weekString.split("-W").map(Number);
     const year = y || new Date().getFullYear();
     const weekNumber = w || 1;
 
+    const isWipeAll = schedName === "ALL";
+    const title = isWipeAll
+      ? "Xóa sạch TẤT CẢ lịch đặc biệt?"
+      : isAllWeeks
+      ? `Xóa sạch lịch "${schedName}" (Tất cả các tuần)?`
+      : `Xóa lịch "${schedName}" trong Tuần ${weekNumber}?`;
+
+    const text = isWipeAll
+      ? "Bạn có chắc chắn muốn xóa vĩnh viễn toàn bộ tất cả suất ăn đặc biệt trong hệ thống? Thao tác này không thể khôi phục."
+      : isAllWeeks
+      ? `Bạn có chắc chắn muốn xóa vĩnh viễn toàn bộ suất ăn của lịch "${schedName}" trên TẤT CẢ các tuần? Thao tác này không thể khôi phục.`
+      : `Bạn có chắc muốn xóa tất cả suất ăn của lịch "${schedName}" trong Tuần ${weekNumber}/${year}?`;
+
     const result = await Swal.fire({
-      title: `Xóa toàn bộ lịch "${schedName}"?`,
-      text: `Bạn có chắc muốn xóa tất cả suất ăn của lịch "${schedName}" trong Tuần ${weekNumber}/${year}?`,
+      title,
+      text,
       icon: "warning",
       showCancelButton: true,
-      confirmButtonText: "Xác nhận xóa hết",
+      confirmButtonText: "Xác nhận xóa ngay",
       cancelButtonText: "Hủy",
       confirmButtonColor: "#d33",
     });
 
     if (result.isConfirmed) {
       try {
-        const res = await fetch(
-          `/api/schedule/special-meals?scheduleName=${encodeURIComponent(schedName)}&year=${year}&weekNumber=${weekNumber}`,
-          { method: "DELETE" }
-        );
+        let url = "/api/schedule/special-meals";
+        if (isWipeAll) {
+          url += "?deleteAll=true";
+        } else if (isAllWeeks) {
+          url += `?scheduleName=${encodeURIComponent(schedName)}&allWeeks=true`;
+        } else {
+          url += `?scheduleName=${encodeURIComponent(schedName)}&year=${year}&weekNumber=${weekNumber}`;
+        }
+
+        const res = await fetch(url, { method: "DELETE" });
         const data = await res.json();
         if (data.success) {
           Swal.fire("Thành công", data.message, "success");
+          if (isWipeAll || isAllWeeks) {
+            setSpecialFilterSchedule("ALL");
+          }
           fetchSpecialMeals();
         } else {
           Swal.fire("Lỗi", data.error || "Không thể xóa", "error");
@@ -878,18 +900,37 @@ export default function SchedulePage() {
                 </Button>
               </div>
 
-              {/* Bulk delete button if specific schedule selected */}
-              {!isAccountant && specialFilterSchedule !== "ALL" && !specialAllWeeks && (
-                <Button
-                  size="sm"
-                  type="button"
-                  variant="outline"
-                  onClick={() => handleDeleteBulkSpecialMeals(specialFilterSchedule)}
-                  className="h-9 text-xs text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
-                >
-                  <Trash2 className="h-3.5 w-3.5 mr-1" />
-                  Xóa lịch "{specialFilterSchedule}" tuần này
-                </Button>
+              {/* Bulk delete buttons */}
+              {!isAccountant && (
+                <>
+                  {specialFilterSchedule !== "ALL" ? (
+                    <Button
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                      onClick={() => handleDeleteBulkSpecialMeals(specialFilterSchedule, specialAllWeeks)}
+                      className="h-9 text-xs text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 font-medium"
+                    >
+                      <Trash2 className="h-3.5 w-3.5 mr-1" />
+                      {specialAllWeeks
+                        ? `Xóa sạch lịch "${specialFilterSchedule}" (Tất cả tuần)`
+                        : `Xóa lịch "${specialFilterSchedule}" tuần ${currentWeek}`}
+                    </Button>
+                  ) : (
+                    (specialMeals.length > 0 || specialTotalAllWeeksCount > 0) && (
+                      <Button
+                        size="sm"
+                        type="button"
+                        variant="outline"
+                        onClick={() => handleDeleteBulkSpecialMeals("ALL", true)}
+                        className="h-9 text-xs text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 font-medium"
+                      >
+                        <Trash2 className="h-3.5 w-3.5 mr-1" />
+                        Xóa sạch tất cả lịch ({specialTotalAllWeeksCount || specialMeals.length} suất)
+                      </Button>
+                    )
+                  )}
+                </>
               )}
             </div>
           </DialogHeader>
