@@ -166,6 +166,15 @@ export function pairClassesIntoCourts(
       if (usedClassIds.has(classB.classId)) continue;
 
       const sum = classA.totalMeals + classB.totalMeals;
+      // Quy tắc: KHÔNG trộn 2 lớp ảo khác tên lịch trong cùng 1 sân
+      const isSpecialA = classA.classId.startsWith("SPECIAL::");
+      const isSpecialB = classB.classId.startsWith("SPECIAL::");
+      if (isSpecialA && isSpecialB) {
+        const nameA = classA.classId.replace("SPECIAL::", "").replace(/ \(\d+\)$/, "");
+        const nameB = classB.classId.replace("SPECIAL::", "").replace(/ \(\d+\)$/, "");
+        if (nameA !== nameB) continue;
+      }
+
       if (sum >= COURT_IDEAL_MIN && sum <= COURT_MAX_CAPACITY) {
         // Điểm số: ưu tiên tổng gần COURT_TARGET_SUM (50) nhất + cùng khối lớp
         const diffFromTarget = Math.abs(sum - COURT_TARGET_SUM);
@@ -227,80 +236,73 @@ export function pairClassesIntoCourts(
     }
   }
 
-  // 3. Các lớp còn lại chưa ghép được vào khoảng [40, 60]:
-  // Ghép các cặp còn lại với nhau (nếu còn >= 2 lớp)
+  // 3. Ghép 3+ lớp nhỏ vào 1 sân (Greedy multi-class grouping)
+  // Sắp xếp lớp còn lại theo suất giảm dần, gom vào sân cho đến khi tổng ≤ 60
   const remaining = available.filter((c) => !usedClassIds.has(c.classId));
-  for (let i = 0; i < remaining.length; i += 2) {
-    if (i + 1 < remaining.length) {
-      const classA = remaining[i];
-      const classB = remaining[i + 1];
-      const totalMeals = classA.totalMeals + classB.totalMeals;
-      const manCount = classA.manCount + classB.manCount;
-      const chayCount = classA.chayCount + classB.chayCount;
-      const chaoCount = classA.chaoCount + classB.chaoCount;
+  remaining.sort((a, b) => b.totalMeals - a.totalMeals); // Lớn trước
 
-      courts.push({
-        courtNumber: 0,
-        courtName: "",
-        cartNumber: 0,
-        cartName: "",
-        shift,
-        classes: [
-          {
-            classId: classA.classId,
-            className: classA.className,
-            totalMeals: classA.totalMeals,
-            manCount: classA.manCount,
-            chayCount: classA.chayCount,
-            chaoCount: classA.chaoCount,
-          },
-          {
-            classId: classB.classId,
-            className: classB.className,
-            totalMeals: classB.totalMeals,
-            manCount: classB.manCount,
-            chayCount: classB.chayCount,
-            chaoCount: classB.chaoCount,
-          },
-        ],
-        totalMeals,
-        manCount,
-        chayCount,
-        chaoCount,
-        isSingleClass: false,
-        isInIdealRange: totalMeals >= COURT_IDEAL_MIN && totalMeals <= COURT_IDEAL_MAX,
-        isOverCapacity: totalMeals > COURT_MAX_CAPACITY,
-        students: [...classA.students, ...classB.students],
-      });
-    } else {
-      // Lớp lẻ cuối cùng ("sân lẻ thì lấy 1 lớp")
-      const classSingle = remaining[i];
-      courts.push({
-        courtNumber: 0,
-        courtName: "",
-        cartNumber: 0,
-        cartName: "",
-        shift,
-        classes: [
-          {
-            classId: classSingle.classId,
-            className: classSingle.className,
-            totalMeals: classSingle.totalMeals,
-            manCount: classSingle.manCount,
-            chayCount: classSingle.chayCount,
-            chaoCount: classSingle.chaoCount,
-          },
-        ],
-        totalMeals: classSingle.totalMeals,
-        manCount: classSingle.manCount,
-        chayCount: classSingle.chayCount,
-        chaoCount: classSingle.chaoCount,
-        isSingleClass: true,
-        isInIdealRange: classSingle.totalMeals >= COURT_IDEAL_MIN && classSingle.totalMeals <= COURT_IDEAL_MAX,
-        isOverCapacity: classSingle.totalMeals > COURT_MAX_CAPACITY,
-        students: [...classSingle.students],
-      });
+  // Helper: kiểm tra 2 lớp có thể cùng sân không (quy tắc không trộn lớp ảo khác tên)
+  const canShareCourt = (a: ClassMealSummary, b: ClassMealSummary): boolean => {
+    const isSpecialA = a.classId.startsWith("SPECIAL::");
+    const isSpecialB = b.classId.startsWith("SPECIAL::");
+    if (isSpecialA && isSpecialB) {
+      const nameA = a.classId.replace("SPECIAL::", "").replace(/ \(\d+\)$/, "");
+      const nameB = b.classId.replace("SPECIAL::", "").replace(/ \(\d+\)$/, "");
+      return nameA === nameB;
     }
+    return true; // Lớp thường + lớp thường hoặc lớp thường + lớp ảo: OK
+  };
+
+  const remainingQueue = [...remaining];
+  while (remainingQueue.length > 0) {
+    // Lấy lớp lớn nhất còn lại làm hạt nhân
+    const seed = remainingQueue.shift()!;
+    const courtClasses: ClassMealSummary[] = [seed];
+    let courtTotal = seed.totalMeals;
+    let courtMan = seed.manCount;
+    let courtChay = seed.chayCount;
+    let courtChao = seed.chaoCount;
+    const courtStudents: StudentMealInfo[] = [...seed.students];
+    usedClassIds.add(seed.classId);
+
+    // Thử thêm các lớp tiếp theo (từ nhỏ nhất lên, ưu tiên lấp đầy sân)
+    for (let i = remainingQueue.length - 1; i >= 0; i--) {
+      const candidate = remainingQueue[i];
+      if (courtTotal + candidate.totalMeals <= COURT_MAX_CAPACITY && canShareCourt(seed, candidate)) {
+        courtClasses.push(candidate);
+        courtTotal += candidate.totalMeals;
+        courtMan += candidate.manCount;
+        courtChay += candidate.chayCount;
+        courtChao += candidate.chaoCount;
+        courtStudents.push(...candidate.students);
+        usedClassIds.add(candidate.classId);
+        remainingQueue.splice(i, 1);
+      }
+    }
+
+    courts.push({
+      courtNumber: 0,
+      courtName: "",
+      cartNumber: 0,
+      cartName: "",
+      shift,
+      classes: courtClasses.map((c) => ({
+        classId: c.classId,
+        className: c.className,
+        totalMeals: c.totalMeals,
+        manCount: c.manCount,
+        chayCount: c.chayCount,
+        chaoCount: c.chaoCount,
+      })),
+      totalMeals: courtTotal,
+      manCount: courtMan,
+      chayCount: courtChay,
+      chaoCount: courtChao,
+      isSingleClass: courtClasses.length === 1,
+      isInIdealRange: courtTotal >= COURT_IDEAL_MIN && courtTotal <= COURT_IDEAL_MAX,
+      isOverCapacity: courtTotal > COURT_MAX_CAPACITY,
+      students: courtStudents,
+    });
   }
 
   // 4. BƯỚC TỐI ƯU HÓA: Tự động gộp các sân dưới chuẩn (< 40 suất) nếu tổng <= 60 suất
@@ -315,6 +317,21 @@ export function pairClassesIntoCourts(
     for (let i = 0; i < courts.length; i++) {
       for (let j = i + 1; j < courts.length; j++) {
         const sum = courts[i].totalMeals + courts[j].totalMeals;
+        // Kiểm tra quy tắc không trộn lớp ảo khác tên lịch
+        const specialClassesI = courts[i].classes.filter((c) => c.classId.startsWith("SPECIAL::"));
+        const specialClassesJ = courts[j].classes.filter((c) => c.classId.startsWith("SPECIAL::"));
+        if (specialClassesI.length > 0 && specialClassesJ.length > 0) {
+          const namesI = new Set(specialClassesI.map((c) => c.classId.replace("SPECIAL::", "").replace(/ \(\d+\)$/, "")));
+          const namesJ = new Set(specialClassesJ.map((c) => c.classId.replace("SPECIAL::", "").replace(/ \(\d+\)$/, "")));
+          let hasConflict = false;
+          for (const n of namesI) {
+            for (const m of namesJ) {
+              if (n !== m) { hasConflict = true; break; }
+            }
+            if (hasConflict) break;
+          }
+          if (hasConflict) continue;
+        }
         // Chỉ gộp khi tổng không vượt quá 60 suất và có ít nhất 1 sân đang dưới 40 suất
         if (sum <= COURT_MAX_CAPACITY && (courts[i].totalMeals < COURT_IDEAL_MIN || courts[j].totalMeals < COURT_IDEAL_MIN)) {
           let score = 0;
@@ -583,6 +600,109 @@ export async function getDayMealClasses(dateStr: string) {
     }
   }
 
+  // ==================== LỚP ẢO TỪ LỊCH ĂN ĐẶC BIỆT ====================
+  // Lấy HS ăn đặc biệt ngày này
+  const specialMeals = await prisma.studentSpecialMeal.findMany({
+    where: { date },
+    include: {
+      student: {
+        include: {
+          user: { select: { fullName: true } },
+          class: { select: { id: true, name: true } },
+        },
+      },
+    },
+  });
+
+  // Tạo map classId -> schedule để kiểm tra trùng TKB
+  const scheduleClassIds = new Set(schedules.map((s) => s.classId));
+
+  // Gom HS đặc biệt theo scheduleName + shift → tạo "lớp ảo"
+  const specialGroups = new Map<string, {
+    scheduleName: string;
+    shift: "TIET_4" | "TIET_5";
+    students: StudentMealInfo[];
+  }>();
+
+  for (const sm of specialMeals) {
+    const student = sm.student;
+    if (student.boardingStatus !== BoardingStatus.ACTIVE) continue;
+    if (cancelledStudentIds.has(student.id)) continue;
+
+    // Kiểm tra lớp HS đã có TKB ngày này chưa
+    if (scheduleClassIds.has(student.classId)) {
+      // TRÙNG → HS đã nằm trong sân lớp rồi, bỏ qua
+      continue;
+    }
+
+    const smShift = sm.shift as "TIET_4" | "TIET_5";
+    if (smShift !== "TIET_4" && smShift !== "TIET_5") continue;
+
+    // Gom theo scheduleName + shift
+    const groupKey = `${sm.scheduleName}::${smShift}`;
+    if (!specialGroups.has(groupKey)) {
+      specialGroups.set(groupKey, {
+        scheduleName: sm.scheduleName,
+        shift: smShift,
+        students: [],
+      });
+    }
+
+    const finalMealType = (overrideMap.get(student.id) || student.mealType) as "MAN" | "CHAY" | "CHAO";
+    const fullName = student.user?.fullName || "Chưa có tên";
+    const { lastName, firstName } = splitVietnameseName(fullName);
+
+    specialGroups.get(groupKey)!.students.push({
+      id: student.id,
+      studentCode: student.studentCode,
+      boardingCode: student.boardingCode || "—",
+      fullName,
+      lastName,
+      firstName,
+      className: student.class?.name || student.classId, // Lớp gốc của HS
+      mealType: finalMealType,
+    });
+  }
+
+  // Chuyển mỗi nhóm thành ClassMealSummary (lớp ảo)
+  for (const [, group] of specialGroups) {
+    // Nếu > 60 HS → tách thành nhiều lớp ảo
+    for (let i = 0; i < group.students.length; i += COURT_MAX_CAPACITY) {
+      const batch = group.students.slice(i, i + COURT_MAX_CAPACITY);
+      const suffix = group.students.length > COURT_MAX_CAPACITY
+        ? ` (${Math.floor(i / COURT_MAX_CAPACITY) + 1})` : "";
+
+      let manCount = 0;
+      let chayCount = 0;
+      let chaoCount = 0;
+      for (const s of batch) {
+        if (s.mealType === "MAN") manCount++;
+        else if (s.mealType === "CHAY") chayCount++;
+        else if (s.mealType === "CHAO") chaoCount++;
+      }
+
+      const virtualId = `SPECIAL::${group.scheduleName}${suffix}`;
+      const virtualClass: ClassMealSummary = {
+        classId: virtualId,
+        className: `Lớp ${group.scheduleName}${suffix}`,
+        shift: group.shift,
+        totalMeals: batch.length,
+        manCount,
+        chayCount,
+        chaoCount,
+        students: batch,
+      };
+
+      classMap.set(virtualId, virtualClass);
+
+      if (group.shift === "TIET_4") {
+        classSummariesTiet4.push(virtualClass);
+      } else {
+        classSummariesTiet5.push(virtualClass);
+      }
+    }
+  }
+
   return {
     date,
     dateStr,
@@ -678,6 +798,37 @@ export async function getDiningCourtAllocation(dateStr: string): Promise<DiningA
             chayCount: 0,
             chaoCount: 0,
           });
+        }
+      }
+
+      // Xử lý HS đặc biệt (lớp ảo) từ specialStudentIds
+      if (sc.specialStudentIds && sc.specialStudentIds.length > 0) {
+        // Tìm HS đặc biệt trong classMap (lớp ảo SPECIAL::)
+        const specialStudentSet = new Set(sc.specialStudentIds);
+        for (const [vId, vClass] of classMap) {
+          if (!vId.startsWith("SPECIAL::")) continue;
+          const matchedStudents = vClass.students.filter((s) => specialStudentSet.has(s.id));
+          if (matchedStudents.length > 0) {
+            let vMan = 0, vChay = 0, vChao = 0;
+            for (const s of matchedStudents) {
+              if (s.mealType === "MAN") vMan++;
+              else if (s.mealType === "CHAY") vChay++;
+              else vChao++;
+            }
+            courtClassesInfo.push({
+              classId: vId,
+              className: vClass.className,
+              totalMeals: matchedStudents.length,
+              manCount: vMan,
+              chayCount: vChay,
+              chaoCount: vChao,
+            });
+            totalMeals += matchedStudents.length;
+            manCount += vMan;
+            chayCount += vChay;
+            chaoCount += vChao;
+            courtStudents.push(...matchedStudents);
+          }
         }
       }
 
@@ -816,16 +967,39 @@ export async function saveAutoDiningCourtAllocation(dateStr: string): Promise<Di
       where: { date },
     });
 
-    const toCreate = [...courtsTiet4, ...courtsTiet5].map((court) => ({
-      date,
-      shift: court.shift,
-      courtNumber: court.courtNumber,
-      courtName: court.courtName,
-      cartNumber: court.cartNumber,
-      cartName: court.cartName,
-      classIds: court.classes.map((c) => c.classId),
-      mode: "AUTO",
-    }));
+    const toCreate = [...courtsTiet4, ...courtsTiet5].map((court) => {
+      // Phân biệt lớp thường vs lớp ảo
+      const regularClassIds = court.classes
+        .filter((c) => !c.classId.startsWith("SPECIAL::"))
+        .map((c) => c.classId);
+      const specialClasses = court.classes
+        .filter((c) => c.classId.startsWith("SPECIAL::"));
+      // Lấy student IDs từ các lớp ảo
+      const specialStudentIds = specialClasses.length > 0
+        ? court.students
+          .filter((s) => !regularClassIds.includes(s.className) && specialClasses.some(() => true))
+          .filter((s) => {
+            // Kiểm tra student thuộc lớp ảo (className của student là lớp gốc, không nằm trong regularClassIds)
+            const studentClassId = court.classes.find(
+              (c) => !c.classId.startsWith("SPECIAL::") && c.className === s.className
+            );
+            return !studentClassId; // Student không thuộc lớp thường nào trong sân
+          })
+          .map((s) => s.id)
+        : [];
+
+      return {
+        date,
+        shift: court.shift,
+        courtNumber: court.courtNumber,
+        courtName: court.courtName,
+        cartNumber: court.cartNumber,
+        cartName: court.cartName,
+        classIds: regularClassIds,
+        specialStudentIds,
+        mode: "AUTO",
+      };
+    });
 
     if (toCreate.length > 0) {
       await tx.dailyDiningCourt.createMany({

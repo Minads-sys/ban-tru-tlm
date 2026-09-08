@@ -315,30 +315,73 @@ export async function POST(request: NextRequest) {
       currentClassMealDays.set(cId, calculateScheduleDaysForMonth(cId, month, year));
     });
 
-    // Nếu tạo cho 1 lớp cụ thể và lớp đó có 0 ngày TKB:
-    if (classId && (currentClassMealDays.get(classId) || 0) === 0) {
+    // 3.1 Lấy lịch ăn đặc biệt của học sinh trong tháng mục tiêu (không trùng TKB lớp)
+    const monthStart = new Date(Date.UTC(year, month - 1, 1));
+    const monthEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
+
+    const specialMealsInMonth = await prisma.studentSpecialMeal.findMany({
+      where: {
+        date: { gte: monthStart, lte: monthEnd },
+        student: {
+          boardingStatus: BoardingStatus.ACTIVE,
+          ...(classId ? { classId } : {}),
+        },
+      },
+      select: {
+        studentId: true,
+        date: true,
+        shift: true,
+        student: { select: { classId: true } },
+      },
+    });
+
+    const studentSpecialDaysMap = new Map<string, number>();
+    for (const sm of specialMealsInMonth) {
+      const smDate = new Date(sm.date);
+      const dow = smDate.getUTCDay();
+      const df = dayFieldMap[dow];
+      if (!df) continue;
+
+      const wn = getWeekNumber(smDate, year);
+      const schKey = `${sm.student.classId}_${year}_${wn}`;
+      const sch = scheduleMap.get(schKey);
+      // Nếu lớp đã có TKB ngày này -> bỏ qua vì đã tính theo TKB lớp
+      if (sch && sch[df] && sch[df] !== 'NONE') continue;
+
+      studentSpecialDaysMap.set(
+        sm.studentId,
+        (studentSpecialDaysMap.get(sm.studentId) || 0) + 1
+      );
+    }
+
+    // Nếu tạo cho 1 lớp cụ thể và lớp đó có 0 ngày TKB và không có HS nào ăn đặc biệt:
+    const classSpecialDaysCount = activeStudents.reduce((sum, s) => sum + (studentSpecialDaysMap.get(s.id) || 0), 0);
+    if (classId && (currentClassMealDays.get(classId) || 0) === 0 && classSpecialDaysCount === 0) {
       const cName = classIdToName.get(classId) || classId;
       return NextResponse.json(
         {
-          error: `Lớp ${cName} chưa có bất kỳ buổi ăn bán trú nào được xếp trên Thời khóa biểu cho tháng ${month}/${year}. Vui lòng vào mục Thời khóa biểu để thiết lập lịch học trước khi tạo hóa đơn!`,
+          error: `Lớp ${cName} chưa có bất kỳ buổi ăn bán trú nào được xếp trên Thời khóa biểu hoặc Lịch đặc biệt cho tháng ${month}/${year}. Vui lòng thiết lập lịch học trước khi tạo hóa đơn!`,
         },
         { status: 400 }
       );
     }
 
-    // Nếu tạo cho toàn trường và TẤT CẢ các lớp đều có 0 ngày TKB:
+    // Nếu tạo cho toàn trường và TẤT CẢ các lớp đều có 0 ngày TKB và 0 ngày đặc biệt:
     const totalDaysAllClasses = Array.from(currentClassMealDays.values()).reduce((sum, d) => sum + d, 0);
-    if (!classId && totalDaysAllClasses === 0) {
+    const totalSpecialDaysAll = Array.from(studentSpecialDaysMap.values()).reduce((sum, d) => sum + d, 0);
+    if (!classId && totalDaysAllClasses === 0 && totalSpecialDaysAll === 0) {
       return NextResponse.json(
         {
-          error: `Chưa có lớp nào có lịch ăn bán trú trên Thời khóa biểu cho tháng ${month}/${year}. Vui lòng thiết lập Thời khóa biểu cho các lớp trước khi tạo hóa đơn!`,
+          error: `Chưa có lớp nào có lịch ăn bán trú trên Thời khóa biểu hoặc Lịch đặc biệt cho tháng ${month}/${year}. Vui lòng thiết lập Thời khóa biểu cho các lớp trước khi tạo hóa đơn!`,
         },
         { status: 400 }
       );
     }
 
-    // Lọc ra các học sinh thuộc lớp CÓ ít nhất 1 buổi TKB trong tháng
-    const studentsWithSchedule = activeStudents.filter((s) => (currentClassMealDays.get(s.classId) || 0) > 0);
+    // Lọc ra các học sinh thuộc lớp CÓ ít nhất 1 buổi TKB hoặc có Lịch đặc biệt trong tháng
+    const studentsWithSchedule = activeStudents.filter((s) => 
+      (currentClassMealDays.get(s.classId) || 0) > 0 || (studentSpecialDaysMap.get(s.id) || 0) > 0
+    );
     const classesWithoutSchedule = uniqueClassIds.filter((cId) => (currentClassMealDays.get(cId) || 0) === 0);
 
     // 4. Kiểm tra xem có áp dụng bù trừ tháng trước không
@@ -470,6 +513,8 @@ export async function POST(request: NextRequest) {
           if (student.mealStartDate) {
             scheduleMealDays = calculateScheduleDaysForMonth(student.classId, month, year, student.mealStartDate);
           }
+          // Cộng thêm số ngày ăn lịch đặc biệt trong tháng (không trùng TKB lớp)
+          scheduleMealDays += studentSpecialDaysMap.get(student.id) || 0;
           let studentCanceledDays = 0;
           let scheduleReducedDays = 0;
           let extraMealDays = 0;

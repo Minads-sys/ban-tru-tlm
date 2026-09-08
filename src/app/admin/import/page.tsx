@@ -41,6 +41,7 @@ import {
   X,
   Plus,
   RefreshCw,
+  Sparkles,
 } from "lucide-react";
 
 // ==================== TYPES ====================
@@ -86,7 +87,7 @@ interface ScheduleRow {
   ghiChu?: string;
 }
 
-type ImportType = "class" | "student" | "schedule";
+type ImportType = "class" | "student" | "schedule" | "special-meal";
 
 interface ToastState {
   id: number;
@@ -140,6 +141,13 @@ export default function AdminImportPage() {
   const [scheduleErrors, setScheduleErrors] = useState<ValidationError[]>([]);
   const [schedulePreviewDone, setSchedulePreviewDone] = useState<boolean>(false);
 
+  // Special Meal states
+  const [specialMealFile, setSpecialMealFile] = useState<File | null>(null);
+  const [specialMealData, setSpecialMealData] = useState<any[]>([]);
+  const [specialMealErrors, setSpecialMealErrors] = useState<ValidationError[]>([]);
+  const [specialMealPreviewDone, setSpecialMealPreviewDone] = useState<boolean>(false);
+  const [specialMealScheduleName, setSpecialMealScheduleName] = useState<string>("");
+
   // Loading states
   const [isPreviewLoading, setIsPreviewLoading] = useState<boolean>(false);
   const [isImportLoading, setIsImportLoading] = useState<boolean>(false);
@@ -173,6 +181,7 @@ export default function AdminImportPage() {
   const getCurrentFile = (): File | null => {
     if (activeTab === "class") return classFile;
     if (activeTab === "student") return studentFile;
+    if (activeTab === "special-meal") return specialMealFile;
     return scheduleFile;
   };
 
@@ -187,6 +196,11 @@ export default function AdminImportPage() {
       setStudentData([]);
       setStudentErrors([]);
       setStudentPreviewDone(false);
+    } else if (activeTab === "special-meal") {
+      setSpecialMealFile(file);
+      setSpecialMealData([]);
+      setSpecialMealErrors([]);
+      setSpecialMealPreviewDone(false);
     } else {
       setScheduleFile(file);
       setScheduleData([]);
@@ -269,6 +283,14 @@ export default function AdminImportPage() {
         const [y, w] = weekString.split("-W").map(Number);
         formData.append("weekNumber", (w || 1).toString());
         formData.append("year", (y || new Date().getFullYear()).toString());
+      } else if (activeTab === "special-meal") {
+        if (!specialMealScheduleName.trim()) {
+          showToast("error", "Thiếu tên lịch", "Vui lòng nhập tên lịch ăn đặc biệt (VD: Ngoại Ngữ, GDQP...).");
+          setIsPreviewLoading(false);
+          return;
+        }
+        formData.append("scheduleName", specialMealScheduleName.trim());
+        formData.append("year", new Date().getFullYear().toString());
       }
 
       const res = await fetch("/api/excel/import", {
@@ -288,6 +310,7 @@ export default function AdminImportPage() {
           if (activeTab === "class") setClassErrors(result.errors);
           if (activeTab === "student") setStudentErrors(result.errors);
           if (activeTab === "schedule") setScheduleErrors(result.errors);
+          if (activeTab === "special-meal") setSpecialMealErrors(result.errors);
         }
         return;
       }
@@ -300,10 +323,14 @@ export default function AdminImportPage() {
         setStudentData(result.data || []);
         setStudentErrors(result.errors || []);
         setStudentPreviewDone(true);
-      } else {
+      } else if (activeTab === "schedule") {
         setScheduleData(result.data || []);
         setScheduleErrors(result.errors || []);
         setSchedulePreviewDone(true);
+      } else if (activeTab === "special-meal") {
+        setSpecialMealData(result.data || []);
+        setSpecialMealErrors(result.errors || []);
+        setSpecialMealPreviewDone(true);
       }
 
       if (result.isValid) {
@@ -346,6 +373,14 @@ export default function AdminImportPage() {
         const [y, w] = weekString.split("-W").map(Number);
         formData.append("weekNumber", (w || 1).toString());
         formData.append("year", (y || new Date().getFullYear()).toString());
+      } else if (activeTab === "special-meal") {
+        if (!specialMealScheduleName.trim()) {
+          showToast("error", "Thiếu tên lịch", "Vui lòng nhập tên lịch ăn đặc biệt.");
+          setIsImportLoading(false);
+          return;
+        }
+        formData.append("scheduleName", specialMealScheduleName.trim());
+        formData.append("year", new Date().getFullYear().toString());
       }
 
       const res = await fetch("/api/excel/import", {
@@ -365,6 +400,7 @@ export default function AdminImportPage() {
           if (activeTab === "class") setClassErrors(result.errors);
           if (activeTab === "student") setStudentErrors(result.errors);
           if (activeTab === "schedule") setScheduleErrors(result.errors);
+          if (activeTab === "special-meal") setSpecialMealErrors(result.errors);
         }
         return;
       }
@@ -452,7 +488,7 @@ export default function AdminImportPage() {
         onValueChange={(val) => setActiveTab(val as ImportType)}
         className="space-y-6"
       >
-        <TabsList className="grid w-full grid-cols-3 max-w-2xl h-auto p-1.5 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs">
+        <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 max-w-4xl h-auto p-1.5 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs gap-1">
           <TabsTrigger
             value="class"
             className="flex items-center justify-center gap-2 py-2 text-sm font-semibold rounded-lg cursor-pointer transition-all duration-150 text-slate-700 dark:text-slate-200 hover:bg-slate-200/80 hover:text-slate-900 data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-sm group"
@@ -473,6 +509,13 @@ export default function AdminImportPage() {
           >
             <CalendarDays className="h-4 w-4 text-slate-600 dark:text-slate-300 group-data-[state=active]:text-white" />
             Thời khóa biểu
+          </TabsTrigger>
+          <TabsTrigger
+            value="special-meal"
+            className="flex items-center justify-center gap-2 py-2 text-sm font-semibold rounded-lg cursor-pointer transition-all duration-150 text-slate-700 dark:text-slate-200 hover:bg-slate-200/80 hover:text-slate-900 data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-sm group"
+          >
+            <Sparkles className="h-4 w-4 text-slate-600 dark:text-slate-300 group-data-[state=active]:text-white" />
+            Lịch Ăn Đặc Biệt
           </TabsTrigger>
         </TabsList>
 
@@ -635,6 +678,70 @@ export default function AdminImportPage() {
             <SchedulePreviewTable
               data={scheduleData}
               errors={scheduleErrors}
+              getRowErrors={getRowErrors}
+            />
+          )}
+        </TabsContent>
+
+        {/* Tab 4: Special Meal Import */}
+        <TabsContent value="special-meal" className="space-y-6">
+          <Card className="border-slate-200 dark:border-slate-800 shadow-sm">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-blue-600" />
+                Cấu hình Lịch Ăn Đặc Biệt
+              </CardTitle>
+              <CardDescription>
+                Nhập tên phân loại cho lịch ăn đặc biệt này (ví dụ: Ngoại Ngữ, GDQP...). Hệ thống sẽ xem đây là 1 lớp riêng biệt khi phân bổ sân ăn.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="max-w-md space-y-2">
+                <Label htmlFor="special-schedule-name" className="text-sm font-medium">
+                  Tên lịch ăn đặc biệt <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="special-schedule-name"
+                  placeholder="Ví dụ: Ngoại Ngữ, GDQP..."
+                  value={specialMealScheduleName}
+                  onChange={(e) => setSpecialMealScheduleName(e.target.value)}
+                  className="h-10"
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          <ImportSection
+            title="Import Lịch Ăn Bán Trú Đặc Biệt"
+            description="Tải lên danh sách học sinh đăng ký ăn theo các tuần và thứ trong tuần. Tự động kiểm tra trùng lặp với thời khóa biểu lớp."
+            templateUrl="/api/excel/template?type=special-meal"
+            templateFilename="Template_LichAnDacBiet.xlsx"
+            file={specialMealFile}
+            isDragging={isDragging}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            onFileSelectClick={() => fileInputRef.current?.click()}
+            onClearFile={() => setCurrentFile(null)}
+            isPreviewLoading={isPreviewLoading}
+            isImportLoading={isImportLoading}
+            onPreview={handlePreview}
+            onImport={handleImport}
+            previewDone={specialMealPreviewDone}
+            errors={specialMealErrors}
+            dataCount={specialMealData.length}
+          />
+
+          {/* Validation Error Summary */}
+          {specialMealErrors.length > 0 && (
+            <ErrorSummaryCard errors={specialMealErrors} />
+          )}
+
+          {/* Preview Table */}
+          {specialMealPreviewDone && (
+            <SpecialMealPreviewTable
+              data={specialMealData}
+              errors={specialMealErrors}
               getRowErrors={getRowErrors}
             />
           )}
@@ -1301,6 +1408,134 @@ function SchedulePreviewTable({
                       ) : (
                         <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300 flex items-center gap-1 ml-auto w-fit">
                           <Check className="h-3 w-3" />
+                          Hợp lệ
+                        </Badge>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                );
+              })
+            )}
+          </TableBody>
+        </Table>
+      </div>
+    </Card>
+  );
+}
+
+function SpecialMealPreviewTable({
+  data,
+  errors,
+  getRowErrors,
+}: {
+  data: any[];
+  errors: ValidationError[];
+  getRowErrors: (idx: number, stt: number, errors: ValidationError[]) => ValidationError[];
+}) {
+  const hasErrors = errors.length > 0;
+
+  return (
+    <Card className="border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+      <CardHeader className="bg-slate-50/70 dark:bg-slate-900/70 border-b border-slate-200 dark:border-slate-800 py-3.5 px-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <CardTitle className="text-base font-semibold">Kết quả xem trước Lịch ăn đặc biệt</CardTitle>
+            <Badge variant="outline" className="bg-white dark:bg-slate-800 font-mono text-xs">
+              {data.length} học sinh
+            </Badge>
+          </div>
+          <div>
+            {hasErrors ? (
+              <Badge variant="destructive" className="flex items-center gap-1">
+                <XCircle className="h-3.5 w-3.5" />
+                {errors.length} lỗi cần sửa
+              </Badge>
+            ) : (
+              <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white flex items-center gap-1">
+                <CheckCircle className="h-3.5 w-3.5" />
+                Dữ liệu hợp lệ ({data.length}/{data.length})
+              </Badge>
+            )}
+          </div>
+        </div>
+      </CardHeader>
+
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-slate-100/60 dark:bg-slate-800/60">
+              <TableHead className="w-12 text-center">STT</TableHead>
+              <TableHead className="w-48 font-semibold">Họ và tên</TableHead>
+              <TableHead className="w-24 text-center">Lớp</TableHead>
+              <TableHead>Các tuần & Ca ăn</TableHead>
+              <TableHead className="w-44 text-right">Trạng thái</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {data.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center py-8 text-slate-400">
+                  Không có dữ liệu để hiển thị
+                </TableCell>
+              </TableRow>
+            ) : (
+              data.map((row: any, idx: number) => {
+                const rowErrs = getRowErrors(idx, row.stt, errors);
+                const hasNoStudent = row.entries?.some((e: any) => e.status === "error_no_student");
+                const isRowError = rowErrs.length > 0 || hasNoStudent;
+
+                return (
+                  <TableRow
+                    key={idx}
+                    className={`transition-colors ${
+                      isRowError
+                        ? "bg-red-50/80 hover:bg-red-100/80 dark:bg-red-950/30 dark:hover:bg-red-950/50 border-l-4 border-l-red-500"
+                        : "bg-emerald-50/40 hover:bg-emerald-100/50 dark:bg-emerald-950/20 dark:hover:bg-emerald-950/40 border-l-4 border-l-emerald-500"
+                    }`}
+                  >
+                    <TableCell className="text-center font-mono text-xs">{row.stt}</TableCell>
+                    <TableCell className="font-semibold text-slate-900 dark:text-slate-100">
+                      {row.hoTen}
+                    </TableCell>
+                    <TableCell className="text-center font-bold text-blue-700 dark:text-blue-400">
+                      {row.maLop}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1.5 py-1">
+                        {row.entries?.map((entry: any, eIdx: number) => (
+                          <span
+                            key={eIdx}
+                            className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${
+                              entry.shift === "TIET_4"
+                                ? "bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/50 dark:text-amber-200"
+                                : "bg-blue-50 text-blue-800 border-blue-200 dark:bg-blue-950/50 dark:text-blue-200"
+                            }`}
+                            title={`Ngày ${entry.date}`}
+                          >
+                            Tuần {entry.weekNumber}: {entry.shift === "TIET_4" ? "Tiết 4" : "Tiết 5"}
+                            {entry.note && (
+                              <span className="ml-1 text-[10px] text-slate-500 font-normal">
+                                ({entry.note})
+                              </span>
+                            )}
+                          </span>
+                        ))}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {isRowError ? (
+                        <div className="flex flex-col items-end gap-1">
+                          <Badge variant="destructive" className="text-[11px] flex items-center gap-1">
+                            <XCircle className="h-3 w-3" />
+                            Lỗi
+                          </Badge>
+                          <span className="text-[11px] text-red-600 font-medium">
+                            {rowErrs.map((e) => e.message).join(", ") || "Học sinh không tồn tại"}
+                          </span>
+                        </div>
+                      ) : (
+                        <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-950 dark:text-emerald-200 flex items-center gap-1 ml-auto w-fit text-xs font-semibold">
+                          <Check className="h-3 w-3 text-emerald-600" />
                           Hợp lệ
                         </Badge>
                       )}

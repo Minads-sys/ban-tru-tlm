@@ -206,6 +206,64 @@ export async function GET(request: NextRequest) {
     };
   });
 
+  // ==================== HS ĂN ĐẶC BIỆT ====================
+  // Lấy HS có lịch ăn đặc biệt ngày này (không trùng TKB lớp)
+  const scheduleClassIdsSet = new Set(schedules.map((s) => s.classId));
+  const specialMeals = await prisma.studentSpecialMeal.findMany({
+    where: {
+      date,
+      student: {
+        boardingStatus: BoardingStatus.ACTIVE,
+      },
+    },
+    include: {
+      student: {
+        include: { class: { select: { id: true, name: true } } },
+      },
+    },
+  });
+
+  // Gom HS đặc biệt (không trùng TKB lớp) theo scheduleName
+  const specialGroupMap = new Map<string, { name: string; students: Array<{ id: string; mealType: string }> }>();
+  for (const sm of specialMeals) {
+    if (!sm.student) continue;
+    if (cancelledStudentIds.has(sm.student.id)) continue;
+    if (scheduleClassIdsSet.has(sm.student.classId)) continue; // Trùng TKB lớp → bỏ qua
+
+    const key = sm.scheduleName;
+    if (!specialGroupMap.has(key)) {
+      specialGroupMap.set(key, { name: key, students: [] });
+    }
+    const finalMealType = overrideMap.get(sm.student.id) || sm.student.mealType;
+    specialGroupMap.get(key)!.students.push({ id: sm.student.id, mealType: finalMealType as string });
+  }
+
+  // Thêm lớp ảo vào classSummaries
+  for (const [scheduleName, group] of specialGroupMap) {
+    let man = 0, chay = 0, chao = 0;
+    for (const s of group.students) {
+      if (s.mealType === "MAN") man++;
+      else if (s.mealType === "CHAY") chay++;
+      else if (s.mealType === "CHAO") chao++;
+    }
+    classSummaries.push({
+      classId: `SPECIAL::${scheduleName}`,
+      className: `Lớp ${scheduleName}`,
+      totalRegistered: group.students.length,
+      totalCanceled: 0,
+      finalMan: man,
+      finalChay: chay,
+      finalChao: chao,
+      finalTotal: man + chay + chao,
+      expectedMan: 0,
+      expectedChay: 0,
+      expectedChao: 0,
+      expectedTotal: 0,
+      expectedLockedAt: null,
+      isLocked: false,
+    });
+  }
+
   // Tổng hợp toàn trường
   const totalSummary = {
     totalRegistered: classSummaries.reduce((sum, c) => sum + c.totalRegistered, 0),

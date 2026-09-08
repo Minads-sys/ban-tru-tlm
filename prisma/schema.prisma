@@ -118,6 +118,7 @@ model Student {
   user              User               @relation(fields: [userId], references: [id])
   class             Class              @relation(fields: [classId], references: [id])
   mealOverrides     MealOverride[]
+  specialMeals      StudentSpecialMeal[]
   mealCancellations MealCancellation[]
   monthlyBills      MonthlyBill[]
   settlementRecords SettlementRecord[]
@@ -186,6 +187,26 @@ model MealOverride {
   @@unique([studentId, date])
   @@index([date])
   @@map("meal_overrides")
+}
+
+// ==================== LỊCH ĂN ĐẶC BIỆT THEO HỌC SINH ====================
+
+model StudentSpecialMeal {
+  id            String       @id @default(cuid())
+  studentId     String       @map("student_id")
+  date          DateTime     @map("date") @db.Date
+  shift         ScheduleType @default(TIET_4)
+  scheduleName  String       @map("schedule_name")
+  source        String       @default("IMPORT") @map("source")
+  createdAt     DateTime     @default(now()) @map("created_at")
+
+  student       Student      @relation(fields: [studentId], references: [id])
+
+  @@unique([studentId, date])
+  @@index([date])
+  @@index([studentId])
+  @@index([scheduleName])
+  @@map("student_special_meals")
 }
 
 model MealCancellation {
@@ -432,7 +453,8 @@ model DailyDiningCourt {
   courtName   String   @map("court_name")
   cartNumber  Int      @map("cart_number")
   cartName    String   @map("cart_name")
-  classIds    String[] @map("class_ids")
+  classIds          String[] @map("class_ids")
+  specialStudentIds String[] @default([]) @map("special_student_ids")
   mode        String   @default("AUTO") // "AUTO" | "MANUAL"
   note        String?
   createdAt   DateTime @default(now()) @map("created_at")

@@ -1,4 +1,4 @@
-import ExcelJS from "exceljs";
+﻿import ExcelJS from "exceljs";
 import { removeVietnameseTones, formatDateDDMMYYYY, parseDateValue, compareClassNames } from "./utils";
 
 // ==================== TYPES ====================
@@ -809,4 +809,259 @@ export async function parseScheduleExcel(
   });
 
   return { data, errors, isValid: errors.length === 0 };
+}
+
+// ==================== LỊCH ĐẶC BIỆT ====================
+
+export interface SpecialMealImportRow {
+  stt: number;
+  hoTen: string;
+  maLop: string;
+  entries: Array<{
+    weekNumber: number;
+    dayOfWeek: number;
+    shift: "TIET_4" | "TIET_5";
+    date: string;
+  }>;
+}
+
+function isoWeekToDate(year: number, week: number, dayOfWeek: number): Date {
+  const jan4 = new Date(Date.UTC(year, 0, 4));
+  const jan4Day = jan4.getUTCDay() || 7;
+  const mondayW1 = new Date(Date.UTC(year, 0, 4 - jan4Day + 1));
+  const result = new Date(mondayW1);
+  result.setUTCDate(mondayW1.getUTCDate() + (week - 1) * 7 + (dayOfWeek - 1));
+  return result;
+}
+
+export async function parseSpecialMealExcel(
+  buffer: Uint8Array,
+  year: number,
+  classIds: string[]
+): Promise<ImportResult<SpecialMealImportRow>> {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer as any);
+  const sheet = workbook.worksheets[0];
+  const data: SpecialMealImportRow[] = [];
+  const errors: ValidationError[] = [];
+
+  const columns: Array<{ colIndex: number; weekNumber: number; dayOfWeek: number }> = [];
+  let headerRowIndex = 3; // Default
+
+  // Scan rows 1-5 to find header structure
+  for (let r = 1; r <= 5; r++) {
+    const row = sheet.getRow(r);
+    row.eachCell((cell) => {
+      const val = String(cell.value || "").toUpperCase();
+      if (val.includes("STT")) {
+        headerRowIndex = r;
+      }
+    });
+  }
+
+  const colDay: Record<number, number> = {};
+  const colWeek: Record<number, number> = {};
+
+  const dayMap: Record<string, number> = {
+    hai: 1, ba: 2, tu: 3, tư: 3, nam: 4, năm: 4, sau: 5, sáu: 5, bay: 6, bảy: 6,
+  };
+
+  for (let r = 1; r <= 5; r++) {
+    const row = sheet.getRow(r);
+    for (let c = 1; c <= sheet.columnCount; c++) {
+      const cell = row.getCell(c);
+
+      let valStr = "";
+      const valObj = cell.value;
+      if (valObj && typeof valObj === "object" && "richText" in valObj) {
+        valStr = (valObj.richText || []).map((rt: any) => rt.text).join("");
+      } else {
+        valStr = String(valObj || "");
+      }
+
+      if (!valStr && cell.isMerged && cell.master) {
+        const mValObj = cell.master.value;
+        if (mValObj && typeof mValObj === "object" && "richText" in mValObj) {
+          valStr = (mValObj.richText || []).map((rt: any) => rt.text).join("");
+        } else {
+          valStr = String(mValObj || "");
+        }
+      }
+
+      const s = removeVietnameseTones(valStr).toLowerCase().trim();
+
+      // Find day
+      for (const [key, num] of Object.entries(dayMap)) {
+        if (new RegExp(`\\bthu\\s*${key}\\b|\\b${key}\\b|\\bt${num + 1}\\b`).test(s)) {
+          colDay[c] = num;
+          break;
+        }
+      }
+
+      // Find week
+      const weekMatch = s.match(/tuan\s*(\d+)/);
+      if (weekMatch) {
+        colWeek[c] = parseInt(weekMatch[1], 10);
+      }
+    }
+  }
+
+  for (const c of Object.keys(colDay)) {
+    const colIdx = parseInt(c, 10);
+    if (colDay[colIdx] && colWeek[colIdx]) {
+      const weekNumber = colWeek[colIdx];
+      columns.push({
+        colIndex: colIdx,
+        weekNumber: weekNumber,
+        dayOfWeek: colDay[colIdx],
+      });
+    }
+  }
+
+  // Find header row columns for STT, HoTen, MaLop
+  let sttCol = 1, nameCol = 2, classCol = 3;
+  const headerRow = sheet.getRow(headerRowIndex);
+  for (let c = 1; c <= sheet.columnCount; c++) {
+    const s = removeVietnameseTones(String(headerRow.getCell(c).value || "")).toLowerCase().trim();
+    if (s.includes("stt")) sttCol = c;
+    else if (s.includes("ho ten") || s.includes("hovaten")) nameCol = c;
+    else if (s.includes("lop")) classCol = c;
+  }
+
+  const startDataRow = headerRowIndex + 1;
+  sheet.eachRow((row, rowNumber) => {
+    if (rowNumber < startDataRow) return;
+
+    const hoTen = String(row.getCell(nameCol).value || "").trim();
+    const maLopRaw = String(row.getCell(classCol).value || "").trim();
+
+    if (!hoTen && !maLopRaw) return;
+
+    if (!hoTen) {
+      errors.push({ row: rowNumber, column: "Họ Tên", message: "Thiếu họ tên" });
+    }
+
+    let maLop = maLopRaw.toUpperCase();
+    const matchedClass = findMatchingClassId(maLopRaw, classIds);
+    if (matchedClass) {
+      maLop = matchedClass;
+    } else {
+      errors.push({ row: rowNumber, column: "Lớp", message: `Lớp "${maLopRaw}" không hợp lệ` });
+    }
+
+    const entries: SpecialMealImportRow["entries"] = [];
+
+    for (const col of columns) {
+      if (col.weekNumber < 1 || col.weekNumber > 53) {
+        errors.push({ row: rowNumber, column: `Cột ${col.colIndex}`, message: `Số tuần "${col.weekNumber}" không hợp lệ` });
+        continue;
+      }
+
+      const cellVal = String(row.getCell(col.colIndex).value || "").trim();
+      if (!cellVal) continue;
+
+      const norm = removeVietnameseTones(cellVal).toLowerCase().replace(/[^a-z0-9]/g, "");
+      let shift: "TIET_4" | "TIET_5" | null = null;
+      if (norm.includes("tiet4") || norm === "t4" || norm === "4") shift = "TIET_4";
+      if (norm.includes("tiet5") || norm === "t5" || norm === "5") shift = "TIET_5";
+
+      if (!shift) {
+        errors.push({ row: rowNumber, column: `Cột ${col.colIndex}`, message: `Giá trị "${cellVal}" không hợp lệ (TIET_4/TIET_5)` });
+      } else {
+        const d = isoWeekToDate(year, col.weekNumber, col.dayOfWeek);
+        entries.push({
+          weekNumber: col.weekNumber,
+          dayOfWeek: col.dayOfWeek,
+          shift,
+          date: d.toISOString().split("T")[0],
+        });
+      }
+    }
+
+    data.push({
+      stt: rowNumber - startDataRow + 1,
+      hoTen,
+      maLop,
+      entries,
+    });
+  });
+
+  return { data, errors, isValid: errors.length === 0 };
+}
+
+export async function generateSpecialMealTemplate(): Promise<Buffer> {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = "BAN-TRU-TLM";
+  workbook.created = new Date();
+
+  const sheet = workbook.addWorksheet("LichDacBiet", {
+    properties: { defaultColWidth: 15 },
+  });
+
+  // Header styling
+  const headerStyle: Partial<ExcelJS.Style> = {
+    font: { bold: true, color: { argb: "FFFFFFFF" }, size: 12 },
+    fill: { type: "pattern", pattern: "solid", fgColor: { argb: "FF2563EB" } },
+    alignment: { horizontal: "center", vertical: "middle" },
+    border: {
+      top: { style: "thin" },
+      left: { style: "thin" },
+      bottom: { style: "thin" },
+      right: { style: "thin" },
+    },
+  };
+
+  // Title row
+  sheet.mergeCells("A1:G1");
+  const titleCell = sheet.getCell("A1");
+  titleCell.value = "ĐĂNG KÝ BÁN TRÚ LỊCH ĐẶC BIỆT";
+  titleCell.font = { bold: true, size: 14, color: { argb: "FFFFFFFF" } };
+  titleCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF2563EB" } };
+  titleCell.alignment = { horizontal: "center", vertical: "middle" };
+
+  // Instruction row
+  sheet.mergeCells("A2:G2");
+  const instrCell = sheet.getCell("A2");
+  instrCell.value = "Điền TIẾT 4 hoặc TIẾT 5 vào các ô. Để trống nếu không ăn. Số tuần phải đúng theo quy ước ISO của hệ thống.";
+  instrCell.font = { italic: true, color: { argb: "FF6B7280" } };
+  instrCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE0F2FE" } };
+
+  // Headers
+  const headers = ["STT", "HỌ VÀ TÊN HS", "LỚP", "Thứ Tư TUẦN 1", "Thứ Tư TUẦN 2", "Thứ Tư TUẦN 3", "Thứ Tư TUẦN 4"];
+  const headerRow = sheet.addRow(headers);
+  headerRow.eachCell((cell) => {
+    cell.style = headerStyle;
+  });
+
+  // Set column widths
+  sheet.getColumn(1).width = 6;
+  sheet.getColumn(2).width = 25;
+  sheet.getColumn(3).width = 10;
+  for (let c = 4; c <= 7; c++) {
+    sheet.getColumn(c).width = 15;
+  }
+
+  // Data validation
+  const shiftValidation: ExcelJS.DataValidation = {
+    type: "list",
+    allowBlank: true,
+    formulae: ['"TIẾT 4,TIẾT 5"'],
+    showErrorMessage: true,
+    errorTitle: "Giá trị không hợp lệ",
+    error: "Chỉ nhận TIẾT 4 hoặc TIẾT 5",
+  };
+
+  for (let r = 4; r <= 100; r++) {
+    for (let c = 4; c <= 7; c++) {
+      sheet.getCell(r, c).dataValidation = shiftValidation;
+    }
+  }
+
+  // Sample data
+  sheet.addRow([1, "Nguyễn Văn An", "10A1", "TIẾT 4", "", "TIẾT 5", ""]);
+  sheet.addRow([2, "Trần Thị Bình", "10A1", "", "TIẾT 5", "", "TIẾT 4"]);
+  sheet.addRow([3, "Lê Hoàng Chi", "10A2", "TIẾT 5", "TIẾT 4", "", ""]);
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  return Buffer.from(buffer);
 }
