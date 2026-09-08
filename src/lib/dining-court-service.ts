@@ -996,12 +996,18 @@ export async function getWeeklyDiningMatrix(referenceDate: Date | string): Promi
   // Sắp xếp tự nhiên theo khối lớp (10A1 -> 12A13)
   allClasses.sort((a, b) => a.id.localeCompare(b.id, "vi", { numeric: true }));
 
+  const [sy, sm, sd] = weekInfo.startDateStr.split("-").map(Number);
+  const startUtc = new Date(Date.UTC(sy, sm - 1, sd, 0, 0, 0));
+
+  const [ey, em, ed] = weekInfo.endDateStr.split("-").map(Number);
+  const endUtc = new Date(Date.UTC(ey, em - 1, ed, 23, 59, 59));
+
   // 2. Lấy các bản ghi chia sân trong tuần
   const courts = await prisma.dailyDiningCourt.findMany({
     where: {
       date: {
-        gte: startDate,
-        lte: endDate,
+        gte: startUtc,
+        lte: endUtc,
       },
     },
     orderBy: [{ date: "asc" }, { courtNumber: "asc" }],
@@ -1012,7 +1018,8 @@ export async function getWeeklyDiningMatrix(referenceDate: Date | string): Promi
   const courtNamesSet = new Set<string>();
 
   for (const c of courts) {
-    const dStr = c.date.toISOString().split("T")[0];
+    const cd = new Date(c.date);
+    const dStr = `${cd.getUTCFullYear()}-${String(cd.getUTCMonth() + 1).padStart(2, "0")}-${String(cd.getUTCDate()).padStart(2, "0")}`;
     courtNamesSet.add(c.courtName);
     for (const cid of c.classIds) {
       cellMap.set(`${cid}_${dStr}`, {
@@ -1184,13 +1191,17 @@ export async function updateClassCourtCell(
  */
 export async function deleteWeeklyDiningAllocation(referenceDate: Date | string): Promise<void> {
   const weekInfo = getSchoolWeekInfo(referenceDate);
-  const { startDate, endDate } = weekInfo;
+  const [sy, sm, sd] = weekInfo.startDateStr.split("-").map(Number);
+  const startUtc = new Date(Date.UTC(sy, sm - 1, sd, 0, 0, 0));
+
+  const [ey, em, ed] = weekInfo.endDateStr.split("-").map(Number);
+  const endUtc = new Date(Date.UTC(ey, em - 1, ed, 23, 59, 59));
 
   await prisma.dailyDiningCourt.deleteMany({
     where: {
       date: {
-        gte: startDate,
-        lte: endDate,
+        gte: startUtc,
+        lte: endUtc,
       },
     },
   });

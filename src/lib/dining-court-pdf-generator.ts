@@ -1,4 +1,4 @@
-import { DiningCourt, DiningAllocationResult } from "@/lib/dining-court-service";
+import { DiningCourt, DiningAllocationResult, WeeklyDiningMatrixResult } from "@/lib/dining-court-service";
 import { splitVietnameseName, compareVietnameseNames } from "@/lib/utils";
 
 // Lấy pdfmake và vfs_fonts (hỗ trợ đầy đủ tiếng Việt unicode)
@@ -682,6 +682,265 @@ export async function generateDiningCourtsSummaryPdfBuffer(
         fontSize: 9,
         color: "black",
       },
+    },
+    content,
+  };
+
+  const doc = pdfmake.createPdf(docDefinition);
+  return await doc.getBuffer();
+}
+
+/**
+ * Sinh Buffer PDF Bảng thống kê phân bổ sân ăn theo Tuần (Ma trận Lớp x Thứ 2 - Thứ 6)
+ */
+export async function generateWeeklyDiningMatrixPdfBuffer(
+  matrix: WeeklyDiningMatrixResult,
+  options?: { schoolName?: string }
+): Promise<Buffer> {
+  ensureFonts();
+
+  const schoolName = options?.schoolName || "TRƯỜNG TIỂU HỌC BÁN TRÚ";
+  const { weekInfo, days, rows } = matrix;
+
+  const content: any[] = [];
+
+  // 1. Header Đơn vị & Mẫu biểu
+  content.push({
+    columns: [
+      {
+        width: "*",
+        stack: [
+          { text: schoolName.toUpperCase(), fontSize: 10, bold: true },
+          { text: "Bộ phận Quản lý Bán trú", fontSize: 8.5, color: "#334155", margin: [0, 1, 0, 0] },
+        ],
+      },
+      {
+        width: "auto",
+        alignment: "right",
+        stack: [
+          { text: "Mẫu: TK-02/BT", fontSize: 9, bold: true },
+          {
+            text: `Ngày in: ${new Date().toLocaleDateString("vi-VN")} ${new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}`,
+            fontSize: 8,
+            italics: true,
+            color: "#64748b",
+            margin: [0, 1, 0, 0],
+          },
+        ],
+      },
+    ],
+    margin: [0, 0, 0, 10],
+  });
+
+  // 2. Tiêu đề
+  content.push({
+    text: `THỐNG KÊ SÂN ĂN BÁN TRÚ NĂM HỌC ${weekInfo.schoolYear}`,
+    fontSize: 13,
+    bold: true,
+    alignment: "center",
+    color: "#0f172a",
+    margin: [0, 2, 0, 2],
+  });
+
+  content.push({
+    text: `TUẦN ${weekInfo.schoolWeekNumber} (${weekInfo.formattedRange})`,
+    fontSize: 10.5,
+    bold: true,
+    alignment: "center",
+    color: "#1e293b",
+    margin: [0, 0, 0, 12],
+  });
+
+  // 3. Bảng ma trận
+  const tableBody: any[][] = [];
+
+  // Hàng Header 1: Lớp, Thứ 2 -> Thứ 6
+  const headerRow1: any[] = [
+    {
+      text: "Lớp",
+      rowSpan: 2,
+      bold: true,
+      alignment: "center",
+      fillColor: "#e2e8f0",
+      margin: [0, 7, 0, 0],
+      fontSize: 9.5,
+    },
+  ];
+
+  days.forEach((day) => {
+    headerRow1.push({
+      text: day.dayLabel,
+      bold: true,
+      alignment: "center",
+      fillColor: "#e2e8f0",
+      fontSize: 9.5,
+      margin: [0, 2, 0, 2],
+    });
+  });
+  tableBody.push(headerRow1);
+
+  // Hàng Header 2: P.ĂN dưới mỗi thứ
+  const headerRow2: any[] = [{}];
+  days.forEach(() => {
+    headerRow2.push({
+      text: "P.ĂN",
+      bold: true,
+      alignment: "center",
+      fillColor: "#f1f5f9",
+      fontSize: 8,
+      margin: [0, 1, 0, 1],
+    });
+  });
+  tableBody.push(headerRow2);
+
+  // Rows dữ liệu từng lớp
+  if (rows.length === 0) {
+    tableBody.push([
+      {
+        text: "Chưa có dữ liệu phân bổ sân cho tuần này",
+        colSpan: 6,
+        alignment: "center",
+        italics: true,
+        color: "#64748b",
+        margin: [0, 10, 0, 10],
+      },
+      {}, {}, {}, {}, {},
+    ]);
+  } else {
+    rows.forEach((r, idx) => {
+      const isEven = idx % 2 === 0;
+      const rowFill = isEven ? "#ffffff" : "#f8fafc";
+      const rowCells: any[] = [
+        {
+          text: r.className,
+          bold: true,
+          alignment: "center",
+          fontSize: 9,
+          fillColor: rowFill,
+          margin: [0, 3, 0, 3],
+        },
+      ];
+
+      days.forEach((day) => {
+        const cell = r.courts[day.dateStr];
+        const courtName = cell?.courtName || "";
+        const isTiet4 = cell?.shift === "TIET_4";
+        if (courtName) {
+          rowCells.push({
+            stack: [
+              { text: courtName, bold: true, fontSize: 8.5, color: "#0f172a" },
+              {
+                text: isTiet4 ? "(Tiết 4)" : "(Tiết 5)",
+                fontSize: 7.5,
+                bold: true,
+                color: isTiet4 ? "#b45309" : "#4338ca",
+                margin: [0, 1, 0, 0],
+              },
+            ],
+            alignment: "center",
+            fillColor: rowFill,
+            margin: [0, 2, 0, 2],
+          });
+        } else {
+          rowCells.push({
+            text: "-",
+            alignment: "center",
+            fontSize: 8.5,
+            fillColor: rowFill,
+            color: "#94a3b8",
+            margin: [0, 5, 0, 5],
+          });
+        }
+      });
+
+      tableBody.push(rowCells);
+    });
+  }
+
+  content.push({
+    table: {
+      headerRows: 2,
+      dontBreakRows: true,
+      widths: [65, "*", "*", "*", "*", "*"],
+      body: tableBody,
+    },
+    layout: {
+      hLineWidth: () => 0.5,
+      vLineWidth: () => 0.5,
+      hLineColor: () => "#000000",
+      vLineColor: () => "#000000",
+      paddingLeft: () => 4,
+      paddingRight: () => 4,
+      paddingTop: () => 2,
+      paddingBottom: () => 2,
+    },
+    margin: [0, 0, 0, 10],
+  });
+
+  // Ghi chú thời gian ăn Tiết 4 / Tiết 5
+  content.push({
+    text: "* Ghi chú thời gian ăn: Tiết 4 (Ăn lúc 10h45)  |  Tiết 5 (Ăn lúc 11h35)",
+    fontSize: 8.5,
+    italics: true,
+    bold: true,
+    color: "#334155",
+    margin: [0, 0, 0, 15],
+  });
+
+  // 4. Chữ ký xác nhận
+  content.push({
+    columns: [
+      {
+        width: "*",
+        alignment: "center",
+        stack: [
+          { text: "Người lập biểu", bold: true, fontSize: 9 },
+          { text: "(Ký và ghi rõ họ tên)", fontSize: 8, italics: true, color: "#64748b" },
+          { text: "", margin: [0, 35, 0, 0] },
+          { text: "....................................................", color: "#94a3b8" },
+        ],
+      },
+      {
+        width: "*",
+        alignment: "center",
+        stack: [
+          { text: "Bộ phận Bán trú", bold: true, fontSize: 9 },
+          { text: "(Ký xác nhận phân sân)", fontSize: 8, italics: true, color: "#64748b" },
+          { text: "", margin: [0, 35, 0, 0] },
+          { text: "....................................................", color: "#94a3b8" },
+        ],
+      },
+      {
+        width: "*",
+        alignment: "center",
+        stack: [
+          { text: "Ban Giám Hiệu", bold: true, fontSize: 9 },
+          { text: "(Ký và đóng dấu)", fontSize: 8, italics: true, color: "#64748b" },
+          { text: "", margin: [0, 35, 0, 0] },
+          { text: "....................................................", color: "#94a3b8" },
+        ],
+      },
+    ],
+    unbreakable: true,
+  });
+
+  const docDefinition: any = {
+    pageSize: "A4",
+    pageOrientation: "portrait",
+    pageMargins: [25, 25, 25, 25],
+    defaultStyle: {
+      font: "Roboto",
+      fontSize: 9,
+      lineHeight: 1.15,
+    },
+    footer: function (currentPage: number, pageCount: number) {
+      return {
+        text: `Trang ${currentPage} / ${pageCount}`,
+        alignment: "right",
+        margin: [0, 0, 25, 10],
+        fontSize: 8,
+        color: "#94a3b8",
+      };
     },
     content,
   };

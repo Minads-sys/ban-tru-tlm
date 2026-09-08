@@ -581,11 +581,11 @@ export default function DailyMealsPage() {
       )}
 
       {/* ========================================================
-          SCREEN UI: PAGE HEADER & ACTION CONTROLS (no-print)
+          SCREEN UI: PAGE HEADER & ACTION CONTROLS
          ======================================================== */}
-      <div className="no-print space-y-4">
+      <div className="space-y-4">
         {/* Top Header */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="no-print flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-md shadow-orange-500/20">
               <ChefHat className="h-6 w-6" />
@@ -1190,7 +1190,7 @@ export default function DailyMealsPage() {
       )}
           </TabsContent>
 
-          <TabsContent value="dining-areas" className="no-print space-y-4 mt-4">
+          <TabsContent value="dining-areas" className="space-y-4 mt-4">
             <DiningCourtTab cutoffTime={data?.lockTime2 || "07:00"} schoolName={schoolName} />
           </TabsContent>
         </Tabs>

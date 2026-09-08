@@ -20,10 +20,14 @@ export async function GET(request: NextRequest) {
 
     let targetDate: string | Date = new Date();
 
-    if (weekParam && yearParam) {
+    if (weekParam) {
       const weekNum = parseInt(weekParam, 10);
-      const startYear = parseInt(yearParam, 10);
-      if (!isNaN(weekNum) && !isNaN(startYear)) {
+      const currentYear = new Date().getFullYear();
+      const currentMonth = new Date().getMonth();
+      const defaultStartYear = currentMonth < 7 ? currentYear - 1 : currentYear;
+      const startYear = yearParam ? parseInt(yearParam, 10) : defaultStartYear;
+
+      if (!isNaN(weekNum)) {
         const weekInfo = getSchoolWeekFromNumber(weekNum, startYear);
         targetDate = weekInfo.startDateStr;
       }

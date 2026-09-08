@@ -74,19 +74,29 @@ export interface SchoolWeekInfo {
  * Lấy thông tin tuần năm học và tuần dương lịch từ ngày bất kỳ
  */
 export function getSchoolWeekInfo(dateInput: Date | string): SchoolWeekInfo {
-  const date = typeof dateInput === 'string' ? new Date(dateInput + 'T00:00:00') : new Date(dateInput);
-  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  let d: Date;
+  if (typeof dateInput === 'string') {
+    const cleanStr = dateInput.includes('T') ? dateInput.split('T')[0] : dateInput;
+    const parts = cleanStr.split('-').map(Number);
+    if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+      d = new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0);
+    } else {
+      d = new Date(dateInput);
+    }
+  } else {
+    d = new Date(dateInput.getFullYear(), dateInput.getMonth(), dateInput.getDate(), 12, 0, 0);
+  }
   
   // Xác định Thứ 2 của tuần chứa ngày này
   const day = d.getDay(); // 0: CN, 1: T2...
   const diffToMonday = day === 0 ? -6 : 1 - day;
   const monday = new Date(d);
   monday.setDate(d.getDate() + diffToMonday);
-  monday.setHours(0, 0, 0, 0);
+  monday.setHours(12, 0, 0, 0);
 
   const friday = new Date(monday);
   friday.setDate(monday.getDate() + 4);
-  friday.setHours(23, 59, 59, 999);
+  friday.setHours(12, 0, 0, 0);
 
   // Xác định Năm học
   const monMonth = monday.getMonth(); // 0..11 (tháng 9 là 8)
@@ -98,11 +108,10 @@ export function getSchoolWeekInfo(dateInput: Date | string): SchoolWeekInfo {
   const schoolYear = `${schoolStartYear} - ${schoolStartYear + 1}`;
 
   // Tìm Thứ 2 đầu tiên của tháng 9 trong schoolStartYear (Tuần 1)
-  const sept1 = new Date(schoolStartYear, 8, 1);
+  const sept1 = new Date(schoolStartYear, 8, 1, 12, 0, 0);
   const sept1Day = sept1.getDay();
   const diffToFirstMon = sept1Day === 1 ? 0 : (8 - (sept1Day === 0 ? 7 : sept1Day)) % 7;
-  const firstMondaySept = new Date(schoolStartYear, 8, 1 + diffToFirstMon);
-  firstMondaySept.setHours(0, 0, 0, 0);
+  const firstMondaySept = new Date(schoolStartYear, 8, 1 + diffToFirstMon, 12, 0, 0);
 
   // Tính số tuần năm học
   const diffMs = monday.getTime() - firstMondaySept.getTime();
@@ -150,11 +159,10 @@ export function getSchoolWeekInfo(dateInput: Date | string): SchoolWeekInfo {
  * Lấy thông tin tuần từ số tuần năm học và năm bắt đầu
  */
 export function getSchoolWeekFromNumber(weekNumber: number, schoolStartYear: number): SchoolWeekInfo {
-  const sept1 = new Date(schoolStartYear, 8, 1);
+  const sept1 = new Date(schoolStartYear, 8, 1, 12, 0, 0);
   const sept1Day = sept1.getDay();
   const diffToFirstMon = sept1Day === 1 ? 0 : (8 - (sept1Day === 0 ? 7 : sept1Day)) % 7;
-  const firstMondaySept = new Date(schoolStartYear, 8, 1 + diffToFirstMon);
-  firstMondaySept.setHours(0, 0, 0, 0);
+  const firstMondaySept = new Date(schoolStartYear, 8, 1 + diffToFirstMon, 12, 0, 0);
 
   const targetMonday = new Date(firstMondaySept);
   targetMonday.setDate(firstMondaySept.getDate() + (weekNumber - 1) * 7);

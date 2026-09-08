@@ -19,6 +19,7 @@ import {
   Sparkles,
   Layers,
   Image as ImageIcon,
+  FileDown,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -51,14 +52,8 @@ export function DiningCourtWeeklyMatrix({ schoolName = 'TRƯỜNG TIỂU HỌC B
   const userRole = session?.user?.role;
   const canEdit = userRole === 'ADMIN' || userRole === 'BOARDING_MANAGER';
 
-  const [currentDateStr, setCurrentDateStr] = useState<string>(() => {
-    const today = new Date();
-    return today.toISOString().split('T')[0];
-  });
-
   const [matrixData, setMatrixData] = useState<WeeklyDiningMatrixResult | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [highlightedCourt, setHighlightedCourt] = useState<string | null>(null);
 
   // Modals
   const [isAutoAllocating, setIsAutoAllocating] = useState<boolean>(false);
@@ -67,6 +62,7 @@ export function DiningCourtWeeklyMatrix({ schoolName = 'TRƯỜNG TIỂU HỌC B
   const [isCopying, setIsCopying] = useState<boolean>(false);
   const [isDeletingWeek, setIsDeletingWeek] = useState<boolean>(false);
   const [isExportingImage, setIsExportingImage] = useState<boolean>(false);
+  const [isExportingPdf, setIsExportingPdf] = useState<boolean>(false);
 
   // Edit cell modal
   const [editCellData, setEditCellData] = useState<{
@@ -81,11 +77,17 @@ export function DiningCourtWeeklyMatrix({ schoolName = 'TRƯỜNG TIỂU HỌC B
 
   const printTableRef = useRef<HTMLDivElement>(null);
 
-  // Tải dữ liệu ma trận tuần
-  const fetchMatrix = useCallback(async (dateStr: string) => {
+  // Tải dữ liệu ma trận tuần theo tuần năm học hoặc theo ngày
+  const fetchMatrix = useCallback(async (params?: { date?: string; week?: number; year?: number }) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/dining-areas/weekly?date=${dateStr}`);
+      let url = '/api/dining-areas/weekly';
+      if (params?.week && params?.year) {
+        url += `?week=${params.week}&year=${params.year}`;
+      } else if (params?.date) {
+        url += `?date=${params.date}`;
+      }
+      const res = await fetch(url);
       const json = await res.json();
       if (!res.ok) {
         throw new Error(json.error || 'Lỗi khi tải dữ liệu ma trận tuần');
@@ -100,43 +102,38 @@ export function DiningCourtWeeklyMatrix({ schoolName = 'TRƯỜNG TIỂU HỌC B
   }, []);
 
   useEffect(() => {
-    fetchMatrix(currentDateStr);
-  }, [currentDateStr, fetchMatrix]);
+    fetchMatrix();
+  }, [fetchMatrix]);
 
   // Điều hướng tuần
   const handlePrevWeek = () => {
     if (!matrixData) return;
-    const cur = new Date(matrixData.weekInfo.startDateStr + 'T00:00:00');
-    cur.setDate(cur.getDate() - 7);
-    const nextDate = cur.toISOString().split('T')[0];
-    setCurrentDateStr(nextDate);
+    const curWeek = matrixData.weekInfo.schoolWeekNumber;
+    const startYear = parseInt(matrixData.weekInfo.schoolYear.split('-')[0].trim(), 10);
+    const targetWeek = Math.max(1, curWeek - 1);
+    fetchMatrix({ week: targetWeek, year: startYear });
   };
 
   const handleNextWeek = () => {
     if (!matrixData) return;
-    const cur = new Date(matrixData.weekInfo.startDateStr + 'T00:00:00');
-    cur.setDate(cur.getDate() + 7);
-    const nextDate = cur.toISOString().split('T')[0];
-    setCurrentDateStr(nextDate);
+    const curWeek = matrixData.weekInfo.schoolWeekNumber;
+    const startYear = parseInt(matrixData.weekInfo.schoolYear.split('-')[0].trim(), 10);
+    const targetWeek = Math.min(35, curWeek + 1);
+    fetchMatrix({ week: targetWeek, year: startYear });
   };
 
   const handleCurrentWeek = () => {
-    const todayStr = new Date().toISOString().split('T')[0];
-    setCurrentDateStr(todayStr);
+    const today = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const todayStr = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+    fetchMatrix({ date: todayStr });
   };
 
   const handleSelectWeekNumber = (weekNumStr: string) => {
     if (!matrixData) return;
     const weekNum = parseInt(weekNumStr, 10);
-    const schoolStartYear = parseInt(matrixData.weekInfo.schoolYear.split('-')[0].trim(), 10);
-    // Tính ngày Thứ 2 của tuần này
-    const sept1 = new Date(schoolStartYear, 8, 1);
-    const sept1Day = sept1.getDay();
-    const diffToFirstMon = sept1Day === 1 ? 0 : (8 - (sept1Day === 0 ? 7 : sept1Day)) % 7;
-    const firstMondaySept = new Date(schoolStartYear, 8, 1 + diffToFirstMon);
-    firstMondaySept.setDate(firstMondaySept.getDate() + (weekNum - 1) * 7);
-    const dateStr = firstMondaySept.toISOString().split('T')[0];
-    setCurrentDateStr(dateStr);
+    const startYear = parseInt(matrixData.weekInfo.schoolYear.split('-')[0].trim(), 10);
+    fetchMatrix({ week: weekNum, year: startYear });
   };
 
   // Tự động phân bổ cả tuần
@@ -348,36 +345,214 @@ export function DiningCourtWeeklyMatrix({ schoolName = 'TRƯỜNG TIỂU HỌC B
     }
   };
 
-  // In biểu mẫu A4
-  const handlePrint = () => {
-    window.print();
+  // Tải file PDF chuẩn vector sắc nét
+  const handleDownloadPdf = async () => {
+    if (!matrixData) return;
+
+    setIsExportingPdf(true);
+    try {
+      const weekNum = matrixData.weekInfo.schoolWeekNumber;
+      const startYear = parseInt(matrixData.weekInfo.schoolYear.split('-')[0].trim(), 10);
+      const url = `/api/dining-areas/export-pdf?type=weekly&week=${weekNum}&year=${startYear}`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        const json = await res.json();
+        throw new Error(json.error || 'Lỗi khi tải file PDF');
+      }
+
+      const blob = await res.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      const cleanSchoolYear = matrixData.weekInfo.schoolYear.replace(/\s+/g, '');
+      a.download = `Thong_Ke_San_An_Tuan_${weekNum}_NamHoc_${cleanSchoolYear}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+
+      setTimeout(() => {
+        try {
+          a.remove();
+          window.URL.revokeObjectURL(downloadUrl);
+        } catch {}
+      }, 60000);
+
+      Swal.fire({
+        icon: 'success',
+        title: 'Đã tải file PDF thành công!',
+        timer: 1500,
+        showConfirmButton: false,
+      });
+    } catch (err) {
+      console.error('Download PDF error:', err);
+      Swal.fire('Lỗi', err instanceof Error ? err.message : 'Không thể tải file PDF', 'error');
+    } finally {
+      setIsExportingPdf(false);
+    }
   };
 
-  // Toggle highlight sân khi click ô
-  const handleCellClick = (courtName: string | null, row: WeeklyMatrixRow, dateStr: string, dayLabel: string) => {
-    if (!courtName) {
-      if (canEdit) {
-        // Cho phép gán sân vào ô trống
-        setEditCellData({
-          dateStr,
-          classId: row.classId,
-          className: row.className,
-          dayLabel,
-          currentCourtName: null,
-        });
-        setSelectedNewCourt(matrixData?.distinctCourts[0] || 'SÂN 1');
-      }
+  // In biểu mẫu A4 độc lập bằng Iframe (loại bỏ hoàn toàn lỗi trang trắng)
+  const handlePrint = () => {
+    const printContent = printTableRef.current;
+    if (!printContent || !matrixData) {
+      window.print();
       return;
     }
 
-    // Nếu click vào ô đã có sân:
-    // 1. Nếu đang nhấn Shift hoặc mở chế độ sửa -> mở modal sửa
-    // 2. Bình thường: toggle highlight sân đó (bôi vàng y như ảnh mẫu!)
-    if (highlightedCourt === courtName) {
-      setHighlightedCourt(null); // Bỏ highlight
-    } else {
-      setHighlightedCourt(courtName); // Bôi vàng sân được chọn
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document;
+    if (!doc) {
+      window.print();
+      return;
     }
+
+    const cloned = printContent.cloneNode(true) as HTMLElement;
+    // Bỏ tất cả các phần tử có class no-print
+    cloned.querySelectorAll('.no-print').forEach((el) => el.remove());
+
+    // Đảm bảo chữ ký chân trang hiện rõ ràng
+    const sigBlock = cloned.querySelector('#print-signatures-block') || cloned.querySelector('.hidden');
+    if (sigBlock) {
+      (sigBlock as HTMLElement).style.display = 'block';
+      (sigBlock as HTMLElement).classList.remove('hidden');
+    }
+
+    doc.open();
+    doc.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>Thống Kê Sân Ăn Bán Trú - Tuần ${matrixData.weekInfo.schoolWeekNumber}</title>
+          <style>
+            @page {
+              size: A4 portrait;
+              margin: 8mm 10mm 10mm 10mm;
+            }
+            * {
+              box-sizing: border-box;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+              margin: 0;
+              padding: 0;
+              color: #000;
+              background: #fff;
+              font-size: 11px;
+            }
+            .no-print {
+              display: none !important;
+            }
+            h2 {
+              margin: 0 0 4px 0;
+              font-size: 16px;
+              text-align: center;
+              font-weight: 800;
+              text-transform: uppercase;
+              letter-spacing: -0.02em;
+            }
+            p {
+              margin: 2px 0 10px 0;
+              text-align: center;
+              font-size: 12px;
+              font-weight: bold;
+              text-transform: uppercase;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              text-align: center;
+              font-size: 11px;
+              margin-top: 8px;
+            }
+            th, td {
+              border: 1px solid #000000 !important;
+              padding: 4px 6px;
+              text-align: center;
+            }
+            th {
+              background-color: #f1f5f9 !important;
+              font-weight: bold;
+              color: #000;
+            }
+            .shift-tiet4 {
+              color: #92400e !important;
+              font-weight: 600;
+              font-size: 10px;
+            }
+            .shift-tiet5 {
+              color: #3730a3 !important;
+              font-weight: 600;
+              font-size: 10px;
+            }
+            .footnote {
+              margin-top: 12px;
+              font-size: 10.5px;
+              font-style: italic;
+              color: #334155;
+              text-align: left;
+            }
+            tr {
+              page-break-inside: avoid;
+            }
+            thead {
+              display: table-header-group;
+            }
+            .grid-cols-3 {
+              display: flex;
+              justify-content: space-between;
+              margin-top: 30px;
+              page-break-inside: avoid;
+            }
+            .grid-cols-3 > div {
+              flex: 1;
+              text-align: center;
+            }
+            .grid-cols-3 p {
+              margin: 0;
+              font-size: 11px;
+            }
+          </style>
+        </head>
+        <body>
+          ${cloned.innerHTML}
+        </body>
+      </html>
+    `);
+    doc.close();
+
+    iframe.contentWindow?.focus();
+    setTimeout(() => {
+      iframe.contentWindow?.print();
+      setTimeout(() => {
+        try {
+          document.body.removeChild(iframe);
+        } catch {}
+      }, 2000);
+    }, 400);
+  };
+
+  // Xử lý khi click vào ô: Mở modal sửa hoặc gán sân nếu có quyền quản trị
+  const handleCellClick = (courtName: string | null, row: WeeklyMatrixRow, dateStr: string, dayLabel: string) => {
+    if (!canEdit) return;
+
+    setEditCellData({
+      dateStr,
+      classId: row.classId,
+      className: row.className,
+      dayLabel,
+      currentCourtName: courtName,
+    });
+    setSelectedNewCourt(courtName || matrixData?.distinctCourts[0] || 'SÂN 1');
   };
 
   const weekInfo = matrixData?.weekInfo;
@@ -458,7 +633,14 @@ export function DiningCourtWeeklyMatrix({ schoolName = 'TRƯỜNG TIỂU HỌC B
               type="button"
               variant="ghost"
               size="sm"
-              onClick={() => fetchMatrix(currentDateStr)}
+              onClick={() => {
+                if (matrixData) {
+                  const startYear = parseInt(matrixData.weekInfo.schoolYear.split('-')[0].trim(), 10);
+                  fetchMatrix({ week: matrixData.weekInfo.schoolWeekNumber, year: startYear });
+                } else {
+                  fetchMatrix();
+                }
+              }}
               disabled={loading}
               className="h-8 text-xs text-slate-600 hover:text-slate-900"
             >
@@ -469,35 +651,6 @@ export function DiningCourtWeeklyMatrix({ schoolName = 'TRƯỜNG TIỂU HỌC B
 
           {/* Công cụ tác vụ */}
           <div className="flex flex-wrap items-center gap-2">
-            {/* Bộ lọc tô màu sân (Highlight) */}
-            <div className="flex items-center gap-1.5 bg-yellow-50/80 border border-yellow-200/80 px-2.5 py-1 rounded-lg text-xs">
-              <span className="text-amber-900 font-semibold flex items-center gap-1">
-                🎨 Tô màu sân:
-              </span>
-              <select
-                value={highlightedCourt || ''}
-                onChange={(e) => setHighlightedCourt(e.target.value ? e.target.value : null)}
-                className="h-7 text-xs font-bold text-slate-800 bg-white border border-yellow-300 rounded px-1.5 focus:outline-none focus:ring-1 focus:ring-yellow-500 cursor-pointer"
-              >
-                <option value="">(Tất cả / Bỏ tô)</option>
-                {matrixData?.distinctCourts.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-              {highlightedCourt && (
-                <button
-                  type="button"
-                  onClick={() => setHighlightedCourt(null)}
-                  className="text-amber-800 hover:text-rose-600 font-bold ml-1 text-xs cursor-pointer"
-                  title="Bỏ tô màu"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-
             {/* Các nút hành động quản trị (Chỉ ADMIN & BOARDING_MANAGER) */}
             {canEdit && (
               <>
@@ -540,7 +693,7 @@ export function DiningCourtWeeklyMatrix({ schoolName = 'TRƯỜNG TIỂU HỌC B
               </>
             )}
 
-            {/* Nút Xuất ảnh gửi Zalo & In ấn (Dành cho TẤT CẢ mọi người) */}
+            {/* Nút Xuất ảnh gửi Zalo, Tải PDF & In ấn (Dành cho TẤT CẢ mọi người) */}
             <div className="flex items-center gap-1.5 pl-1 border-l border-slate-200">
               <Button
                 size="sm"
@@ -556,9 +709,22 @@ export function DiningCourtWeeklyMatrix({ schoolName = 'TRƯỜNG TIỂU HỌC B
               <Button
                 size="sm"
                 variant="outline"
+                onClick={handleDownloadPdf}
+                disabled={loading || isExportingPdf || !matrixData}
+                className="h-8 text-xs border-rose-300 bg-rose-50/70 hover:bg-rose-100 text-rose-700 font-bold shadow-2xs gap-1.5 cursor-pointer"
+                title="Tải file PDF bảng thống kê chuẩn vector sắc nét để in ấn và lưu trữ"
+              >
+                <FileDown className="h-3.5 w-3.5 text-rose-600" />
+                <span>{isExportingPdf ? 'Đang tạo PDF...' : '📄 Tải file PDF'}</span>
+              </Button>
+
+              <Button
+                size="sm"
+                variant="outline"
                 onClick={handlePrint}
                 disabled={loading || !matrixData}
                 className="h-8 text-xs border-slate-300 hover:bg-slate-100 text-slate-800 font-semibold shadow-2xs gap-1.5 cursor-pointer"
+                title="In trực tiếp ra máy in hoặc lưu PDF qua trình duyệt"
               >
                 <Printer className="h-3.5 w-3.5 text-slate-600" />
                 <span>In biểu mẫu A4</span>
@@ -572,8 +738,9 @@ export function DiningCourtWeeklyMatrix({ schoolName = 'TRƯỜNG TIỂU HỌC B
           <div className="flex items-center gap-1.5">
             <HelpCircle className="h-3.5 w-3.5 text-blue-500 shrink-0" />
             <span>
-              Mẹo: <b>Click vào bất kỳ ô SÂN nào</b> để tự động bôi màu vàng nổi bật tất cả các lớp cùng ăn sân đó (chuẩn theo mẫu bảng).
-              {canEdit && ' Click đúp hoặc bấm vào ô để đổi sân thủ công cho lớp.'}
+              {canEdit
+                ? 'Mẹo: Bấm vào bất kỳ ô SÂN nào để đổi hoặc gán sân thủ công cho lớp học.'
+                : 'Thông tin phân bổ sân ăn bán trú theo tuần của các lớp học.'}
             </span>
           </div>
           {weekInfo && (
@@ -627,37 +794,11 @@ export function DiningCourtWeeklyMatrix({ schoolName = 'TRƯỜNG TIỂU HỌC B
                 ))}
               </tr>
 
-              {/* Header hàng 2: P.ĂN dưới mỗi thứ có bộ lọc */}
+              {/* Header hàng 2: P.ĂN dưới mỗi thứ */}
               <tr className="bg-slate-50 font-bold text-slate-800 text-[11px] sm:text-xs">
                 {matrixData?.days.map((day) => (
                   <th key={`pan_${day.dateStr}`} className="border border-slate-950 px-2 py-1">
-                    <div className="inline-flex items-center justify-center gap-1">
-                      <span>P.ĂN</span>
-                      {/* Icon dropdown filter như hình mẫu */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const availableOnThisDay = Array.from(
-                            new Set(
-                              matrixData.rows
-                                .map((r) => r.courts[day.dateStr]?.courtName)
-                                .filter(Boolean) as string[]
-                            )
-                          ).sort((a, b) => a.localeCompare(b, 'vi', { numeric: true }));
-
-                          if (availableOnThisDay.length === 0) return;
-
-                          // Đổi highlight sang sân tiếp theo trong ngày
-                          const curIdx = highlightedCourt ? availableOnThisDay.indexOf(highlightedCourt) : -1;
-                          const nextCourt = availableOnThisDay[(curIdx + 1) % availableOnThisDay.length];
-                          setHighlightedCourt(nextCourt);
-                        }}
-                        className="no-print p-0.5 hover:bg-slate-200 rounded text-slate-500 hover:text-slate-900 cursor-pointer"
-                        title="Click để chọn xem sân trong thứ này"
-                      >
-                        <Filter className="h-3 w-3" />
-                      </button>
-                    </div>
+                    <span>P.ĂN</span>
                   </th>
                 ))}
               </tr>
@@ -684,33 +825,38 @@ export function DiningCourtWeeklyMatrix({ schoolName = 'TRƯỜNG TIỂU HỌC B
                     {matrixData.days.map((day) => {
                       const cell = row.courts[day.dateStr];
                       const courtName = cell?.courtName || '';
-                      const isHighlighted = Boolean(
-                        courtName && highlightedCourt && courtName.toUpperCase() === highlightedCourt.toUpperCase()
-                      );
+                      const isTiet4 = cell?.shift === 'TIET_4';
+                      const shiftLabel = isTiet4 ? '(Tiết 4)' : '(Tiết 5)';
+                      const shiftDesc = isTiet4 ? 'Ăn lúc 10h45' : 'Ăn lúc 11h35';
 
                       return (
                         <td
                           key={day.dateStr}
                           onClick={() => handleCellClick(courtName || null, row, day.dateStr, day.dayLabel)}
-                          className={`border border-slate-950 px-2 py-1.5 cursor-pointer transition-all ${
-                            isHighlighted
-                              ? 'bg-yellow-300 font-extrabold text-slate-950 shadow-inner' // Bôi vàng chuẩn như hình mẫu!
-                              : courtName
-                              ? 'text-slate-800 hover:bg-slate-100 font-medium'
-                              : 'text-slate-300 hover:bg-slate-100/60'
-                          }`}
+                          className={`border border-slate-950 px-2 py-1.5 transition-all ${
+                            canEdit ? 'cursor-pointer hover:bg-blue-50/70' : ''
+                          } ${courtName ? 'text-slate-900 bg-white' : 'text-slate-300 bg-slate-50/30'}`}
                           title={
                             courtName
-                              ? `Lớp ${row.className} - ${courtName} (${day.dayLabel})\nClick để tô màu toàn bộ sân này`
+                              ? `Lớp ${row.className} - ${courtName} (${shiftLabel.replace(/[()]/g, '')} - ${shiftDesc})${canEdit ? '\nClick để sửa/đổi sân cho lớp này' : ''}`
                               : canEdit
                               ? `Chưa có sân. Click để gán sân cho lớp ${row.className}`
                               : 'Không ăn'
                           }
                         >
                           {courtName ? (
-                            <span className="inline-block tracking-tight uppercase">
-                              {courtName}
-                            </span>
+                            <div className="flex flex-col items-center justify-center leading-tight py-0.5">
+                              <span className="font-bold tracking-tight uppercase text-xs sm:text-sm">
+                                {courtName}
+                              </span>
+                              <span
+                                className={`text-[10px] sm:text-[11px] font-semibold mt-0.5 ${
+                                  isTiet4 ? 'text-amber-700 shift-tiet4' : 'text-indigo-700 shift-tiet5'
+                                }`}
+                              >
+                                {shiftLabel}
+                              </span>
+                            </div>
                           ) : (
                             <span className="text-slate-300 select-none">&nbsp;</span>
                           )}
@@ -730,8 +876,20 @@ export function DiningCourtWeeklyMatrix({ schoolName = 'TRƯỜNG TIỂU HỌC B
           </table>
         </div>
 
+        {/* Ghi chú thời gian ăn Tiết 4 / Tiết 5 (Hiển thị đồng bộ trên màn hình, ảnh xuất PNG và bản in A4) */}
+        <div className="footnote mt-3 pt-2 border-t border-slate-200 text-xs text-slate-700 font-medium italic flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <span className="font-bold text-slate-900 not-italic">* Ghi chú thời gian ăn: </span>
+            <span className="text-amber-700 font-bold not-italic">Tiết 4</span> (Ăn lúc 10h45) &nbsp;|&nbsp;{' '}
+            <span className="text-indigo-700 font-bold not-italic">Tiết 5</span> (Ăn lúc 11h35)
+          </div>
+          <div className="text-[11px] text-slate-500 not-italic">
+            Học sinh di chuyển xuống nhà ăn đúng giờ quy định theo từng tiết học
+          </div>
+        </div>
+
         {/* Chữ ký xác nhận chân trang khi In (Chỉ xuất hiện khi in ấn) */}
-        <div className="hidden print:block mt-8 pt-4">
+        <div id="print-signatures-block" className="hidden print:block mt-8 pt-4">
           <div className="grid grid-cols-3 gap-4 text-center text-xs">
             <div>
               <p className="font-bold uppercase text-black">Người lập biểu</p>
