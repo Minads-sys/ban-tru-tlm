@@ -91,9 +91,15 @@ export async function GET(request: NextRequest) {
       distinct: ["scheduleName"],
     });
 
+    // Thống kê tổng số suất ăn trên tất cả các tuần
+    const totalAllWeeksCount = await prisma.studentSpecialMeal.count(
+      scheduleName && scheduleName !== "ALL" ? { where: { scheduleName } } : undefined
+    );
+
     return NextResponse.json({
       success: true,
       totalCount: items.length,
+      totalAllWeeksCount,
       scheduleNames: allScheduleNames.map((s) => s.scheduleName),
       items,
     });

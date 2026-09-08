@@ -97,6 +97,7 @@ export default function SchedulePage() {
   // Special Meal States
   const [specialMeals, setSpecialMeals] = useState<SpecialMealItem[]>([]);
   const [specialScheduleNames, setSpecialScheduleNames] = useState<string[]>([]);
+  const [specialTotalAllWeeksCount, setSpecialTotalAllWeeksCount] = useState(0);
   const [isSpecialModalOpen, setIsSpecialModalOpen] = useState(false);
   const [specialFilterSchedule, setSpecialFilterSchedule] = useState("ALL");
   const [specialSearchTerm, setSpecialSearchTerm] = useState("");
@@ -121,6 +122,7 @@ export default function SchedulePage() {
       if (data.success) {
         setSpecialMeals(data.items || []);
         setSpecialScheduleNames(data.scheduleNames || []);
+        setSpecialTotalAllWeeksCount(data.totalAllWeeksCount ?? 0);
       }
     } catch (e) {
       console.error("Lỗi khi tải lịch ăn đặc biệt:", e);
@@ -817,18 +819,10 @@ export default function SchedulePage() {
                     : `Lịch ăn đặc biệt trong Tuần ${currentWeek} / ${currentYear} (${getWeekDateRange(weekString)})`}
                 </DialogDescription>
               </div>
-              <Badge className="bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-950 dark:text-purple-300 font-semibold px-3 py-1">
-                Tổng: {specialMeals.filter((sm) => {
-                  if (!specialSearchTerm.trim()) return true;
-                  const term = specialSearchTerm.toLowerCase();
-                  return (
-                    sm.fullName.toLowerCase().includes(term) ||
-                    sm.className.toLowerCase().includes(term) ||
-                    sm.boardingCode.toLowerCase().includes(term) ||
-                    sm.studentCode.toLowerCase().includes(term) ||
-                    sm.scheduleName.toLowerCase().includes(term)
-                  );
-                }).length} suất
+              <Badge className="bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-950 dark:text-purple-300 font-semibold px-3 py-1 text-xs">
+                {specialAllWeeks
+                  ? `Tổng: ${specialMeals.length} suất (Tất cả tuần)`
+                  : `Tuần ${currentWeek}: ${specialMeals.length} suất ${specialTotalAllWeeksCount > 0 ? `(Toàn trường: ${specialTotalAllWeeksCount})` : ""}`}
               </Badge>
             </div>
 
@@ -869,18 +863,18 @@ export default function SchedulePage() {
                   type="button"
                   variant={specialAllWeeks ? "outline" : "default"}
                   onClick={() => setSpecialAllWeeks(false)}
-                  className="h-9 text-xs font-semibold"
+                  className={`h-9 text-xs font-semibold ${!specialAllWeeks ? "bg-purple-600 hover:bg-purple-700 text-white" : ""}`}
                 >
-                  Tuần hiện tại
+                  Tuần hiện tại ({currentWeek})
                 </Button>
                 <Button
                   size="sm"
                   type="button"
                   variant={specialAllWeeks ? "default" : "outline"}
                   onClick={() => setSpecialAllWeeks(true)}
-                  className="h-9 text-xs font-semibold"
+                  className={`h-9 text-xs font-semibold ${specialAllWeeks ? "bg-purple-600 hover:bg-purple-700 text-white" : "border-purple-300 text-purple-700 hover:bg-purple-50"}`}
                 >
-                  Tất cả các tuần
+                  Tất cả các tuần {specialTotalAllWeeksCount > 0 ? `(${specialTotalAllWeeksCount})` : ""}
                 </Button>
               </div>
 
@@ -922,22 +916,56 @@ export default function SchedulePage() {
 
               if (filtered.length === 0) {
                 return (
-                  <div className="flex flex-col items-center justify-center py-16 text-center">
-                    <div className="h-12 w-12 rounded-full bg-purple-50 flex items-center justify-center text-purple-600 mb-3">
+                  <div className="flex flex-col items-center justify-center py-12 text-center max-w-md mx-auto">
+                    <div className="h-12 w-12 rounded-full bg-purple-50 flex items-center justify-center text-purple-600 mb-3 shadow-inner">
                       <Sparkles className="h-6 w-6" />
                     </div>
-                    <p className="text-base font-semibold text-slate-700 dark:text-slate-200">
+                    <p className="text-base font-semibold text-slate-800 dark:text-slate-200">
                       Không tìm thấy lịch ăn đặc biệt nào
                     </p>
-                    <p className="text-xs text-slate-500 max-w-sm mt-1">
-                      {specialMeals.length === 0
-                        ? "Tuần này chưa có học sinh nào được import lịch ăn đặc biệt (ngoại ngữ, GDQP...)."
-                        : "Không có kết quả khớp với từ khóa tìm kiếm hoặc bộ lọc."}
-                    </p>
+
+                    {!specialAllWeeks && specialTotalAllWeeksCount > 0 ? (
+                      <div className="mt-4 p-4 bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 rounded-xl space-y-3 text-left w-full">
+                        <div className="flex items-start gap-2.5 text-xs text-purple-900 dark:text-purple-200">
+                          <Info className="h-4 w-4 text-purple-600 shrink-0 mt-0.5" />
+                          <div>
+                            <p className="font-semibold mb-1 text-sm">
+                              Tuần {currentWeek} hiện tại chưa có lịch!
+                            </p>
+                            <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
+                              File Excel của bạn được xếp vào các tuần khác (VD: Tuần 1, 2, 3, 4...). Hệ thống đang có <strong>{specialTotalAllWeeksCount} suất ăn đặc biệt</strong> đã lưu.
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          type="button"
+                          onClick={() => setSpecialAllWeeks(true)}
+                          className="w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold text-xs h-9 shadow-sm"
+                        >
+                          👉 Bấm để xem Tất cả các tuần ({specialTotalAllWeeksCount} suất)
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="mt-2 text-xs text-slate-500 space-y-2">
+                        <p>
+                          {specialMeals.length === 0
+                            ? "Chưa có suất ăn đặc biệt nào trong hệ thống."
+                            : "Không có kết quả khớp với từ khóa tìm kiếm hoặc bộ lọc."}
+                        </p>
+                        {specialMeals.length === 0 && (
+                          <p className="text-slate-400 italic">
+                            * Lưu ý: Tại trang Import Excel, sau khi bấm "Xem trước (Preview)", bạn cần nhấn tiếp nút <strong>"Thực hiện Import" (màu xanh lá)</strong> để dữ liệu được lưu vào cơ sở dữ liệu.
+                          </p>
+                        )}
+                      </div>
+                    )}
+
                     {!isAccountant && (
                       <Button
                         size="sm"
-                        className="mt-4 bg-purple-600 hover:bg-purple-700 text-white"
+                        variant="outline"
+                        className="mt-5 border-slate-300 text-slate-700 hover:bg-slate-50"
                         asChild
                       >
                         <a href="/admin/import">
