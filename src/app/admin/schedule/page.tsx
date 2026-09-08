@@ -68,6 +68,7 @@ export default function SchedulePage() {
   const [draftSchedules, setDraftSchedules] = useState<ScheduleData[] | null>(null);
   const [defaultVisibleDays, setDefaultVisibleDays] = useState<string[]>(["monday", "tuesday", "wednesday", "thursday", "friday"]);
   const [visibleDays, setVisibleDays] = useState<string[]>(["monday", "tuesday", "wednesday", "thursday", "friday"]);
+  const [hideEmptyClasses, setHideEmptyClasses] = useState(false);
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -302,6 +303,20 @@ export default function SchedulePage() {
     } catch {}
   }
 
+  // Tính tổng suất ăn dự kiến cho mỗi ngày (chỉ đếm lớp có lịch ăn)
+  const getDayTotal = (day: string) => {
+    return schedules
+      .filter(s => s[day as keyof ScheduleData] !== "NONE")
+      .reduce((sum, s) => sum + s.totalBoarding, 0);
+  };
+
+  // Lọc danh sách lớp hiển thị (ẩn lớp trống nếu bật filter)
+  const displaySchedules = hideEmptyClasses
+    ? schedules.filter(s =>
+        visibleDays.some(day => s[day as keyof ScheduleData] !== "NONE")
+      )
+    : schedules;
+
   return (
     <div>
       <h1 className="text-2xl font-bold mb-6 flex items-center gap-2">
@@ -441,9 +456,6 @@ export default function SchedulePage() {
                       let newDays = [...visibleDays];
                       if (isActive) {
                         newDays = newDays.filter(d => d !== day.id);
-                        // Tự động clear dữ liệu nếu tắt cột
-                        setSchedules(prev => prev.map(s => ({ ...s, [day.id]: "NONE" })));
-                        setHasChanges(true);
                       } else {
                         newDays.push(day.id);
                       }
@@ -455,6 +467,15 @@ export default function SchedulePage() {
                 );
               })}
             </div>
+            <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer select-none ml-3">
+              <input
+                type="checkbox"
+                checked={hideEmptyClasses}
+                onChange={(e) => setHideEmptyClasses(e.target.checked)}
+                className="rounded border-slate-300 h-3.5 w-3.5 accent-indigo-600"
+              />
+              Ẩn lớp trống
+            </label>
           </div>
         </CardHeader>
         <CardContent>
@@ -552,7 +573,28 @@ export default function SchedulePage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {schedules.map((s) => (
+                {schedules.length > 0 && (
+                  <TableRow className="bg-blue-50/80 border-b-2 border-blue-200">
+                    <TableCell className="font-bold text-blue-900 text-xs">Tổng suất</TableCell>
+                    <TableCell className="text-center font-black text-blue-700">
+                      {schedules.reduce((sum, s) => sum + s.totalBoarding, 0)}
+                    </TableCell>
+                    <TableCell className="text-center text-xs text-slate-500">
+                      {schedules.reduce((sum, s) => sum + s.maleBoarding, 0)}
+                    </TableCell>
+                    <TableCell className="text-center text-xs text-slate-500">
+                      {schedules.reduce((sum, s) => sum + s.femaleBoarding, 0)}
+                    </TableCell>
+                    {(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const)
+                      .filter(day => visibleDays.includes(day))
+                      .map(day => (
+                        <TableCell key={day} className="text-center font-black text-blue-700 text-sm">
+                          {getDayTotal(day)}
+                        </TableCell>
+                      ))}
+                  </TableRow>
+                )}
+                {displaySchedules.map((s) => (
                   <TableRow key={s.classId}>
                     <TableCell className="font-medium">{s.className}</TableCell>
                     <TableCell className="text-center font-bold text-blue-700">{s.totalBoarding}</TableCell>
