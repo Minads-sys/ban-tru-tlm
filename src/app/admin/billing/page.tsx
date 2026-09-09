@@ -769,6 +769,11 @@ export default function BillingPage() {
 
   // Phát hành hóa đơn (Level 3)
   const handlePublishBills = async () => {
+    if ((stats?.draftCount ?? 0) === 0 && (stats?.totalBills ?? 0) > 0) {
+      Swal.fire("Thông báo", "Tất cả hóa đơn tháng này đã được phát hành chính thức, không còn bản nháp nào cần phát hành.", "info");
+      return;
+    }
+
     const targetClass = classFilter !== "all" ? classes.find((c) => c.id === classFilter) : null;
     const scopeLabel = targetClass ? `lớp ${targetClass.name}` : "toàn bộ các lớp";
 
@@ -1272,25 +1277,57 @@ export default function BillingPage() {
             </Button>
 
             {/* Nút Phát hành hóa đơn (Level 3) */}
-            <Button
-              onClick={handlePublishBills}
-              disabled={publishing || loading}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow hover:shadow-lg hover:shadow-emerald-500/25 hover:-translate-y-0.5 hover:scale-[1.02] active:translate-y-0 active:scale-[0.98] transition-all duration-200 cursor-pointer flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {publishing ? <Loader2 className="h-4 w-4 animate-spin text-white" /> : <Send className="h-4 w-4 text-white" />}
-              <span>Phát hành {classFilter !== "all" ? `lớp ${classes.find((c) => c.id === classFilter)?.name || ""}` : "toàn trường"}</span>
-            </Button>
+            {(() => {
+              const draftCount = stats?.draftCount ?? 0;
+              const hasDrafts = draftCount > 0;
+              const targetScopeName = classFilter !== "all" ? `lớp ${classes.find((c) => c.id === classFilter)?.name || ""}` : "toàn trường";
+              return (
+                <Button
+                  onClick={handlePublishBills}
+                  disabled={publishing || loading || !hasDrafts}
+                  className={`${
+                    hasDrafts
+                      ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow hover:shadow-lg hover:shadow-emerald-500/25 hover:-translate-y-0.5 hover:scale-[1.02] active:translate-y-0 active:scale-[0.98] cursor-pointer"
+                      : "bg-slate-100 text-slate-500 border border-slate-200 shadow-none cursor-not-allowed opacity-75"
+                  } font-semibold transition-all duration-200 flex items-center gap-1.5`}
+                  title={hasDrafts ? `Phát hành ${draftCount} hóa đơn bản nháp cho ${targetScopeName}` : "Tất cả hóa đơn đã được phát hành"}
+                >
+                  {publishing ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-white" />
+                  ) : hasDrafts ? (
+                    <Send className="h-4 w-4 text-white" />
+                  ) : (
+                    <CheckCircle className="h-4 w-4 text-emerald-600" />
+                  )}
+                  <span>
+                    {hasDrafts
+                      ? `Phát hành (${draftCount} nháp)`
+                      : "Đã phát hành hết"}
+                  </span>
+                </Button>
+              );
+            })()}
 
             {/* Nút Thu hồi về nháp (Level 3) */}
-            <Button
-              onClick={handleUnpublishBills}
-              disabled={publishing || loading}
-              variant="outline"
-              className="border-amber-500 text-amber-700 hover:bg-amber-50 font-semibold shadow-sm hover:shadow hover:-translate-y-0.5 hover:scale-[1.02] active:translate-y-0 active:scale-[0.98] transition-all duration-200 cursor-pointer flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {publishing ? <Loader2 className="h-4 w-4 animate-spin text-amber-600" /> : <Undo2 className="h-4 w-4 text-amber-600" />}
-              <span>Thu hồi về nháp</span>
-            </Button>
+            {(() => {
+              const publishedCount = stats?.publishedCount ?? 0;
+              const unpaidCount = stats?.unpaidCount ?? 0;
+              const canUnpublish = publishedCount > 0 && unpaidCount > 0;
+              return (
+                <Button
+                  onClick={handleUnpublishBills}
+                  disabled={publishing || loading || !canUnpublish}
+                  variant="outline"
+                  className={`border-amber-500 text-amber-700 hover:bg-amber-50 font-semibold shadow-sm hover:shadow hover:-translate-y-0.5 hover:scale-[1.02] active:translate-y-0 active:scale-[0.98] transition-all duration-200 flex items-center gap-1.5 ${
+                    !canUnpublish ? "opacity-40 cursor-not-allowed hover:scale-100 hover:translate-y-0 hover:shadow-none hover:bg-transparent" : "cursor-pointer"
+                  }`}
+                  title={canUnpublish ? "Thu hồi các hóa đơn chưa thanh toán về bản nháp để chỉnh sửa" : "Không có hóa đơn chưa thanh toán nào để thu hồi"}
+                >
+                  {publishing ? <Loader2 className="h-4 w-4 animate-spin text-amber-600" /> : <Undo2 className="h-4 w-4 text-amber-600" />}
+                  <span>Thu hồi về nháp</span>
+                </Button>
+              );
+            })()}
 
             <Button
               onClick={printBills}
