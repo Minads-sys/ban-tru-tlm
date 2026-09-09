@@ -14,6 +14,8 @@ export async function GET() {
       DEFAULT_VISIBLE_DAYS: '["monday", "tuesday", "wednesday", "thursday", "friday"]',
       STUDENT_PORTAL_MAINTENANCE: 'false',
       STUDENT_MAINTENANCE_MESSAGE: '',
+      STUDENT_SHOW_DEBT_TAB: 'false',
+      STUDENT_SHOW_HISTORY_TAB: 'false',
     };
 
     settings.forEach((s) => {

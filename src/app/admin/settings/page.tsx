@@ -33,6 +33,9 @@ import {
   Trash2,
   ShieldAlert,
   Wrench,
+  Eye,
+  History,
+  Receipt,
 } from 'lucide-react';
 
 interface SettingsFormState {
@@ -55,6 +58,8 @@ interface SettingsFormState {
   SEPAY_ACCOUNT_NO: string;
   STUDENT_PORTAL_MAINTENANCE: string;
   STUDENT_MAINTENANCE_MESSAGE: string;
+  STUDENT_SHOW_DEBT_TAB: string;
+  STUDENT_SHOW_HISTORY_TAB: string;
 }
 
 const VIETNAM_BANKS = [
@@ -115,6 +120,8 @@ export default function AdminSettingsPage() {
     SEPAY_ACCOUNT_NO: '',
     STUDENT_PORTAL_MAINTENANCE: 'false',
     STUDENT_MAINTENANCE_MESSAGE: '',
+    STUDENT_SHOW_DEBT_TAB: 'false',
+    STUDENT_SHOW_HISTORY_TAB: 'false',
   });
 
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -214,6 +221,8 @@ export default function AdminSettingsPage() {
           SEPAY_ACCOUNT_NO: data.SEPAY_ACCOUNT_NO ?? prev.SEPAY_ACCOUNT_NO,
           STUDENT_PORTAL_MAINTENANCE: data.STUDENT_PORTAL_MAINTENANCE ?? prev.STUDENT_PORTAL_MAINTENANCE,
           STUDENT_MAINTENANCE_MESSAGE: data.STUDENT_MAINTENANCE_MESSAGE ?? prev.STUDENT_MAINTENANCE_MESSAGE,
+          STUDENT_SHOW_DEBT_TAB: data.STUDENT_SHOW_DEBT_TAB ?? prev.STUDENT_SHOW_DEBT_TAB,
+          STUDENT_SHOW_HISTORY_TAB: data.STUDENT_SHOW_HISTORY_TAB ?? prev.STUDENT_SHOW_HISTORY_TAB,
         }));
       } catch (err) {
         console.error(err);
@@ -758,6 +767,123 @@ export default function AdminSettingsPage() {
                     </div>
                   </div>
                 )}
+              </CardContent>
+
+              <CardFooter className="flex justify-end gap-3 border-t bg-slate-50/50 p-4">
+                <Button
+                  type="submit"
+                  disabled={isSaving}
+                  className="min-w-[140px] gap-2 shadow-sm font-medium bg-blue-600 hover:bg-blue-700"
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Đang lưu...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4" />
+                      Lưu Tất Cả Cài Đặt
+                    </>
+                  )}
+                </Button>
+              </CardFooter>
+            </Card>
+
+            {/* CARD 5.1: Quản lý hiển thị Cổng Học sinh (Sổ Bán Trú) */}
+            <Card className="shadow-sm border-2 border-slate-200 bg-white">
+              <CardHeader className="border-b bg-card">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <CardTitle className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+                      <Eye className="h-5 w-5 text-blue-600" />
+                      Cấu hình Hiển thị Cổng Học sinh & Phụ huynh
+                    </CardTitle>
+                    <CardDescription>
+                      Chủ động Bật / Tắt các phân hệ tính năng hiển thị cho học sinh và phụ huynh khi đăng nhập Sổ Bán Trú
+                    </CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+
+              <CardContent className="p-6 space-y-4">
+                {/* Công tắc 1: Danh sách nợ & QR */}
+                <div className={`flex items-start sm:items-center justify-between gap-4 p-4 rounded-xl border transition-colors ${
+                  formData.STUDENT_SHOW_DEBT_TAB === 'true'
+                    ? 'border-emerald-300 bg-emerald-50/50'
+                    : 'border-slate-200 bg-slate-50/80'
+                }`}>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <label htmlFor="debt-tab-toggle" className="text-sm font-bold text-slate-800 cursor-pointer">
+                        Hiển thị Danh sách nợ & Mã QR đóng tiền
+                      </label>
+                      {formData.STUDENT_SHOW_DEBT_TAB === 'true' ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                          ĐANG BẬT
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-200 text-slate-600 border border-slate-300">
+                          ĐANG TẮT
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      Cho phép học sinh/phụ huynh xem tab <b>&quot;DS công nợ&quot;</b> và quét mã VietQR để thanh toán tiền ăn trực tuyến. Khuyến nghị BẬT vào các đợt thu tiền ăn.
+                    </p>
+                  </div>
+                  <div className="shrink-0 flex items-center pt-1 sm:pt-0">
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        id="debt-tab-toggle"
+                        type="checkbox"
+                        checked={formData.STUDENT_SHOW_DEBT_TAB === 'true'}
+                        onChange={(e) => handleChange('STUDENT_SHOW_DEBT_TAB', e.target.checked ? 'true' : 'false')}
+                        className="sr-only peer"
+                      />
+                      <div className="w-12 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-emerald-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Công tắc 2: Lịch sử giao dịch & Thanh toán */}
+                <div className={`flex items-start sm:items-center justify-between gap-4 p-4 rounded-xl border transition-colors ${
+                  formData.STUDENT_SHOW_HISTORY_TAB === 'true'
+                    ? 'border-blue-300 bg-blue-50/50'
+                    : 'border-slate-200 bg-slate-50/80'
+                }`}>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <label htmlFor="history-tab-toggle" className="text-sm font-bold text-slate-800 cursor-pointer">
+                        Hiển thị Lịch sử giao dịch & Thanh toán
+                      </label>
+                      {formData.STUDENT_SHOW_HISTORY_TAB === 'true' ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800 border border-blue-300">
+                          ĐANG BẬT
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-200 text-slate-600 border border-slate-300">
+                          ĐANG TẮT
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      Cho phép học sinh/phụ huynh xem tab <b>&quot;Lịch sử thanh toán&quot;</b> để tra cứu hóa đơn các tháng cũ và các giao dịch chuyển khoản ngân hàng đã được hệ thống ghi nhận.
+                    </p>
+                  </div>
+                  <div className="shrink-0 flex items-center pt-1 sm:pt-0">
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        id="history-tab-toggle"
+                        type="checkbox"
+                        checked={formData.STUDENT_SHOW_HISTORY_TAB === 'true'}
+                        onChange={(e) => handleChange('STUDENT_SHOW_HISTORY_TAB', e.target.checked ? 'true' : 'false')}
+                        className="sr-only peer"
+                      />
+                      <div className="w-12 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                  </div>
+                </div>
               </CardContent>
 
               <CardFooter className="flex justify-end gap-3 border-t bg-slate-50/50 p-4">

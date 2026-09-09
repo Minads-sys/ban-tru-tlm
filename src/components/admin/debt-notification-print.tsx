@@ -85,11 +85,12 @@ export function DebtNotificationPrint({
       month
     ).padStart(2, "0")}_${year}${layoutSuffix}`;
 
-    window.print();
-
     setTimeout(() => {
-      document.title = originalTitle;
-    }, 2000);
+      window.print();
+      setTimeout(() => {
+        document.title = originalTitle;
+      }, 2000);
+    }, 100);
   };
 
   const handleExportPdf = async () => {
@@ -269,19 +270,27 @@ export function DebtNotificationPrint({
               print-color-adjust: exact !important;
               font-family: 'Times New Roman', Times, serif !important;
               width: 100% !important;
-              height: 100% !important;
+              height: auto !important;
+              min-height: 0 !important;
             }
             .no-print, .no-print * {
               display: none !important;
             }
+            #debt-print-portal-wrapper,
+            .debt-print-portal,
             .debt-print-root {
               display: block !important;
               position: static !important;
               width: 100% !important;
+              height: auto !important;
+              min-height: 0 !important;
+              max-height: none !important;
               margin: 0 !important;
               padding: 0 !important;
               background: #ffffff !important;
               overflow: visible !important;
+              visibility: visible !important;
+              opacity: 1 !important;
             }
             .debt-page-sheet {
               width: 210mm !important;
@@ -457,5 +466,10 @@ export function DebtNotificationPrint({
     </div>
   );
 
-  return createPortal(content, document.body);
+  return createPortal(
+    <div id="debt-print-portal-wrapper" className="debt-print-portal">
+      {content}
+    </div>,
+    document.body
+  );
 }

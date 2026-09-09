@@ -764,13 +764,8 @@ async function calculateStudentSettlement({
         },
       });
 
-      // Khóa tài khoản
-      await prisma.user.update({
-        where: { id: student.userId },
-        data: { isActive: false },
-      });
-
       // Cập nhật hóa đơn hiện tại
+      let hasRemainingDebt = false;
       if (calculation.currentBill) {
         if (calculation.actualMealDays === 0) {
           // Chưa ăn bữa nào: xóa sạch công nợ về 0 để không còn lưu nợ
@@ -793,6 +788,10 @@ async function calculateStudentSettlement({
             ? "PARTIAL"
             : "UNPAID";
 
+          if (!isFullyPaid) {
+            hasRemainingDebt = true;
+          }
+
           await prisma.monthlyBill.update({
             where: { id: calculation.currentBill.id },
             data: {
@@ -804,7 +803,16 @@ async function calculateStudentSettlement({
             },
           });
         }
+      } else if (calculation.settlementType === "ADDITIONAL_PAYMENT") {
+        hasRemainingDebt = true;
       }
+
+      // Quản lý tài khoản: Nếu học sinh còn nợ quyết toán, giữ tài khoản mở (isActive = true)
+      // để học sinh/phụ huynh có thể đăng nhập tra cứu công nợ và quét mã QR chuyển khoản hoàn tất.
+      await prisma.user.update({
+        where: { id: student.userId },
+        data: { isActive: hasRemainingDebt },
+      });
 
       broadcastChange('students', 'UPDATE', { id: studentId, status: BoardingStatus.CANCELLED });
       broadcastChange('daily_meals', 'UPDATE');

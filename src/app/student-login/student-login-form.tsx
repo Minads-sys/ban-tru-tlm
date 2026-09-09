@@ -70,7 +70,10 @@ export default function StudentLoginForm({ schoolName }: { schoolName: string })
         } else if (code === "PASSWORD_INCORRECT_DEFAULT") {
           setError("Mật khẩu chưa chính xác (Mật khẩu mặc định là Ngày tháng năm sinh ddmmyyyy)");
           setErrorField("password");
-        } else if (code === "ACCOUNT_INACTIVE" || res.error.includes("ngưng hoạt động")) {
+        } else if (code === "ACCOUNT_CANCELLED_NO_DEBT") {
+          setError("ℹ️ Học sinh đã ngừng ăn bán trú và đã hoàn tất toàn bộ công nợ quyết toán. Dịch vụ bán trú đã kết thúc. Cảm ơn quý phụ huynh.");
+          setErrorField(null);
+        } else if (code === "ACCOUNT_INACTIVE" || (res.error && res.error.includes("ngưng hoạt động"))) {
           setError("⚠️ Tài khoản bán trú của bạn đã bị ngưng hoạt động. Vui lòng liên hệ Nhà trường.");
           setErrorField(null);
         } else {

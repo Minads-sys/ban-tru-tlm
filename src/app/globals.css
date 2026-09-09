@@ -78,8 +78,8 @@ body {
   /* Khi có Dialog mở để in ấn, ẩn toàn bộ layout nền phía dưới để tránh tạo trang trắng thừa phía trên */
   body:has([role="dialog"]) #admin-main-layout,
   body.printing-modal-open #admin-main-layout,
-  body:has([role="dialog"]) > *:not(:has([role="dialog"])),
-  body.printing-modal-open > *:not(:has([role="dialog"])) {
+  body:has([role="dialog"]) > *:not(:has([role="dialog"])):not([role="dialog"]):not(#debt-print-root):not(.debt-print-portal),
+  body.printing-modal-open > *:not(:has([role="dialog"])):not([role="dialog"]):not(#debt-print-root):not(.debt-print-portal) {
     display: none !important;
     height: 0 !important;
     min-height: 0 !important;

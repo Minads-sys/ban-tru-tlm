@@ -75,7 +75,15 @@ export default function LoginForm({ schoolName }: { schoolName: string }) {
 
       if (result?.error) {
         if (
+          (result as any).code === "ACCOUNT_CANCELLED_NO_DEBT" ||
+          result.error.includes("ACCOUNT_CANCELLED_NO_DEBT")
+        ) {
+          setErrorMessage(
+            "Học sinh đã ngừng ăn bán trú và đã hoàn tất toàn bộ công nợ quyết toán. Dịch vụ bán trú đã kết thúc. Cảm ơn quý phụ huynh."
+          );
+        } else if (
           result.error.includes("ngưng hoạt động") ||
+          result.error.includes("ACCOUNT_INACTIVE") ||
           result.error.includes("CANCELLED")
         ) {
           setErrorMessage(

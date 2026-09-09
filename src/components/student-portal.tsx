@@ -49,6 +49,18 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
+export interface SettlementRecordItem {
+  id: string;
+  studentId?: string;
+  settlementDate: string | Date;
+  totalPaid: string | number;
+  actualUsedAmount: string | number;
+  refundOrDebt: string | number;
+  settlementType: "REFUND" | "ADDITIONAL_PAYMENT" | "BALANCED";
+  note?: string | null;
+  isRefunded?: boolean;
+}
+
 interface StudentData {
   id: string;
   studentCode: string;
@@ -57,6 +69,7 @@ interface StudentData {
   classId: string;
   mealType: "MAN" | "CHAY" | "CHAO";
   boardingStatus: "ACTIVE" | "CANCELLED" | "SUSPENDED";
+  boardingCancelledAt?: string | Date | null;
   mealStartDate?: string | Date | null;
   parentPhone?: string | null;
   birthDate?: string | Date | null;
@@ -69,6 +82,7 @@ interface StudentData {
   class?: {
     name: string;
   };
+  settlementRecords?: SettlementRecordItem[];
 }
 
 interface MealCancellation {
@@ -113,6 +127,12 @@ interface StudentBill {
     gateway?: string | null;
     status: string;
   }>;
+  student?: {
+    id?: string;
+    boardingStatus?: "ACTIVE" | "CANCELLED" | "SUSPENDED";
+    boardingCancelledAt?: string | Date | null;
+    settlementRecords?: SettlementRecordItem[];
+  };
 }
 
 export function StudentPortal({ forceStudentId, readOnly = false }: { forceStudentId?: string, readOnly?: boolean }) {
@@ -138,11 +158,20 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
   const [selectedHistoryYear, setSelectedHistoryYear] = useState<number>(new Date().getFullYear());
   const [selectedHistoryMonth, setSelectedHistoryMonth] = useState<number | null>(null);
 
-  // Tạm ẩn Tab "DS công nợ" và "Lịch sử thanh toán" theo yêu cầu
-  const HIDE_BILLING_TABS = true;
+  // Cài đặt hiển thị tab theo cấu hình Quản trị viên Admin
+  const [showDebtTab, setShowDebtTab] = useState<boolean>(false);
+  const [showHistoryTab, setShowHistoryTab] = useState<boolean>(false);
+  const [loadingSettings, setLoadingSettings] = useState<boolean>(true);
 
   const formatMoney = (val: number | string) =>
     new Intl.NumberFormat("vi-VN").format(Math.max(0, Math.round(Number(val || 0)))) + "đ";
+
+  // Trạng thái đã ngừng/hủy ăn bán trú
+  const isCancelled = studentInfo?.boardingStatus === "CANCELLED";
+
+  // Khi học sinh đã hủy bán trú: luôn mở tab Công nợ & Quyết toán để phụ huynh xem và thanh toán
+  const effectiveShowDebtTab = showDebtTab || isCancelled;
+  const effectiveShowHistoryTab = showHistoryTab || isCancelled;
 
   // Danh sách các phiếu còn nợ (UNPAID hoặc PARTIAL)
   const debtBills = bills.filter(
@@ -158,6 +187,22 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
   const historyBills = bills
     .filter((b) => b.year === selectedHistoryYear)
     .sort((a, b) => b.month - a.month);
+
+  // Helper: Lấy thông tin bản ghi quyết toán cho hóa đơn (nếu có)
+  const getBillSettlement = (b: StudentBill): SettlementRecordItem | null => {
+    const sRecords = b.student?.settlementRecords || studentInfo?.settlementRecords;
+    if (!sRecords || sRecords.length === 0) return null;
+    const latestSettlement = sRecords[0];
+
+    const sDate = new Date(latestSettlement.settlementDate);
+    const sMonth = sDate.getMonth() + 1;
+
+    const isStudentCancelled = b.student?.boardingStatus === "CANCELLED" || isCancelled;
+    if (isStudentCancelled && (b.month === sMonth || isCancelled)) {
+      return latestSettlement;
+    }
+    return null;
+  };
 
   // States for Cancel Form
   const [cancelDate, setCancelDate] = useState<string>("");
@@ -287,21 +332,80 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
     }
   }, []);
 
+  const fetchSettings = useCallback(async () => {
+    try {
+      setLoadingSettings(true);
+      const res = await fetch('/api/settings');
+      if (res.ok) {
+        const data = await res.json();
+        setShowDebtTab(data.STUDENT_SHOW_DEBT_TAB === 'true');
+        setShowHistoryTab(data.STUDENT_SHOW_HISTORY_TAB === 'true');
+      }
+    } catch (err) {
+      console.error('Lỗi khi tải cài đặt hệ thống cho học sinh:', err);
+    } finally {
+      setLoadingSettings(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchSettings();
+  }, [fetchSettings]);
+
   useEffect(() => {
     if (studentId) {
       fetchStudentInfo(studentId);
       fetchCancellations(studentId);
       fetchOverrides(studentId);
-      fetchBills(studentId);
+      if (effectiveShowDebtTab || effectiveShowHistoryTab) {
+        fetchBills(studentId);
+      }
     } else if (status !== "loading") {
       setLoadingStudent(false);
       setLoadingCancellations(false);
       setLoadingOverrides(false);
       setLoadingBills(false);
     }
-  }, [studentId, status, fetchStudentInfo, fetchCancellations, fetchOverrides, fetchBills]);
+  }, [studentId, status, effectiveShowDebtTab, effectiveShowHistoryTab, fetchStudentInfo, fetchCancellations, fetchOverrides, fetchBills]);
 
-  // Realtime: tự cập nhật khi trạng thái cắt suất, đổi món hoặc hóa đơn thay đổi
+  // Realtime: tự động cập nhật khi admin bật/tắt tab trong cài đặt hệ thống
+  useRealtime({
+    table: 'system_settings',
+    event: '*',
+    onChanged: () => {
+      fetchSettings();
+    },
+  });
+
+  // Tự động chuyển tab:
+  // Nếu học sinh đã hủy bán trú: luôn chuyển sang tab "debt" (Công nợ & Quyết toán)
+  // Nếu học sinh bình thường: chuyển về "cancel" nếu tab hiện tại bị admin ẩn đi
+  useEffect(() => {
+    if (isCancelled) {
+      if (activeTab === "cancel" || activeTab === "override") {
+        setActiveTab("debt");
+      }
+    } else {
+      if (activeTab === "debt" && !showDebtTab) {
+        setActiveTab("cancel");
+      } else if (activeTab === "history" && !showHistoryTab) {
+        setActiveTab("cancel");
+      }
+    }
+  }, [activeTab, showDebtTab, showHistoryTab, isCancelled]);
+
+  // Realtime: tự cập nhật khi trạng thái học sinh, cắt suất, đổi món hoặc hóa đơn thay đổi
+  useRealtime({
+    table: 'students',
+    event: '*',
+    onChanged: () => { 
+      if (studentId) {
+        fetchStudentInfo(studentId);
+        fetchBills(studentId);
+      }
+    },
+  });
+
   useRealtime({
     table: 'meal_cancellations',
     event: '*',
@@ -317,7 +421,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
   useRealtime({
     table: 'monthly_bills',
     event: '*',
-    onChanged: () => { if (studentId) fetchBills(studentId); },
+    onChanged: () => { if (studentId && (effectiveShowDebtTab || effectiveShowHistoryTab)) fetchBills(studentId); },
   });
 
   const handleCancelDateChange = async (newDate: string) => {
@@ -583,6 +687,36 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
         </p>
       </div>
 
+      {/* Banner thông báo dành cho học sinh đã ngừng bán trú */}
+      {isCancelled && (
+        <div className="p-4 rounded-xl bg-amber-50 border-2 border-amber-300 shadow-xs flex items-start gap-3">
+          <div className="h-9 w-9 rounded-full bg-amber-100 flex items-center justify-center shrink-0 text-amber-700 mt-0.5">
+            <AlertCircle className="h-5 w-5" />
+          </div>
+          <div className="flex-1 text-xs sm:text-sm space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-bold text-amber-950 text-sm sm:text-base">
+                Học sinh đã ngừng đăng ký ăn bán trú
+              </span>
+              <Badge variant="outline" className="bg-rose-50 text-rose-700 border-rose-200 text-xs font-semibold">
+                Không bán trú
+              </Badge>
+            </div>
+            <p className="text-amber-900 text-xs sm:text-[13px] leading-relaxed">
+              {debtBills.length > 0 ? (
+                <>
+                  Nhà trường đã thực hiện thủ tục hủy bán trú và <strong>Quyết toán công nợ</strong>. Quý phụ huynh vui lòng kiểm tra thông tin chi tiết và hoàn tất nộp số tiền nợ quyết toán tại tab <strong>Công nợ & Quyết toán</strong> bên dưới.
+                </>
+              ) : (
+                <>
+                  Học sinh đã hoàn tất toàn bộ các khoản quyết toán tiền ăn bán trú. Cảm ơn quý phụ huynh và học sinh đã đồng hành cùng nhà trường!
+                </>
+              )}
+            </p>
+          </div>
+        </div>
+      )}
+
       <Card className="border-slate-200 shadow-xs bg-white">
         <CardHeader className="pb-3 border-b border-slate-100 flex flex-row items-center justify-between cursor-pointer" onClick={() => setIsExpanded(!isExpanded)}>
           <div>
@@ -728,43 +862,57 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
       </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className={`grid w-full ${HIDE_BILLING_TABS ? "grid-cols-2" : "grid-cols-2 sm:grid-cols-4"} mb-6 p-1.5 bg-slate-200 rounded-xl gap-1.5 h-auto border border-slate-300 shadow-2xs`}>
-          <TabsTrigger
-            value="cancel"
-            className="cursor-pointer transition-all duration-150 text-slate-700 hover:text-red-900 hover:bg-red-100/70 data-[state=active]:bg-red-600 data-[state=active]:text-white font-semibold data-[state=active]:shadow-sm py-2 text-xs sm:text-sm group"
-          >
-            <Calendar className="h-4 w-4 mr-1.5 shrink-0 text-slate-600 group-data-[state=active]:text-white" />
-            {readOnly ? 'Lịch sử Cắt suất' : 'Cắt suất ăn'}
-          </TabsTrigger>
-          <TabsTrigger
-            value="override"
-            className="cursor-pointer transition-all duration-150 text-slate-700 hover:text-green-900 hover:bg-green-100/70 data-[state=active]:bg-green-600 data-[state=active]:text-white font-semibold data-[state=active]:shadow-sm py-2 text-xs sm:text-sm group"
-          >
-            <RefreshCw className="h-4 w-4 mr-1.5 shrink-0 text-slate-600 group-data-[state=active]:text-white" />
-            {readOnly ? 'Lịch sử Đổi món' : 'Đổi món ăn'}
-          </TabsTrigger>
-          {!HIDE_BILLING_TABS && (
+        <TabsList className={`grid w-full ${
+          isCancelled
+            ? effectiveShowHistoryTab
+              ? "grid-cols-2"
+              : "grid-cols-1"
+            : effectiveShowDebtTab && effectiveShowHistoryTab
+            ? "grid-cols-2 sm:grid-cols-4"
+            : effectiveShowDebtTab || effectiveShowHistoryTab
+            ? "grid-cols-3"
+            : "grid-cols-2"
+        } mb-6 p-1.5 bg-slate-200 rounded-xl gap-1.5 h-auto border border-slate-300 shadow-2xs`}>
+          {!isCancelled && (
             <>
               <TabsTrigger
-                value="debt"
-                className="cursor-pointer transition-all duration-150 text-slate-700 hover:text-amber-900 hover:bg-amber-100/70 data-[state=active]:bg-amber-600 data-[state=active]:text-white font-semibold data-[state=active]:shadow-sm py-2 text-xs sm:text-sm flex items-center justify-center gap-1 group"
+                value="cancel"
+                className="cursor-pointer transition-all duration-150 text-slate-700 hover:text-red-900 hover:bg-red-100/70 data-[state=active]:bg-red-600 data-[state=active]:text-white font-semibold data-[state=active]:shadow-sm py-2 text-xs sm:text-sm group"
               >
-                <AlertCircle className="h-4 w-4 mr-1 shrink-0 text-slate-600 group-data-[state=active]:text-white" />
-                <span>DS công nợ</span>
-                {debtBills.length > 0 && (
-                  <Badge className="bg-rose-600 group-data-[state=active]:bg-white group-data-[state=active]:text-amber-700 text-white text-[10px] px-1.5 py-0 h-4 min-w-4 flex items-center justify-center rounded-full ml-1 font-bold transition-colors">
-                    {debtBills.length}
-                  </Badge>
-                )}
+                <Calendar className="h-4 w-4 mr-1.5 shrink-0 text-slate-600 group-data-[state=active]:text-white" />
+                {readOnly ? 'Lịch sử Cắt suất' : 'Cắt suất ăn'}
               </TabsTrigger>
               <TabsTrigger
-                value="history"
-                className="cursor-pointer transition-all duration-150 text-slate-700 hover:text-blue-900 hover:bg-blue-100/70 data-[state=active]:bg-blue-600 data-[state=active]:text-white font-semibold data-[state=active]:shadow-sm py-2 text-xs sm:text-sm group"
+                value="override"
+                className="cursor-pointer transition-all duration-150 text-slate-700 hover:text-green-900 hover:bg-green-100/70 data-[state=active]:bg-green-600 data-[state=active]:text-white font-semibold data-[state=active]:shadow-sm py-2 text-xs sm:text-sm group"
               >
-                <History className="h-4 w-4 mr-1.5 shrink-0 text-slate-600 group-data-[state=active]:text-white" />
-                Lịch sử thanh toán
+                <RefreshCw className="h-4 w-4 mr-1.5 shrink-0 text-slate-600 group-data-[state=active]:text-white" />
+                {readOnly ? 'Lịch sử Đổi món' : 'Đổi món ăn'}
               </TabsTrigger>
             </>
+          )}
+          {effectiveShowDebtTab && (
+            <TabsTrigger
+              value="debt"
+              className="cursor-pointer transition-all duration-150 text-slate-700 hover:text-amber-900 hover:bg-amber-100/70 data-[state=active]:bg-amber-600 data-[state=active]:text-white font-semibold data-[state=active]:shadow-sm py-2 text-xs sm:text-sm flex items-center justify-center gap-1 group"
+            >
+              <AlertCircle className="h-4 w-4 mr-1 shrink-0 text-slate-600 group-data-[state=active]:text-white" />
+              <span>{isCancelled ? "Công nợ & Quyết toán" : "DS công nợ"}</span>
+              {debtBills.length > 0 && (
+                <Badge className="bg-rose-600 group-data-[state=active]:bg-white group-data-[state=active]:text-amber-700 text-white text-[10px] px-1.5 py-0 h-4 min-w-4 flex items-center justify-center rounded-full ml-1 font-bold transition-colors">
+                  {debtBills.length}
+                </Badge>
+              )}
+            </TabsTrigger>
+          )}
+          {effectiveShowHistoryTab && (
+            <TabsTrigger
+              value="history"
+              className="cursor-pointer transition-all duration-150 text-slate-700 hover:text-blue-900 hover:bg-blue-100/70 data-[state=active]:bg-blue-600 data-[state=active]:text-white font-semibold data-[state=active]:shadow-sm py-2 text-xs sm:text-sm group"
+            >
+              <History className="h-4 w-4 mr-1.5 shrink-0 text-slate-600 group-data-[state=active]:text-white" />
+              Lịch sử thanh toán
+            </TabsTrigger>
           )}
         </TabsList>
 
@@ -1024,36 +1172,43 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
             </div>
           </TabsContent>
 
-          {/* TAB 3 & 4: DANH SÁCH CÔNG NỢ & LỊCH SỬ THANH TOÁN (TẠM ẨN) */}
-          {!HIDE_BILLING_TABS && (
-            <>
-              <TabsContent value="debt">
+          {/* TAB 3: DANH SÁCH CÔNG NỢ & QUYẾT TOÁN */}
+          {effectiveShowDebtTab && (
+            <TabsContent value="debt">
             <div className="space-y-6">
               {loadingBills ? (
                 <Card className="p-8 text-center text-slate-500">
                   <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-blue-600" />
-                  Đang tải thông tin công nợ...
+                  Đang tải thông tin công nợ & quyết toán...
                 </Card>
               ) : debtBills.length === 0 ? (
                 <Card className="p-8 text-center bg-emerald-50/40 border border-emerald-200 shadow-xs">
                   <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-3">
                     <CheckCircle className="h-6 w-6" />
                   </div>
-                  <h3 className="text-base font-bold text-slate-800">Không có công nợ tiền ăn</h3>
+                  <h3 className="text-base font-bold text-slate-800">
+                    {isCancelled ? "Đã hoàn tất quyết toán tiền ăn" : "Không có công nợ tiền ăn"}
+                  </h3>
                   <p className="text-xs text-slate-600 mt-1 max-w-md mx-auto">
-                    Học sinh {studentInfo?.user?.fullName} hiện không có phiếu báo tiền ăn nào còn nợ. Cảm ơn quý phụ huynh đã hoàn thành đầy đủ các khoản tiền ăn bán trú!
+                    {isCancelled ? (
+                      `Học sinh ${studentInfo?.user?.fullName || ""} đã ngừng ăn bán trú và đã hoàn tất thanh toán toàn bộ các khoản quyết toán tiền ăn. Dịch vụ bán trú đã kết thúc. Cảm ơn quý phụ huynh đã đồng hành cùng nhà trường!`
+                    ) : (
+                      `Học sinh ${studentInfo?.user?.fullName || ""} hiện không có phiếu báo tiền ăn nào còn nợ. Cảm ơn quý phụ huynh đã hoàn thành đầy đủ các khoản tiền ăn bán trú!`
+                    )}
                   </p>
-                  <div className="mt-4">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setActiveTab("history")}
-                      className="text-xs text-blue-700 border-blue-200 bg-white hover:bg-blue-50"
-                    >
-                      <History className="h-3.5 w-3.5 mr-1.5" />
-                      Xem lại Lịch sử thanh toán trong năm
-                    </Button>
-                  </div>
+                  {effectiveShowHistoryTab && (
+                    <div className="mt-4">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setActiveTab("history")}
+                        className="text-xs text-blue-700 border-blue-200 bg-white hover:bg-blue-50"
+                      >
+                        <History className="h-3.5 w-3.5 mr-1.5" />
+                        Xem lại Lịch sử thanh toán trong năm
+                      </Button>
+                    </div>
+                  )}
                 </Card>
               ) : (
                 <div className="space-y-6">
@@ -1078,6 +1233,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                     const billTotal = Number(bill.finalAmount);
                     const paidAmount = (bill.transactions || []).reduce((sum, t) => sum + Number(t.amount), 0);
                     const remainingAmount = Math.max(0, billTotal - paidAmount);
+                    const settlement = getBillSettlement(bill);
 
                     // Sinh QR Code động với số tiền CÒN NỢ thực tế
                     const qrUrl = generateMealPaymentQR(
@@ -1097,12 +1253,17 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                         <CardHeader className={`border-b pb-3 ${isPartial ? "bg-amber-50/70" : "bg-rose-50/50"}`}>
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                             <div>
-                              <div className="flex items-center gap-2">
+                              <div className="flex flex-wrap items-center gap-2">
                                 <CardTitle className="text-base sm:text-lg font-bold text-slate-900">
                                   Hóa đơn tiền ăn Tháng {bill.month}/{bill.year}
                                 </CardTitle>
                                 {isLatest && (
                                   <Badge className="bg-blue-600 text-white text-[10px]">Mới nhất</Badge>
+                                )}
+                                {settlement && (
+                                  <Badge className="bg-amber-100 text-amber-900 border-amber-300 font-bold text-[10px] sm:text-xs px-2 py-0.5 flex items-center gap-1 shadow-2xs">
+                                    ⚖️ ĐÃ QUYẾT TOÁN HỦY BÁN TRÚ
+                                  </Badge>
                                 )}
                               </div>
                               <CardDescription className="text-xs mt-0.5">
@@ -1126,10 +1287,54 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                         </CardHeader>
 
                         <CardContent className="pt-4 space-y-4 text-xs">
+                          {/* Khung chi tiết Quyết toán khi Hủy bán trú */}
+                          {settlement && (
+                            <div className="p-3.5 bg-amber-50/90 border-2 border-amber-300 rounded-xl space-y-2.5 shadow-2xs">
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-amber-200/80 pb-2 gap-1.5">
+                                <span className="font-extrabold text-amber-950 flex items-center gap-1.5 text-xs sm:text-sm">
+                                  <AlertCircle className="h-4 w-4 text-amber-700 shrink-0" />
+                                  Thông tin Quyết toán khi Hủy ăn Bán trú
+                                </span>
+                                <span className="text-[11px] text-amber-900 font-semibold bg-amber-100/90 px-2.5 py-0.5 rounded border border-amber-200 w-fit">
+                                  Ngày quyết toán: {new Date(settlement.settlementDate).toLocaleDateString("vi-VN")}
+                                </span>
+                              </div>
+                              <div className="text-xs text-amber-950 space-y-2">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                                  <div className="bg-white/90 p-2.5 rounded-lg border border-amber-200">
+                                    <span className="text-slate-500 block text-[11px]">Trạng thái dịch vụ:</span>
+                                    <span className="font-bold text-rose-700">
+                                      Đã ngừng ăn bán trú
+                                    </span>
+                                  </div>
+                                  <div className="bg-white/90 p-2.5 rounded-lg border border-amber-200">
+                                    <span className="text-slate-500 block text-[11px]">Số ngày ăn thực tế:</span>
+                                    <span className="font-bold text-slate-900">
+                                      {bill.scheduleMealDays} ngày (Tổng tiền: {formatMoney(bill.finalAmount)})
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-lg text-xs flex items-center justify-between">
+                                  <span className="font-semibold text-rose-900">
+                                    Số tiền nợ quyết toán thực tế cần nộp:
+                                  </span>
+                                  <span className="font-extrabold text-rose-700 text-sm sm:text-base">
+                                    {formatMoney(remainingAmount)}
+                                  </span>
+                                </div>
+                                {settlement.note && (
+                                  <p className="text-[11px] text-slate-600 italic bg-white/70 p-2 rounded-lg border border-amber-100">
+                                    <strong>Ghi chú từ nhà trường:</strong> {settlement.note}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
                           {/* Bảng tóm tắt thông số */}
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                             <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-100">
-                              <span className="text-slate-500 block text-[11px]">Số ngày ăn dự kiến:</span>
+                              <span className="text-slate-500 block text-[11px]">{settlement ? "Số ngày ăn thực tế:" : "Số ngày ăn dự kiến:"}</span>
                               <span className="text-sm font-bold text-slate-800">{bill.scheduleMealDays} ngày</span>
                             </div>
                             <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-100">
@@ -1144,12 +1349,12 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                               </span>
                             </div>
                             <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-100">
-                              <span className="text-slate-500 block text-[11px]">Tổng tiền hóa đơn:</span>
+                              <span className="text-slate-500 block text-[11px]">{settlement ? "Tổng tiền quyết toán:" : "Tổng tiền hóa đơn:"}</span>
                               <span className="text-sm font-bold text-slate-800">{formatMoney(billTotal)}</span>
                             </div>
                             <div className={`p-2.5 rounded-lg border ${isPartial ? "bg-amber-50/80 border-amber-200" : "bg-rose-50/80 border-rose-200"}`}>
                               <span className={`block text-[11px] font-medium ${isPartial ? "text-amber-800" : "text-rose-700"}`}>
-                                Số tiền CÒN NỢ:
+                                {settlement ? "Nợ Quyết toán CÒN LẠI:" : "Số tiền CÒN NỢ:"}
                               </span>
                               <span className={`text-base font-extrabold ${isPartial ? "text-amber-900" : "text-rose-700"}`}>
                                 {formatMoney(remainingAmount)}
@@ -1231,7 +1436,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                                 loading="eager"
                               />
                               <span className="text-[11px] text-blue-600 font-bold mt-1">
-                                Quét để nộp: {formatMoney(remainingAmount)}
+                                {settlement ? `Nộp quyết toán: ${formatMoney(remainingAmount)}` : `Quét để nộp: ${formatMoney(remainingAmount)}`}
                               </span>
                             </div>
 
@@ -1240,10 +1445,16 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                               <div className="space-y-0.5">
                                 <h4 className="font-bold text-xs sm:text-sm text-slate-800 uppercase flex items-center gap-1.5">
                                   <CreditCard className="h-4 w-4 text-blue-600" />
-                                  {isPartial ? "Quét mã để nộp tiếp phần nợ còn lại" : "Hướng dẫn Chuyển khoản Tự động gạch nợ"}
+                                  {settlement
+                                    ? "Quét mã để nộp tiền nợ Quyết toán Bán trú"
+                                    : isPartial
+                                    ? "Quét mã để nộp tiếp phần nợ còn lại"
+                                    : "Hướng dẫn Chuyển khoản Tự động gạch nợ"}
                                 </h4>
                                 <p className="text-slate-600 text-[11px]">
-                                  Mở app ngân hàng quét mã QR trên (đã kèm sẵn số tiền <b>{formatMoney(remainingAmount)}</b>) để hệ thống tự động gạch nợ trong vòng <b>1-3 giây</b>.
+                                  {settlement
+                                    ? <>Mở app ngân hàng quét mã QR trên (đã kèm sẵn số tiền quyết toán nợ <b>{formatMoney(remainingAmount)}</b>) để hệ thống tự động gạch nợ trong vòng <b>1-3 giây</b>.</>
+                                    : <>Mở app ngân hàng quét mã QR trên (đã kèm sẵn số tiền <b>{formatMoney(remainingAmount)}</b>) để hệ thống tự động gạch nợ trong vòng <b>1-3 giây</b>.</>}
                                 </p>
                               </div>
 
@@ -1319,9 +1530,11 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
               )}
             </div>
           </TabsContent>
+          )}
 
-          {/* TAB 4: LỊCH SỬ THANH TOÁN (CHỌN THÁNG XỔ XUỐNG) */}
-          <TabsContent value="history">
+          {/* TAB 4: LỊCH SỬ THANH TOÁN (BẬT/TẮT THEO QUẢN TRỊ VIÊN) */}
+          {effectiveShowHistoryTab && (
+            <TabsContent value="history">
             <div className="space-y-4">
               {/* Header Lọc năm & Menu xổ xuống chọn tháng */}
               <div className="bg-white p-3.5 rounded-lg border border-slate-200 space-y-3">
@@ -1440,13 +1653,21 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                 const paidAmount = (bill.transactions || []).reduce((sum, t) => sum + Number(t.amount), 0);
                 const isPaid = bill.paymentStatus === "PAID";
                 const isPartial = bill.paymentStatus === "PARTIAL";
+                const settlement = getBillSettlement(bill);
 
                 return (
                   <Card key={bill.id} className="border border-slate-200 shadow-xs overflow-hidden">
                     <CardHeader className="py-2.5 px-3.5 bg-slate-50 border-b">
                       <div className="flex items-center justify-between">
-                        <div className="font-bold text-sm text-slate-900">
-                          Hóa đơn Tháng {bill.month}/{bill.year}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-bold text-sm text-slate-900">
+                            Hóa đơn Tháng {bill.month}/{bill.year}
+                          </span>
+                          {settlement && (
+                            <Badge className="bg-amber-100 text-amber-900 border-amber-300 font-bold text-[10px] px-2 py-0.5 flex items-center gap-1 shadow-2xs">
+                              ⚖️ Đã quyết toán hủy bán trú
+                            </Badge>
+                          )}
                         </div>
                         <div>
                           {isPaid ? (
@@ -1466,6 +1687,20 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                       </div>
                     </CardHeader>
                     <CardContent className="p-3 sm:p-4 space-y-2.5 text-xs">
+                      {settlement && (
+                        <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-950 space-y-1">
+                          <div className="flex items-center justify-between font-bold text-[11px] border-b border-amber-200/60 pb-1">
+                            <span>Chi tiết quyết toán khi ngừng bán trú:</span>
+                            <span>Ngày quyết toán: {new Date(settlement.settlementDate).toLocaleDateString("vi-VN")}</span>
+                          </div>
+                          <p className="text-[11px]">
+                            Học sinh đã ngừng bán trú. Số ngày ăn thực tế đã quyết toán: <strong>{bill.scheduleMealDays} ngày</strong> (Tổng tiền thực tế: {formatMoney(bill.finalAmount)}).
+                          </p>
+                          {settlement.note && (
+                            <p className="text-[10px] italic text-slate-600">Ghi chú: {settlement.note}</p>
+                          )}
+                        </div>
+                      )}
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
                         <div>
                           <span className="text-slate-400 block">Số ngày ăn:</span>
@@ -1534,8 +1769,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
               })()}
             </div>
           </TabsContent>
-        </>
-      )}
+          )}
     </Tabs>
     </div>
   );

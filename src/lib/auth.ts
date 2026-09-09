@@ -119,11 +119,27 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return null;
         }
 
-        if (!user.isActive) {
-          throw new CustomAuthError('ACCOUNT_INACTIVE');
-        }
+        // Kiểm tra trạng thái tài khoản
+        if (user.role === 'STUDENT' && user.student) {
+          if (!user.isActive || user.student.boardingStatus === 'CANCELLED') {
+            // Kiểm tra xem học sinh có hóa đơn nào còn nợ (UNPAID hoặc PARTIAL) không
+            const unpaidBill = await prisma.monthlyBill.findFirst({
+              where: {
+                studentId: user.student.id,
+                paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
+              },
+            });
 
-        if (user.role === 'STUDENT' && user.student?.boardingStatus === 'CANCELLED') {
+            if (!unpaidBill) {
+              if (user.student.boardingStatus === 'CANCELLED') {
+                throw new CustomAuthError('ACCOUNT_CANCELLED_NO_DEBT');
+              } else {
+                throw new CustomAuthError('ACCOUNT_INACTIVE');
+              }
+            }
+            // Còn nợ -> Cho phép đăng nhập để xem thông tin quyết toán và quét mã QR thanh toán
+          }
+        } else if (!user.isActive) {
           throw new CustomAuthError('ACCOUNT_INACTIVE');
         }
 
