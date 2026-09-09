@@ -581,6 +581,7 @@ export async function POST(request: NextRequest) {
               previousDeduction,
               previousAddition,
               finalAmount,
+              paymentStatus: finalAmount === 0 ? PaymentStatus.PAID : PaymentStatus.UNPAID,
               qrCodeUrl,
             },
             create: {

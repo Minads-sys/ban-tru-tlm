@@ -2080,6 +2080,7 @@ export default function BillingPage() {
                     <SelectItem value="UNPAID">Chưa thanh toán</SelectItem>
                     <SelectItem value="PARTIAL">Thanh toán 1 phần</SelectItem>
                     <SelectItem value="PAID">Đã thanh toán</SelectItem>
+                    <SelectItem value="SETTLED">Đã quyết toán</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

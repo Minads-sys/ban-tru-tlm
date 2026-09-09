@@ -1,7 +1,7 @@
 // API Route: Quản lý học sinh bán trú (Đăng ký mới / Hủy / Mở lại)
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db";
-import { BoardingStatus, CancellationStatus } from "@prisma/client";
+import { BoardingStatus, CancellationStatus, PaymentStatus } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { broadcastChange } from "@/lib/realtime-hub";
 import { removeVietnameseTones } from "@/lib/utils";
@@ -690,6 +690,22 @@ async function calculateStudentSettlement({
       await prisma.user.update({
         where: { id: student.userId },
         data: { isActive: true },
+      });
+
+      // Nếu học sinh từng có hóa đơn tháng này bị đánh dấu SETTLED do đợt hủy trước:
+      // Tự động mở khóa về UNPAID để khi tạo hóa đơn lại sẽ tính đúng công nợ
+      const startMonth = parsedMealStartDate.getUTCMonth() + 1;
+      const startYear = parsedMealStartDate.getUTCFullYear();
+      await prisma.monthlyBill.updateMany({
+        where: {
+          studentId,
+          month: startMonth,
+          year: startYear,
+          paymentStatus: PaymentStatus.SETTLED,
+        },
+        data: {
+          paymentStatus: PaymentStatus.UNPAID,
+        },
       });
 
       broadcastChange('students', 'UPDATE', { id: studentId, status: BoardingStatus.ACTIVE });
