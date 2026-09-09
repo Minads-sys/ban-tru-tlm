@@ -119,6 +119,8 @@ interface StudentBill {
   finalAmount: string | number;
   paymentStatus: "UNPAID" | "PAID" | "PARTIAL" | "SETTLED";
   qrCodeUrl: string | null;
+  isPublished?: boolean;
+  publishedAt?: string | Date | null;
   transactions?: Array<{
     id: string;
     amount: string | number;
@@ -320,10 +322,11 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
   const fetchBills = useCallback(async (id: string) => {
     try {
       setLoadingBills(true);
-      const res = await fetch(`/api/billing?studentId=${encodeURIComponent(id)}`);
+      const res = await fetch(`/api/billing?studentId=${encodeURIComponent(id)}&publishedOnly=true`);
       if (res.ok) {
         const data = await res.json();
-        setBills(data.data || []);
+        const rawBills: StudentBill[] = data.data || [];
+        setBills(rawBills.filter((b) => b.isPublished !== false));
       }
     } catch (err) {
       console.error(err);

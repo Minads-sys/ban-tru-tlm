@@ -20,6 +20,9 @@ export async function GET(request: NextRequest) {
 
     const unpaidOnly = searchParams.get('unpaidOnly') === 'true' || searchParams.get('mode') === 'unpaid-notifications';
     const isAll = searchParams.get('all') === 'true' || limit === 0 || limit >= 9999;
+    const publishedOnly = searchParams.get('publishedOnly') === 'true';
+    const isPublishedParam = searchParams.get('isPublished');
+    const showDrafts = searchParams.get('showDrafts') === 'true';
 
     const where: Record<string, unknown> = {};
 
@@ -31,6 +34,17 @@ export async function GET(request: NextRequest) {
     if (year) {
       const parsedYear = parseInt(year, 10);
       if (!isNaN(parsedYear)) where.year = parsedYear;
+    }
+
+    // Lọc theo trạng thái phát hành (Level 3): Học sinh chỉ xem hóa đơn đã phát hành
+    if (publishedOnly) {
+      where.isPublished = true;
+    } else if (isPublishedParam === 'true') {
+      where.isPublished = true;
+    } else if (isPublishedParam === 'false') {
+      where.isPublished = false;
+    } else if (studentId && !showDrafts) {
+      where.isPublished = true;
     }
 
     if (unpaidOnly) {
@@ -132,6 +146,14 @@ export async function GET(request: NextRequest) {
       where: { ...where, paymentStatus: 'UNPAID' },
     });
 
+    const draftCount = await prisma.monthlyBill.count({
+      where: { ...where, isPublished: false },
+    });
+
+    const publishedCount = await prisma.monthlyBill.count({
+      where: { ...where, isPublished: true },
+    });
+
     return NextResponse.json({
       data: bills,
       total,
@@ -143,6 +165,8 @@ export async function GET(request: NextRequest) {
         totalAmount: stats._sum.finalAmount?.toString() || '0',
         paidCount,
         unpaidCount,
+        draftCount,
+        publishedCount,
       },
     });
   } catch (error) {
@@ -316,6 +340,68 @@ export async function POST(request: NextRequest) {
 
     const uniqueClassIds = Array.from(new Set(activeStudents.map((s) => s.classId)));
 
+    // Level 1 Validation: Kiểm tra xem các tuần trong tháng đã có TKB chưa
+    // Quét toàn bộ các tuần trong năm mà tháng trải qua (ví dụ tháng 10/2026 có tuần 40, 41, 42, 43, 44)
+    const numDaysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    const requiredWeekNumbers = new Set<number>();
+    for (let d = 1; d <= numDaysInMonth; d++) {
+      const checkDate = new Date(Date.UTC(year, month - 1, d));
+      const dow = checkDate.getUTCDay(); // 0=CN, 1=T2..6=T7
+      if (dow >= 1 && dow <= 6) {
+        requiredWeekNumbers.add(getWeekNumber(checkDate, year));
+      }
+    }
+    const sortedRequiredWeeks = Array.from(requiredWeekNumbers).sort((a, b) => a - b);
+
+    const classesToCheck = classId ? [classId] : uniqueClassIds;
+    const missingScheduleInfo: { classId: string; className: string; missingWeeks: number[] }[] = [];
+
+    for (const cId of classesToCheck) {
+      const missingWeeks: number[] = [];
+      for (const wn of sortedRequiredWeeks) {
+        const schKey = `${cId}_${year}_${wn}`;
+        if (!scheduleMap.has(schKey)) {
+          missingWeeks.push(wn);
+        }
+      }
+      if (missingWeeks.length > 0) {
+        missingScheduleInfo.push({
+          classId: cId,
+          className: classIdToName.get(cId) || cId,
+          missingWeeks,
+        });
+      }
+    }
+
+    if (!body.force && missingScheduleInfo.length > 0) {
+      if (classId) {
+        return NextResponse.json(
+          {
+            error: `Lớp ${missingScheduleInfo[0].className} chưa có Thời khóa biểu các tuần [${missingScheduleInfo[0].missingWeeks.join(', ')}] trong tháng ${month}/${year}. Vui lòng xếp đủ Thời khóa biểu cho các tuần này trước khi tạo hóa đơn!`,
+            missingWeeks: missingScheduleInfo[0].missingWeeks,
+            requiredWeeks: sortedRequiredWeeks,
+          },
+          { status: 400 }
+        );
+      } else {
+        const errorMsg = missingScheduleInfo.length <= 3
+          ? `Chưa có đủ Thời khóa biểu cho tháng ${month}/${year}: ` +
+            missingScheduleInfo.map(m => `Lớp ${m.className} (thiếu tuần ${m.missingWeeks.join(', ')})`).join('; ') +
+            `. Vui lòng xếp đủ Thời khóa biểu các tuần [${sortedRequiredWeeks.join(', ')}] trước khi tạo hóa đơn!`
+          : `Có ${missingScheduleInfo.length} lớp chưa có đủ Thời khóa biểu cho tháng ${month}/${year} (ví dụ: ${missingScheduleInfo.slice(0, 3).map(m => `Lớp ${m.className} thiếu tuần ${m.missingWeeks.join(', ')}`).join('; ')}...). Vui lòng hoàn thiện TKB tất cả các tuần [${sortedRequiredWeeks.join(', ')}] trước khi tạo hóa đơn!`;
+
+        return NextResponse.json(
+          {
+            error: errorMsg,
+            missingClassesCount: missingScheduleInfo.length,
+            missingScheduleInfo,
+            requiredWeeks: sortedRequiredWeeks,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     // Tính số ngày ăn tạm thời của các lớp trong tháng mục tiêu (theo TKB hiện có)
     const currentClassMealDays = new Map<string, number>();
     uniqueClassIds.forEach((cId) => {
@@ -413,6 +499,8 @@ export async function POST(request: NextRequest) {
     const prevBillPlannedDaysMap = new Map<string, number>();
     // Map lưu số ngày ăn TKB thực tế tháng trước của từng lớp
     const prevClassActualDaysMap = new Map<string, number>();
+    // Map lưu số ngày ăn đặc biệt thực tế tháng trước của từng học sinh (Scenario 4)
+    const prevSpecialDaysMap = new Map<string, number>();
 
     if (!isStartOfSchoolYear) {
       // 4.1 Lấy các yêu cầu cắt suất đã duyệt trong tháng trước
@@ -463,6 +551,41 @@ export async function POST(request: NextRequest) {
       uniqueClassIds.forEach((cId) => {
         prevClassActualDaysMap.set(cId, calculateScheduleDaysForMonth(cId, prevMonth, prevYear));
       });
+
+      // 4.4 Lấy lịch ăn đặc biệt tháng trước của học sinh để tự động bù trừ sang tháng này (Scenario 4)
+      const prevSpecialMeals = await prisma.studentSpecialMeal.findMany({
+        where: {
+          date: { gte: prevMonthStart, lte: prevMonthEnd },
+          student: {
+            boardingStatus: BoardingStatus.ACTIVE,
+            ...(classId ? { classId } : {}),
+          },
+        },
+        select: {
+          studentId: true,
+          date: true,
+          shift: true,
+          student: { select: { classId: true } },
+        },
+      });
+
+      for (const sm of prevSpecialMeals) {
+        const smDate = new Date(sm.date);
+        const dow = smDate.getUTCDay();
+        const df = dayFieldMap[dow];
+        if (!df) continue;
+
+        const wn = getWeekNumber(smDate, prevYear);
+        const schKey = `${sm.student.classId}_${prevYear}_${wn}`;
+        const sch = scheduleMap.get(schKey);
+        // Nếu lớp đã có TKB ngày này trong tháng trước -> bỏ qua vì đã tính theo TKB lớp
+        if (sch && sch[df] && sch[df] !== 'NONE') continue;
+
+        prevSpecialDaysMap.set(
+          sm.studentId,
+          (prevSpecialDaysMap.get(sm.studentId) || 0) + 1
+        );
+      }
     }
 
     // 5. Kiểm tra và bảo vệ hóa đơn đã thanh toán (PAID hoặc PARTIAL)
@@ -475,7 +598,13 @@ export async function POST(request: NextRequest) {
       select: {
         studentId: true,
         paymentStatus: true,
+        isPublished: true,
       },
+    });
+
+    const existingPublishedMap = new Map<string, boolean>();
+    existingBills.forEach((b) => {
+      existingPublishedMap.set(b.studentId, b.isPublished);
     });
 
     const paidOrPartialStudentIds = new Set(
@@ -531,15 +660,21 @@ export async function POST(request: NextRequest) {
 
             if (prevBillPlannedDaysMap.has(student.id)) {
               const plannedPrevDays = prevBillPlannedDaysMap.get(student.id) || 0;
-              const actualPrevDays = prevClassActualDaysMap.get(student.classId) || 0;
+              let actualPrevDays = prevClassActualDaysMap.get(student.classId) || 0;
+              if (student.mealStartDate) {
+                actualPrevDays = calculateScheduleDaysForMonth(student.classId, prevMonth, prevYear, student.mealStartDate);
+              }
+              // Cộng thêm lịch ăn đặc biệt thực tế tháng trước của học sinh (Scenario 4)
+              actualPrevDays += prevSpecialDaysMap.get(student.id) || 0;
+
               const delta = actualPrevDays - plannedPrevDays;
 
               if (delta > 0) {
-                // TKB phát sinh tăng sau khi ra phiếu tháng trước -> Ăn thêm
+                // TKB/Lịch đặc biệt phát sinh tăng sau khi ra phiếu tháng trước -> Bù thu (ăn thêm)
                 extraMealDays = delta;
                 scheduleReducedDays = 0;
               } else if (delta < 0) {
-                // Trường tự hủy lịch đột xuất sau khi ra phiếu tháng trước -> Hoàn trừ
+                // Trường giảm buổi/nghỉ đột xuất sau khi ra phiếu tháng trước -> Bù trừ (hoàn trừ)
                 extraMealDays = 0;
                 scheduleReducedDays = Math.abs(delta);
               }
@@ -583,6 +718,8 @@ export async function POST(request: NextRequest) {
               finalAmount,
               paymentStatus: finalAmount === 0 ? PaymentStatus.PAID : PaymentStatus.UNPAID,
               qrCodeUrl,
+              // Giữ nguyên trạng thái phát hành hiện tại nếu đã từng phát hành
+              isPublished: existingPublishedMap.get(student.id) ?? false,
             },
             create: {
               studentId: student.id,
@@ -600,6 +737,8 @@ export async function POST(request: NextRequest) {
               finalAmount,
               paymentStatus: finalAmount === 0 ? PaymentStatus.PAID : PaymentStatus.UNPAID,
               qrCodeUrl,
+              isPublished: false, // Hóa đơn mới tạo luôn ở trạng thái Bản nháp (DRAFT)
+              publishedAt: null,
             },
           });
         })
@@ -615,8 +754,8 @@ export async function POST(request: NextRequest) {
     const preservedText = preservedCount > 0 ? ` (Giữ nguyên ${preservedCount} hóa đơn đã thanh toán)` : '';
 
     let summaryMessage = classId
-      ? `Đã tạo/cập nhật ${generatedCount} hóa đơn lớp ${classIdToName.get(classId) || classId} tháng ${month}/${year}${preservedText}`
-      : `Đã tạo/cập nhật thành công ${generatedCount} hóa đơn cho tháng ${month}/${year}${preservedText}`;
+      ? `Đã tạo/cập nhật ${generatedCount} hóa đơn lớp ${classIdToName.get(classId) || classId} tháng ${month}/${year} (Bản nháp - DRAFT)${preservedText}. Vui lòng kiểm tra và bấm "Phát hành" để gửi đến phụ huynh.`
+      : `Đã tạo/cập nhật thành công ${generatedCount} hóa đơn tháng ${month}/${year} (Bản nháp - DRAFT)${preservedText}. Vui lòng kiểm tra và bấm "Phát hành" để gửi đến phụ huynh.`;
 
     if (classesWithoutSchedule.length > 0) {
       const missingDetails = classesWithoutSchedule

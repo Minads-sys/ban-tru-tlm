@@ -52,6 +52,8 @@ import {
   Files,
   FileText,
   BellRing,
+  Send,
+  Undo2,
 } from "lucide-react";
 import { DebtNotificationPrint } from "@/components/admin/debt-notification-print";
 import {
@@ -84,6 +86,8 @@ interface BillData {
   finalAmount: string;
   paymentStatus: string;
   qrCodeUrl: string | null;
+  isPublished?: boolean;
+  publishedAt?: string | null;
   transactions?: Array<{ id: string; amount: string | number; transDate: string }>;
   student: {
     id: string;
@@ -101,6 +105,8 @@ interface BillStats {
   totalAmount: string;
   paidCount: number;
   unpaidCount: number;
+  draftCount?: number;
+  publishedCount?: number;
 }
 
 interface SepayTransaction {
@@ -147,6 +153,8 @@ export default function BillingPage() {
   const [year, setYear] = useState(new Date().getFullYear());
   const [classFilter, setClassFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [isPublishedFilter, setIsPublishedFilter] = useState("all");
+  const [publishing, setPublishing] = useState(false);
   const [bills, setBills] = useState<BillData[]>([]);
   const [stats, setStats] = useState<BillStats | null>(null);
   const [loading, setLoading] = useState(false);
@@ -325,9 +333,11 @@ export default function BillingPage() {
         if (classes.length === 0) await fetchClasses();
         if (Object.keys(settings).length === 0) await fetchSettings();
 
-        let url = `/api/billing?month=${month}&year=${year}&page=${page}&limit=${ITEMS_PER_PAGE}`;
+        let url = `/api/billing?month=${month}&year=${year}&page=${page}&limit=${ITEMS_PER_PAGE}&showDrafts=true`;
         if (classFilter !== "all") url += `&classId=${classFilter}`;
         if (statusFilter !== "all") url += `&paymentStatus=${statusFilter}`;
+        if (isPublishedFilter === "published") url += `&isPublished=true`;
+        if (isPublishedFilter === "draft") url += `&isPublished=false`;
         const res = await fetch(url);
         const result = await res.json();
 
@@ -346,7 +356,7 @@ export default function BillingPage() {
         setLoading(false);
       }
     },
-    [month, year, classFilter, statusFilter, classes.length, settings]
+    [month, year, classFilter, statusFilter, isPublishedFilter, classes.length, settings]
   );
 
   // Fetch SePay Transactions
@@ -757,6 +767,92 @@ export default function BillingPage() {
     fetchBills(1);
   };
 
+  // Phát hành hóa đơn (Level 3)
+  const handlePublishBills = async () => {
+    const targetClass = classFilter !== "all" ? classes.find((c) => c.id === classFilter) : null;
+    const scopeLabel = targetClass ? `lớp ${targetClass.name}` : "toàn bộ các lớp";
+
+    const confirm = await Swal.fire({
+      title: "Xác nhận phát hành hóa đơn?",
+      html: `Bạn có chắc chắn muốn phát hành tất cả hóa đơn <b>Bản nháp</b> tháng <b>${month}/${year}</b> cho <b>${scopeLabel}</b>?<br/><br/><span class="text-emerald-700 text-sm">Sau khi phát hành, phụ huynh sẽ nhìn thấy hóa đơn và có thể quét mã QR thanh toán trên cổng học sinh.</span>`,
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonColor: "#10b981",
+      cancelButtonColor: "#64748b",
+      confirmButtonText: "Phát hành ngay",
+      cancelButtonText: "Hủy",
+    });
+    if (!confirm.isConfirmed) return;
+
+    setPublishing(true);
+    try {
+      const res = await fetch("/api/billing/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          month,
+          year,
+          classId: targetClass?.id,
+          action: "publish",
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        Swal.fire("Thành công", data.message, "success");
+        fetchBills(currentPage);
+      } else {
+        Swal.fire("Lỗi", data.error || "Không thể phát hành hóa đơn", "error");
+      }
+    } catch {
+      Swal.fire("Lỗi", "Lỗi kết nối khi phát hành hóa đơn", "error");
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  // Thu hồi hóa đơn về bản nháp (Level 3)
+  const handleUnpublishBills = async () => {
+    const targetClass = classFilter !== "all" ? classes.find((c) => c.id === classFilter) : null;
+    const scopeLabel = targetClass ? `lớp ${targetClass.name}` : "toàn bộ các lớp";
+
+    const confirm = await Swal.fire({
+      title: "Thu hồi về Bản nháp?",
+      html: `Bạn có chắc chắn muốn thu hồi các hóa đơn <b>CHƯA thanh toán</b> tháng <b>${month}/${year}</b> (${scopeLabel}) về trạng thái <b>Bản nháp</b>?<br/><br/><span class="text-amber-700 text-xs font-medium">⚠️ Lưu ý: Các hóa đơn đã thanh toán hoặc thanh toán một phần sẽ được bảo lưu, không bị thu hồi.</span>`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#d97706",
+      cancelButtonColor: "#64748b",
+      confirmButtonText: "Thu hồi về nháp",
+      cancelButtonText: "Hủy",
+    });
+    if (!confirm.isConfirmed) return;
+
+    setPublishing(true);
+    try {
+      const res = await fetch("/api/billing/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          month,
+          year,
+          classId: targetClass?.id,
+          action: "unpublish",
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        Swal.fire("Thành công", data.message, "success");
+        fetchBills(currentPage);
+      } else {
+        Swal.fire("Lỗi", data.error || "Không thể thu hồi hóa đơn", "error");
+      }
+    } catch {
+      Swal.fire("Lỗi", "Lỗi kết nối khi thu hồi hóa đơn", "error");
+    } finally {
+      setPublishing(false);
+    }
+  };
+
   // In phiếu
   const printBills = () => {
     setPrintBillId("ALL");
@@ -1055,7 +1151,7 @@ export default function BillingPage() {
           {/* Bộ lọc */}
           <Card>
             <CardContent className="pt-6">
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 items-end">
+              <div className="grid grid-cols-2 md:grid-cols-6 gap-3 items-end">
                 <div>
                   <Label>Tháng</Label>
                   <Input
@@ -1101,6 +1197,19 @@ export default function BillingPage() {
                       <SelectItem value="UNPAID">Chưa TT</SelectItem>
                       <SelectItem value="PAID">Đã TT</SelectItem>
                       <SelectItem value="PARTIAL">TT 1 phần</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Phát hành</Label>
+                  <Select value={isPublishedFilter} onValueChange={setIsPublishedFilter}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Tất cả" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Tất cả</SelectItem>
+                      <SelectItem value="published">Đã phát hành</SelectItem>
+                      <SelectItem value="draft">Bản nháp</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -1160,6 +1269,27 @@ export default function BillingPage() {
             >
               {generating ? <Loader2 className="h-4 w-4 animate-spin mr-2 text-white" /> : <Layers className="h-4 w-4 mr-2 text-white" />}
               Tạo tất cả ({classes.length} lớp)
+            </Button>
+
+            {/* Nút Phát hành hóa đơn (Level 3) */}
+            <Button
+              onClick={handlePublishBills}
+              disabled={publishing || loading}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow hover:shadow-lg hover:shadow-emerald-500/25 hover:-translate-y-0.5 hover:scale-[1.02] active:translate-y-0 active:scale-[0.98] transition-all duration-200 cursor-pointer flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {publishing ? <Loader2 className="h-4 w-4 animate-spin text-white" /> : <Send className="h-4 w-4 text-white" />}
+              <span>Phát hành {classFilter !== "all" ? `lớp ${classes.find((c) => c.id === classFilter)?.name || ""}` : "toàn trường"}</span>
+            </Button>
+
+            {/* Nút Thu hồi về nháp (Level 3) */}
+            <Button
+              onClick={handleUnpublishBills}
+              disabled={publishing || loading}
+              variant="outline"
+              className="border-amber-500 text-amber-700 hover:bg-amber-50 font-semibold shadow-sm hover:shadow hover:-translate-y-0.5 hover:scale-[1.02] active:translate-y-0 active:scale-[0.98] transition-all duration-200 cursor-pointer flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {publishing ? <Loader2 className="h-4 w-4 animate-spin text-amber-600" /> : <Undo2 className="h-4 w-4 text-amber-600" />}
+              <span>Thu hồi về nháp</span>
             </Button>
 
             <Button
@@ -1264,11 +1394,24 @@ export default function BillingPage() {
 
           {/* Thống kê Bills */}
           {stats && stats.totalBills > 0 && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
               <Card>
                 <CardContent className="pt-4 text-center">
                   <p className="text-sm text-gray-500">Tổng hóa đơn</p>
                   <p className="text-2xl font-bold">{stats.totalBills}</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4 text-center">
+                  <p className="text-sm text-gray-500">Phát hành</p>
+                  <div className="flex flex-col items-center justify-center gap-1 mt-1">
+                    <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                      {stats.publishedCount ?? 0} Đã phát hành
+                    </span>
+                    <span className="text-xs font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                      {stats.draftCount ?? 0} Bản nháp
+                    </span>
+                  </div>
                 </CardContent>
               </Card>
               <Card>
@@ -1392,7 +1535,18 @@ export default function BillingPage() {
                         })()}
                       </TableCell>
                       <TableCell className="text-center">
-                        {statusBadge(bill.paymentStatus)}
+                        <div className="flex flex-col items-center gap-1">
+                          {statusBadge(bill.paymentStatus)}
+                          {bill.isPublished ? (
+                            <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-300 font-normal px-1.5 py-0">
+                              Đã phát hành
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-300 font-normal px-1.5 py-0">
+                              Bản nháp
+                            </Badge>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="text-center">
                         <div className="flex items-center justify-center gap-1.5">

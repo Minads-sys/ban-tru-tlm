@@ -285,6 +285,8 @@ model MonthlyBill {
   finalAmount       Decimal       @default(0) @map("final_amount") @db.Decimal(10, 0)
   paymentStatus     PaymentStatus @default(UNPAID) @map("payment_status")
   qrCodeUrl         String?       @map("qr_code_url")
+  isPublished       Boolean       @default(true) @map("is_published")
+  publishedAt       DateTime?     @map("published_at")
 
   // Quan hệ
   student      Student              @relation(fields: [studentId], references: [id])
@@ -293,6 +295,7 @@ model MonthlyBill {
   @@unique([studentId, month, year])
   @@index([studentId, year, month])
   @@index([paymentStatus])
+  @@index([isPublished])
   @@map("monthly_bills")
 }
 
