@@ -6,8 +6,18 @@ import { hasPermission } from "@/lib/permissions";
 import { broadcastChange } from "@/lib/realtime-hub";
 import { logAudit, AUDIT_ACTIONS, AUDIT_MODULES } from "@/lib/audit-log";
 import { compareClassNames } from "@/lib/utils";
+import { getCachedClasses, setCachedClasses, invalidateClassesCache } from "@/lib/classes-cache";
 
 export async function GET() {
+  const cached = getCachedClasses();
+  if (cached) {
+    return NextResponse.json(cached, {
+      headers: {
+        "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60",
+      },
+    });
+  }
+
   const classes = await prisma.class.findMany({
     include: {
       teacher: {
@@ -21,8 +31,13 @@ export async function GET() {
   });
 
   classes.sort((a, b) => compareClassNames(a.id, b.id));
+  setCachedClasses(classes);
 
-  return NextResponse.json(classes);
+  return NextResponse.json(classes, {
+    headers: {
+      "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60",
+    },
+  });
 }
 
 export async function POST(req: Request) {
@@ -55,6 +70,7 @@ export async function POST(req: Request) {
     });
 
     broadcastChange('classes', 'INSERT', newClass);
+    invalidateClassesCache();
 
     await logAudit({
       req,

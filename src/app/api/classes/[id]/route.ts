@@ -3,6 +3,7 @@ import prisma from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
 import { logAudit, AUDIT_ACTIONS, AUDIT_MODULES } from "@/lib/audit-log";
+import { invalidateClassesCache } from "@/lib/classes-cache";
 
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -39,6 +40,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       description: `Cập nhật thông tin lớp học ${name} (Mã: ${id})`,
       targetId: id,
     });
+
+    invalidateClassesCache();
 
     return NextResponse.json(updatedClass);
   } catch (error: any) {
@@ -97,6 +100,8 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
       description: `Xóa lớp học (Mã: ${id})`,
       targetId: id,
     });
+
+    invalidateClassesCache();
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

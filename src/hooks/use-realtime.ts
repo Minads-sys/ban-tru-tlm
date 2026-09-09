@@ -12,15 +12,178 @@ interface UseRealtimeOptions {
   onChanged: () => void;
 }
 
+type ListenerCallback = () => void;
+
 /**
- * Hook lắng nghe thay đổi Realtime từ máy chủ VPS (qua Server-Sent Events - SSE).
- * Chỉ kích hoạt khi máy chủ THỰC SỰ có thay đổi (sự kiện phát ra) hoặc khi người dùng quay lại tab.
- * Tuyệt đối không dùng polling định kỳ để tránh chớp/load lại màn hình.
+ * Singleton SSE Manager:
+ * Toàn bộ ứng dụng dùng chung DUY NHẤT 1 kết nối EventSource tới /api/realtime.
+ * Loại bỏ hoàn toàn giới hạn socket và tránh mở lặp nhiều kết nối ngầm.
+ */
+class RealtimeClientManager {
+  private static instance: RealtimeClientManager;
+  private eventSource: EventSource | null = null;
+  private listeners: Map<string, Set<ListenerCallback>> = new Map();
+  private reconnectTimer: NodeJS.Timeout | null = null;
+  private lastHiddenTime: number = 0;
+
+  private constructor() {
+    if (typeof window !== 'undefined') {
+      // Ghi nhận thời điểm ẩn tab để chỉ refresh khi tab bị ẩn quá 60 giây
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+          this.lastHiddenTime = Date.now();
+        } else if (document.visibilityState === 'visible') {
+          const hiddenDuration = Date.now() - this.lastHiddenTime;
+          // Chỉ thông báo làm mới nếu người dùng rời tab lâu hơn 60 giây
+          if (this.lastHiddenTime > 0 && hiddenDuration > 60000) {
+            this.notifyAll();
+          }
+        }
+      });
+    }
+  }
+
+  public static getInstance(): RealtimeClientManager {
+    if (!RealtimeClientManager.instance) {
+      RealtimeClientManager.instance = new RealtimeClientManager();
+    }
+    return RealtimeClientManager.instance;
+  }
+
+  private connect() {
+    if (typeof window === 'undefined' || this.eventSource) return;
+
+    try {
+      this.eventSource = new EventSource('/api/realtime');
+
+      this.eventSource.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          if (payload?.type === 'CONNECTED' || payload?.type === 'HEARTBEAT') {
+            return;
+          }
+
+          const table = payload?.table;
+          if (table) {
+            this.notifyTable(table);
+          } else {
+            this.notifyAll();
+          }
+        } catch {
+          // Bỏ qua tin nhắn dạng text hoặc heartbeat
+        }
+      };
+
+      this.eventSource.onerror = () => {
+        // Đóng kết nối cũ nếu có lỗi và thử kết nối lại sau 5s
+        if (this.eventSource) {
+          this.eventSource.close();
+          this.eventSource = null;
+        }
+        if (!this.reconnectTimer && this.getTotalListenersCount() > 0) {
+          this.reconnectTimer = setTimeout(() => {
+            this.reconnectTimer = null;
+            this.connect();
+          }, 5000);
+        }
+      };
+    } catch (err) {
+      console.warn('[RealtimeManager] Failed to connect SSE:', err);
+    }
+  }
+
+  private disconnect() {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.eventSource) {
+      this.eventSource.close();
+      this.eventSource = null;
+    }
+  }
+
+  private getTotalListenersCount(): number {
+    let count = 0;
+    this.listeners.forEach((set) => {
+      count += set.size;
+    });
+    return count;
+  }
+
+  public subscribe(table: string, callback: ListenerCallback): () => void {
+    if (!this.listeners.has(table)) {
+      this.listeners.set(table, new Set());
+    }
+    this.listeners.get(table)!.add(callback);
+
+    // Mở kết nối nếu đây là listener đầu tiên
+    if (!this.eventSource) {
+      this.connect();
+    }
+
+    // Trả về hàm hủy đăng ký
+    return () => {
+      const set = this.listeners.get(table);
+      if (set) {
+        set.delete(callback);
+        if (set.size === 0) {
+          this.listeners.delete(table);
+        }
+      }
+      // Đóng kết nối nếu không còn ai lắng nghe
+      if (this.getTotalListenersCount() === 0) {
+        this.disconnect();
+      }
+    };
+  }
+
+  private notifyTable(table: string) {
+    // Thông báo cho các component lắng nghe bảng này
+    const tableListeners = this.listeners.get(table);
+    if (tableListeners) {
+      tableListeners.forEach((cb) => {
+        try {
+          cb();
+        } catch (e) {
+          console.error('[RealtimeManager] Error in listener callback:', e);
+        }
+      });
+    }
+
+    // Thông báo cho các component lắng nghe '*' (tất cả bảng)
+    const wildcardListeners = this.listeners.get('*');
+    if (wildcardListeners) {
+      wildcardListeners.forEach((cb) => {
+        try {
+          cb();
+        } catch (e) {
+          console.error('[RealtimeManager] Error in wildcard callback:', e);
+        }
+      });
+    }
+  }
+
+  private notifyAll() {
+    this.listeners.forEach((set) => {
+      set.forEach((cb) => {
+        try {
+          cb();
+        } catch (e) {
+          console.error('[RealtimeManager] Error in notifyAll callback:', e);
+        }
+      });
+    });
+  }
+}
+
+/**
+ * Hook lắng nghe thay đổi Realtime từ máy chủ VPS qua Singleton SSE.
+ * Đảm bảo toàn ứng dụng chỉ mở duy nhất 1 kết nối SSE, không gây nghẽn kết nối mạng.
  */
 export function useRealtime({ table, onChanged }: UseRealtimeOptions) {
   const onChangedRef = useRef(onChanged);
 
-  // Giữ callback luôn mới nhất
   useEffect(() => {
     onChangedRef.current = onChanged;
   }, [onChanged]);
@@ -28,55 +191,13 @@ export function useRealtime({ table, onChanged }: UseRealtimeOptions) {
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    let eventSource: EventSource | null = null;
-    let isSubscribed = true;
+    const manager = RealtimeClientManager.getInstance();
+    const unsubscribe = manager.subscribe(table, () => {
+      onChangedRef.current();
+    });
 
-    // 1. Khởi tạo kết nối SSE tức thời tới máy chủ VPS
-    try {
-      const sseUrl = `/api/realtime?table=${encodeURIComponent(table)}`;
-      eventSource = new EventSource(sseUrl);
-
-      eventSource.onmessage = (event) => {
-        if (!isSubscribed) return;
-        try {
-          const payload = JSON.parse(event.data);
-          // Bỏ qua tin nhắn heartbeat hoặc kết nối ban đầu
-          if (payload?.type === 'CONNECTED' || payload?.type === 'HEARTBEAT') {
-            return;
-          }
-          // Chỉ gọi làm mới khi máy chủ THỰC SỰ phát sự kiện có dữ liệu thay đổi
-          onChangedRef.current();
-        } catch {
-          // Bỏ qua tin nhắn heartbeat dạng text
-        }
-      };
-
-      eventSource.onerror = () => {
-        // Trình duyệt tự động kết nối lại ngầm theo chuẩn SSE khi mạng gián đoạn
-      };
-    } catch (err) {
-      console.warn('[useRealtime] Failed to initialize EventSource:', err);
-    }
-
-    // 2. Chỉ làm mới khi người dùng chuyển tab và quay trở lại màn hình
-    const handleVisibilityOrFocus = () => {
-      if (document.visibilityState === 'visible' && isSubscribed) {
-        onChangedRef.current();
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
-    window.addEventListener('focus', handleVisibilityOrFocus);
-
-    // Cleanup khi component unmount
     return () => {
-      isSubscribed = false;
-      if (eventSource) {
-        eventSource.close();
-        eventSource = null;
-      }
-      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
-      window.removeEventListener('focus', handleVisibilityOrFocus);
+      unsubscribe();
     };
   }, [table]);
 }
