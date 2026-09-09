@@ -194,7 +194,7 @@ export default function BillingPage() {
   const [debtMonth, setDebtMonth] = useState<number>(month);
   const [debtYear, setDebtYear] = useState<number>(year);
   const [debtClassId, setDebtClassId] = useState<string>("ALL");
-  const [debtLayout, setDebtLayout] = useState<"A6_4UP" | "A5_2UP">("A6_4UP");
+  const [debtLayout, setDebtLayout] = useState<"A5_LANDSCAPE_2UP" | "A4_PORTRAIT_4UP">("A5_LANDSCAPE_2UP");
   const [loadingDebtBills, setLoadingDebtBills] = useState(false);
   const [debtPrintBills, setDebtPrintBills] = useState<any[] | null>(null);
 
@@ -202,7 +202,7 @@ export default function BillingPage() {
     setDebtMonth(month);
     setDebtYear(year);
     setDebtClassId(classFilter === "all" ? "ALL" : classFilter);
-    setDebtLayout("A6_4UP");
+    setDebtLayout("A5_LANDSCAPE_2UP");
     setOpenDebtModal(true);
   };
 
@@ -2365,35 +2365,35 @@ export default function BillingPage() {
 
             {/* Chọn Định dạng khổ in */}
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-slate-700">Định dạng khổ in trên giấy A4</Label>
+              <Label className="text-xs font-semibold text-slate-700">Định dạng khổ in & Ghép trang</Label>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={() => setDebtLayout("A6_4UP")}
+                  onClick={() => setDebtLayout("A5_LANDSCAPE_2UP")}
                   className={`p-2.5 rounded-lg border text-left text-xs transition-all cursor-pointer ${
-                    debtLayout === "A6_4UP"
+                    debtLayout === "A5_LANDSCAPE_2UP"
                       ? "border-amber-500 bg-amber-50/70 text-amber-950 font-medium ring-1 ring-amber-500"
                       : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
                   }`}
                 >
-                  <span className="font-bold block text-sm mb-0.5">📄 4 phiếu A6 / 1 tờ A4</span>
+                  <span className="font-bold block text-sm mb-0.5">📄 Khổ A5 ngang (2 phiếu A6)</span>
                   <span className="text-[11px] text-slate-500 block leading-tight">
-                    Sắp sẵn 4 tờ A6 trên 1 tờ A4 dọc (2x2), có đường kẻ nét đứt cắt làm 4. Tiết kiệm giấy.
+                    Ghép 2 phiếu A6 trên 1 trang A5 ngang (2-up), có đường nét đứt cắt đôi ở giữa.
                   </span>
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => setDebtLayout("A5_2UP")}
+                  onClick={() => setDebtLayout("A4_PORTRAIT_4UP")}
                   className={`p-2.5 rounded-lg border text-left text-xs transition-all cursor-pointer ${
-                    debtLayout === "A5_2UP"
+                    debtLayout === "A4_PORTRAIT_4UP"
                       ? "border-amber-500 bg-amber-50/70 text-amber-950 font-medium ring-1 ring-amber-500"
                       : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
                   }`}
                 >
-                  <span className="font-bold block text-sm mb-0.5">📑 2 phiếu A5 / 1 tờ A4</span>
+                  <span className="font-bold block text-sm mb-0.5">📑 Khổ A4 dọc (4 phiếu A6)</span>
                   <span className="text-[11px] text-slate-500 block leading-tight">
-                    Sắp sẵn 2 phiếu A5 trên 1 tờ A4 dọc, có đường cắt đôi ở giữa.
+                    Sắp sẵn 4 phiếu A6 trên 1 trang A4 dọc (4-up: 2x2), có đường kẻ nét đứt cắt làm 4.
                   </span>
                 </button>
               </div>
