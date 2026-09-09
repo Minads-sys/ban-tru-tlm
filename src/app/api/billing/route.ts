@@ -18,6 +18,9 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1', 10);
     const limit = parseInt(searchParams.get('limit') || '30', 10);
 
+    const unpaidOnly = searchParams.get('unpaidOnly') === 'true' || searchParams.get('mode') === 'unpaid-notifications';
+    const isAll = searchParams.get('all') === 'true' || limit === 0 || limit >= 9999;
+
     const where: Record<string, unknown> = {};
 
     if (month) {
@@ -30,7 +33,11 @@ export async function GET(request: NextRequest) {
       if (!isNaN(parsedYear)) where.year = parsedYear;
     }
 
-    if (paymentStatus && Object.values(PaymentStatus).includes(paymentStatus as PaymentStatus)) {
+    if (unpaidOnly) {
+      where.paymentStatus = {
+        in: [PaymentStatus.UNPAID, PaymentStatus.PARTIAL],
+      };
+    } else if (paymentStatus && Object.values(PaymentStatus).includes(paymentStatus as PaymentStatus)) {
       where.paymentStatus = paymentStatus as PaymentStatus;
     }
 
@@ -38,7 +45,7 @@ export async function GET(request: NextRequest) {
       where.studentId = studentId;
     }
 
-    if (classId) {
+    if (classId && classId !== 'ALL' && classId !== 'all') {
       where.student = {
         classId,
       };
@@ -105,9 +112,9 @@ export async function GET(request: NextRequest) {
           },
         },
       },
-      orderBy: [{ year: 'desc' }, { month: 'desc' }, { studentId: 'asc' }],
-      skip,
-      take: limit,
+      orderBy: [{ year: 'desc' }, { month: 'desc' }, { student: { classId: 'asc' } }, { studentId: 'asc' }],
+      skip: isAll ? undefined : skip,
+      take: isAll ? undefined : limit,
     });
 
     // Tính tổng hợp trên toàn bộ dữ liệu (không phân trang)

@@ -17,7 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -51,7 +51,9 @@ import {
   Archive,
   Files,
   FileText,
+  BellRing,
 } from "lucide-react";
+import { DebtNotificationPrint } from "@/components/admin/debt-notification-print";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -186,6 +188,53 @@ export default function BillingPage() {
   const [pdfZipStatus, setPdfZipStatus] = useState<string>("ALL");
   const [pdfExportMode, setPdfExportMode] = useState<"SEPARATE_ZIP" | "CLASS_MERGED" | "ALL_IN_ONE">("SEPARATE_ZIP");
   const [downloadingPdfZip, setDownloadingPdfZip] = useState(false);
+
+  // State cho In thông báo nợ gửi phụ huynh
+  const [openDebtModal, setOpenDebtModal] = useState(false);
+  const [debtMonth, setDebtMonth] = useState<number>(month);
+  const [debtYear, setDebtYear] = useState<number>(year);
+  const [debtClassId, setDebtClassId] = useState<string>("ALL");
+  const [debtLayout, setDebtLayout] = useState<"A6_4UP" | "A5_2UP">("A6_4UP");
+  const [loadingDebtBills, setLoadingDebtBills] = useState(false);
+  const [debtPrintBills, setDebtPrintBills] = useState<any[] | null>(null);
+
+  const handleOpenDebtModal = () => {
+    setDebtMonth(month);
+    setDebtYear(year);
+    setDebtClassId(classFilter === "all" ? "ALL" : classFilter);
+    setDebtLayout("A6_4UP");
+    setOpenDebtModal(true);
+  };
+
+  const handleStartDebtPrint = async () => {
+    setLoadingDebtBills(true);
+    try {
+      let url = `/api/billing?month=${debtMonth}&year=${debtYear}&unpaidOnly=true&all=true`;
+      if (debtClassId !== "ALL" && debtClassId !== "all") {
+        url += `&classId=${debtClassId}`;
+      }
+      const res = await fetch(url);
+      const json = await res.json();
+      const billsData = json.data || [];
+      if (billsData.length === 0) {
+        Swal.fire({
+          title: "Không có công nợ",
+          text: `Tuyệt vời! Không có học sinh nào còn nợ tiền ăn ${
+            debtClassId !== "ALL" ? `lớp ${classes.find((c) => c.id === debtClassId)?.name || debtClassId}` : "toàn trường"
+          } trong tháng ${debtMonth}/${debtYear}.`,
+          icon: "info",
+        });
+        return;
+      }
+      setDebtPrintBills(billsData);
+      setOpenDebtModal(false);
+    } catch (err) {
+      console.error(err);
+      Swal.fire("Lỗi", "Không thể tải danh sách học sinh còn nợ", "error");
+    } finally {
+      setLoadingDebtBills(false);
+    }
+  };
 
   const handleOpenExportModal = (mode: "SEPARATE_ZIP" | "CLASS_MERGED" | "ALL_IN_ONE") => {
     setPdfZipMonth(month);
@@ -1126,6 +1175,15 @@ export default function BillingPage() {
             <Button onClick={printBills} variant="outline" disabled={bills.length === 0}>
               <Printer className="h-4 w-4 mr-2" />
               In phiếu trang hiện tại
+            </Button>
+
+            <Button
+              onClick={handleOpenDebtModal}
+              variant="outline"
+              className="border-amber-500 text-amber-800 hover:bg-amber-50 font-semibold flex items-center gap-1.5 cursor-pointer shadow-2xs"
+            >
+              <BellRing className="h-4 w-4 text-amber-600" />
+              <span>In thông báo nợ</span>
             </Button>
 
             <DropdownMenu>
@@ -2235,6 +2293,162 @@ export default function BillingPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Modal Cấu hình & In thông báo phát hành phiếu thanh toán (Chỉ học sinh còn nợ) */}
+      <Dialog open={openDebtModal} onOpenChange={setOpenDebtModal}>
+        <DialogContent className="sm:max-w-[500px] bg-white text-slate-900 border border-slate-200">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-lg font-bold text-slate-900">
+              <BellRing className="h-5 w-5 text-amber-600" />
+              In thông báo phát hành phiếu thanh toán
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              Chỉ in những học sinh còn công nợ chưa thanh toán đủ trong tháng. Học sinh đã thanh toán sẽ tự động được bỏ qua.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2 text-sm">
+            {/* Tháng / Năm */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-slate-700">Tháng thu tiền</Label>
+                <Select value={String(debtMonth)} onValueChange={(val) => setDebtMonth(Number(val))}>
+                  <SelectTrigger className="bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                      <SelectItem key={m} value={String(m)}>
+                        Tháng {m}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-slate-700">Năm học</Label>
+                <Select value={String(debtYear)} onValueChange={(val) => setDebtYear(Number(val))}>
+                  <SelectTrigger className="bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[year - 1, year, year + 1].map((y) => (
+                      <SelectItem key={y} value={String(y)}>
+                        Năm {y}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Chọn Lớp */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-slate-700">Phạm vi in theo lớp</Label>
+              <Select value={debtClassId} onValueChange={setDebtClassId}>
+                <SelectTrigger className="bg-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="max-h-60">
+                  <SelectItem value="ALL" className="font-semibold text-blue-700">
+                    🏢 Toàn trường (Tất cả học sinh còn nợ các lớp)
+                  </SelectItem>
+                  {classes.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      Lớp {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Chọn Định dạng khổ in */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-slate-700">Định dạng khổ in trên giấy A4</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDebtLayout("A6_4UP")}
+                  className={`p-2.5 rounded-lg border text-left text-xs transition-all cursor-pointer ${
+                    debtLayout === "A6_4UP"
+                      ? "border-amber-500 bg-amber-50/70 text-amber-950 font-medium ring-1 ring-amber-500"
+                      : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
+                  }`}
+                >
+                  <span className="font-bold block text-sm mb-0.5">📄 4 phiếu A6 / 1 tờ A4</span>
+                  <span className="text-[11px] text-slate-500 block leading-tight">
+                    Sắp sẵn 4 tờ A6 trên 1 tờ A4 dọc (2x2), có đường kẻ nét đứt cắt làm 4. Tiết kiệm giấy.
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setDebtLayout("A5_2UP")}
+                  className={`p-2.5 rounded-lg border text-left text-xs transition-all cursor-pointer ${
+                    debtLayout === "A5_2UP"
+                      ? "border-amber-500 bg-amber-50/70 text-amber-950 font-medium ring-1 ring-amber-500"
+                      : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
+                  }`}
+                >
+                  <span className="font-bold block text-sm mb-0.5">📑 2 phiếu A5 / 1 tờ A4</span>
+                  <span className="text-[11px] text-slate-500 block leading-tight">
+                    Sắp sẵn 2 phiếu A5 trên 1 tờ A4 dọc, có đường cắt đôi ở giữa.
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            <div className="rounded-lg bg-amber-50/80 border border-amber-200 p-2.5 text-xs text-amber-900 leading-relaxed">
+              <p className="font-semibold flex items-center gap-1.5 text-amber-950">
+                <CheckCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                Nguyên tắc in ấn bảo mật:
+              </p>
+              <p className="mt-0.5 text-[11.5px]">
+                • Phiếu <b>không ghi số tiền nợ</b> để đảm bảo tính tế nhị.<br/>
+                • Tự động sinh mã QR và hướng dẫn chi tiết phụ huynh đăng nhập vào app kiểm tra và thanh toán.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter className="pt-2 border-t flex flex-row justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setOpenDebtModal(false)} disabled={loadingDebtBills}>
+              Hủy
+            </Button>
+            <Button
+              onClick={handleStartDebtPrint}
+              disabled={loadingDebtBills}
+              size="sm"
+              className="bg-amber-600 hover:bg-amber-700 text-white font-semibold flex items-center gap-1.5 cursor-pointer"
+            >
+              {loadingDebtBills ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Đang lọc công nợ...
+                </>
+              ) : (
+                <>
+                  <Printer className="h-4 w-4" />
+                  Xem trước & In thông báo
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Giao diện xem trước & In ấn thông báo nợ */}
+      {debtPrintBills && (
+        <DebtNotificationPrint
+          bills={debtPrintBills}
+          schoolName={settings.SCHOOL_NAME}
+          month={debtMonth}
+          year={debtYear}
+          className={debtClassId !== "ALL" ? classes.find((c) => c.id === debtClassId)?.name : undefined}
+          defaultLayout={debtLayout}
+          onClose={() => setDebtPrintBills(null)}
+        />
+      )}
       <div
         className="absolute -z-50 opacity-0 print:static print:z-auto print:opacity-100 print:w-full print:m-0 print:p-0 print-bw"
         style={{ fontFamily: "'Times New Roman', Times, serif" }}
