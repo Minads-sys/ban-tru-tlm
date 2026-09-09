@@ -1,4 +1,6 @@
 import QRCode from "qrcode";
+import fs from "fs";
+import path from "path";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const pdfmake = require("pdfmake");
@@ -14,14 +16,37 @@ function ensureFonts() {
     pdfmake.virtualfs.writeFileSync(file, Buffer.from(b64 as string, "base64"));
   }
 
-  pdfmake.setFonts({
+  const fontsConfig: Record<string, any> = {
     Roboto: {
       normal: "Roboto-Regular.ttf",
       bold: "Roboto-Medium.ttf",
       italics: "Roboto-Italic.ttf",
       bolditalics: "Roboto-MediumItalic.ttf",
     },
-  });
+  };
+
+  // Nạp font Times New Roman chuẩn có sẵn trong public/fonts
+  const fontsDir = path.join(process.cwd(), "public", "fonts");
+  const timesPath = path.join(fontsDir, "times.ttf");
+  if (fs.existsSync(timesPath)) {
+    try {
+      pdfmake.virtualfs.writeFileSync("Times-Regular.ttf", fs.readFileSync(path.join(fontsDir, "times.ttf")));
+      pdfmake.virtualfs.writeFileSync("Times-Bold.ttf", fs.readFileSync(path.join(fontsDir, "timesbd.ttf")));
+      pdfmake.virtualfs.writeFileSync("Times-Italic.ttf", fs.readFileSync(path.join(fontsDir, "timesi.ttf")));
+      pdfmake.virtualfs.writeFileSync("Times-BoldItalic.ttf", fs.readFileSync(path.join(fontsDir, "timesbi.ttf")));
+
+      fontsConfig.Times = {
+        normal: "Times-Regular.ttf",
+        bold: "Times-Bold.ttf",
+        italics: "Times-Italic.ttf",
+        bolditalics: "Times-BoldItalic.ttf",
+      };
+    } catch (e) {
+      console.error("Không thể nạp font Times New Roman:", e);
+    }
+  }
+
+  pdfmake.setFonts(fontsConfig);
   fontsInitialized = true;
 }
 
@@ -54,7 +79,8 @@ export interface DebtNotificationPdfOptions {
 }
 
 /**
- * Sinh ô nội dung của 1 phiếu thông báo A6 (Căn chỉnh kích thước chuẩn tuyệt đối không tràn trang)
+ * Sinh ô nội dung của 1 phiếu thông báo A6
+ * Tỉ lệ dãn cách đều chuẩn xác 100% như giao diện Xem Trước (Times New Roman, phân bố trọn chiều cao A6)
  */
 function createA6BillCell(
   bill: DebtNotificationPdfBill | null,
@@ -78,25 +104,25 @@ function createA6BillCell(
         stack: [
           {
             text: (schoolName || "CĂN TIN CHÂU PHƯƠNG THẢO - CN TEN LƠ MAN").toUpperCase(),
-            fontSize: 7.2,
+            fontSize: 8.5,
             bold: true,
             alignment: "center",
           },
           {
             text: "THÔNG BÁO",
-            fontSize: 10.5,
+            fontSize: 12.5,
             bold: true,
             alignment: "center",
-            margin: [0, 1.5, 0, 1],
+            margin: [0, 2, 0, 1.5],
           },
           {
             text: `PHÁT HÀNH PHIẾU THANH TOÁN TIỀN ĂN BÁN TRÚ THÁNG ${bill.month}/${bill.year}`,
-            fontSize: 7.2,
+            fontSize: 8.5,
             bold: true,
             alignment: "center",
           },
         ],
-        margin: [0, 0, 0, 2],
+        margin: [0, 0, 0, 4],
       },
       // Đường kẻ ngăn cách header
       {
@@ -105,37 +131,37 @@ function createA6BillCell(
             type: "line",
             x1: 0,
             y1: 0,
-            x2: 254,
+            x2: 256,
             y2: 0,
-            lineWidth: 0.75,
+            lineWidth: 0.5,
             lineColor: "#000000",
           },
         ],
-        margin: [0, 0, 0, 3],
+        margin: [0, 0, 0, 6],
       },
 
       // 2. Kính gửi & Nội dung thông báo
       {
         text: [
-          { text: "Kính gửi: Quý Phụ huynh em ", fontSize: 7.8 },
+          { text: "Kính gửi: Quý Phụ huynh em ", fontSize: 9.2 },
           {
             text: fullName.toUpperCase(),
-            fontSize: 7.8,
+            fontSize: 9.2,
             bold: true,
             decoration: "underline",
           },
-          { text: " - Lớp: ", fontSize: 7.8 },
-          { text: clsName, fontSize: 7.8, bold: true },
-          { text: ",", fontSize: 7.8 },
+          { text: " - Lớp: ", fontSize: 9.2 },
+          { text: clsName, fontSize: 9.2, bold: true },
+          { text: ",", fontSize: 9.2 },
         ],
-        margin: [0, 0, 0, 1.5],
+        margin: [0, 0, 0, 3],
       },
       {
-        text: "Căn tin Châu Phương Thảo tại trường Tenlơman xin thông báo: Phiếu thanh toán tiền ăn bán trú đã được cập nhật trên ứng dụng. Quý Phụ huynh vui lòng kiểm tra thông tin và hoàn tất thanh toán theo các phương thức sau:",
-        fontSize: 7,
+        text: "        Căn tin Châu Phương Thảo tại trường Tenlơman xin thông báo: Phiếu thanh toán tiền ăn bán trú đã được cập nhật trên ứng dụng. Quý Phụ huynh vui lòng kiểm tra thông tin và hoàn tất thanh toán theo các phương thức sau:",
+        fontSize: 8.5,
         alignment: "justify",
-        lineHeight: 1.15,
-        margin: [0, 0, 0, 3],
+        lineHeight: 1.18,
+        margin: [0, 0, 0, 7],
       },
 
       // 3. Khung Phương thức 1: Trực tuyến qua QR
@@ -149,31 +175,31 @@ function createA6BillCell(
                   {
                     text: "1. Thanh toán trực tuyến qua mã QR:",
                     bold: true,
-                    fontSize: 7.2,
-                    margin: [0, 0, 0, 1.5],
+                    fontSize: 8.8,
+                    margin: [0, 0, 0, 3],
                   },
                   {
                     columns: [
                       // Cột mã QR
                       {
-                        width: 52,
+                        width: 58,
                         stack: [
                           {
                             table: {
-                              widths: [44],
+                              widths: [50],
                               body: [
                                 [
                                   {
                                     stack: [
                                       {
                                         image: qrCodeDataUrl,
-                                        width: 40,
-                                        height: 40,
+                                        width: 46,
+                                        height: 46,
                                         alignment: "center",
                                       },
                                       {
                                         text: "Quét mở App",
-                                        fontSize: 5,
+                                        fontSize: 6,
                                         bold: true,
                                         alignment: "center",
                                         margin: [0, 1, 0, 0],
@@ -189,10 +215,10 @@ function createA6BillCell(
                               vLineWidth: () => 0.5,
                               hLineColor: () => "#000000",
                               vLineColor: () => "#000000",
-                              paddingLeft: () => 1.5,
-                              paddingRight: () => 1.5,
-                              paddingTop: () => 1.5,
-                              paddingBottom: () => 1.5,
+                              paddingLeft: () => 2,
+                              paddingRight: () => 2,
+                              paddingTop: () => 2,
+                              paddingBottom: () => 2,
                             },
                           },
                         ],
@@ -200,33 +226,34 @@ function createA6BillCell(
                       // Cột thông tin đăng nhập
                       {
                         width: "*",
-                        margin: [5, 0, 0, 0],
+                        margin: [6, 0, 0, 0],
                         stack: [
                           {
                             text: [
-                              { text: "Truy cập link: ", fontSize: 6.8, bold: true },
+                              { text: "Truy cập link: ", fontSize: 8.2, bold: true },
                               {
                                 text: "https://bantrutlm.com/student-login",
-                                fontSize: 6.8,
+                                fontSize: 8.2,
                                 bold: true,
                                 decoration: "underline",
                               },
                             ],
-                            margin: [0, 0, 0, 1.5],
+                            margin: [0, 0, 0, 2.5],
                           },
                           {
                             text: "• Tên đăng nhập: Điền Họ và Tên học sinh",
-                            fontSize: 6.5,
-                            margin: [0, 0, 0, 1],
+                            fontSize: 7.8,
+                            margin: [0, 0, 0, 1.5],
                           },
                           {
                             text: "• Mật khẩu: Nếu đăng nhập lần đầu điền mật khẩu là Ngày tháng năm sinh viết liền (ddmmyyyy)",
-                            fontSize: 6.5,
-                            margin: [0, 0, 0, 1],
+                            fontSize: 7.6,
+                            lineHeight: 1.1,
+                            margin: [0, 0, 0, 1.5],
                           },
                           {
                             text: "• Mã xác nhận: 6 số cuối CCCD / Mã định danh",
-                            fontSize: 6.5,
+                            fontSize: 7.8,
                             margin: [0, 0, 0, 1],
                           },
                         ],
@@ -236,11 +263,11 @@ function createA6BillCell(
                   {
                     text: "Quý Phụ huynh kiểm tra chi tiết phiếu và quét mã QR chuyển khoản trực tiếp trên ứng dụng.",
                     italics: true,
-                    fontSize: 6.2,
-                    margin: [0, 2, 0, 0],
+                    fontSize: 7.5,
+                    margin: [0, 4, 0, 0],
                   },
                 ],
-                margin: [1.5, 1.5, 1.5, 1.5],
+                margin: [2, 2, 2, 2],
               },
             ],
           ],
@@ -248,14 +275,14 @@ function createA6BillCell(
         layout: {
           hLineWidth: () => 0.6,
           vLineWidth: () => 0.6,
-          hLineColor: () => "#000000",
-          vLineColor: () => "#000000",
-          paddingLeft: () => 3,
-          paddingRight: () => 3,
-          paddingTop: () => 2.5,
-          paddingBottom: () => 2.5,
+          hLineColor: () => "#333333",
+          vLineColor: () => "#333333",
+          paddingLeft: () => 4,
+          paddingRight: () => 4,
+          paddingTop: () => 3.5,
+          paddingBottom: () => 3.5,
         },
-        margin: [0, 0, 0, 3],
+        margin: [0, 0, 0, 6],
       },
 
       // 4. Phương thức 2: Tiền mặt
@@ -264,16 +291,16 @@ function createA6BillCell(
           {
             text: "2. Thanh toán bằng tiền mặt:",
             bold: true,
-            fontSize: 7.2,
-            margin: [0, 0, 0, 1],
+            fontSize: 8.8,
+            margin: [0, 0, 0, 1.5],
           },
           {
             text: "Quý Phụ huynh vui lòng đến trực tiếp Căn tin nhà trường để đóng tiền.",
-            fontSize: 6.8,
-            margin: [6, 0, 0, 2],
+            fontSize: 8.5,
+            margin: [8, 0, 0, 0],
           },
         ],
-        margin: [0, 0, 0, 2],
+        margin: [0, 0, 0, 6],
       },
 
       // 5. Lưu ý
@@ -283,35 +310,35 @@ function createA6BillCell(
             type: "line",
             x1: 0,
             y1: 0,
-            x2: 254,
+            x2: 256,
             y2: 0,
             lineWidth: 0.5,
             lineColor: "#000000",
           },
         ],
-        margin: [0, 0, 0, 2],
+        margin: [0, 0, 0, 4],
       },
       {
         stack: [
           {
             text: "• Nếu Quý Phụ huynh đã hoàn tất thanh toán trước đó, vui lòng bỏ qua thông báo này.",
             italics: true,
-            fontSize: 6.5,
-            margin: [0, 0, 0, 1],
+            fontSize: 7.8,
+            margin: [0, 0, 0, 1.5],
           },
           {
             text: [
               {
                 text: "• Mọi thắc mắc hoặc cần hỗ trợ, xin vui lòng liên hệ: ",
-                fontSize: 6.5,
+                fontSize: 7.8,
               },
-              { text: "0909 932 627", bold: true, fontSize: 6.5 },
-              { text: " (cô Thu Trang).", fontSize: 6.5 },
+              { text: "0909 932 627", bold: true, fontSize: 7.8 },
+              { text: " (cô Thu Trang).", fontSize: 7.8 },
             ],
-            margin: [0, 0, 0, 1.5],
+            margin: [0, 0, 0, 2],
           },
         ],
-        margin: [0, 0, 0, 2],
+        margin: [0, 0, 0, 5],
       },
 
       // 6. Footer / Ký tên
@@ -321,28 +348,28 @@ function createA6BillCell(
             type: "line",
             x1: 0,
             y1: 0,
-            x2: 254,
+            x2: 256,
             y2: 0,
             lineWidth: 0.5,
             lineColor: "#000000",
           },
         ],
-        margin: [0, 0, 0, 2],
+        margin: [0, 0, 0, 3],
       },
       {
         stack: [
           {
             text: `TP. Hồ Chí Minh, tháng ${bill.month} năm ${bill.year}`,
             italics: true,
-            fontSize: 6.5,
+            fontSize: 7.8,
             alignment: "right",
           },
           {
             text: "CĂN TIN CHÂU PHƯƠNG THẢO",
             bold: true,
-            fontSize: 7.2,
+            fontSize: 8.8,
             alignment: "right",
-            margin: [0, 1, 0, 0],
+            margin: [0, 1.5, 0, 0],
           },
         ],
       },
@@ -366,7 +393,7 @@ export async function generateDebtNotificationPdfBuffer(
 
   // Tạo sẵn ảnh DataURL cho QR code đăng nhập
   const qrCodeDataUrl = await QRCode.toDataURL("https://bantrutlm.com/student-login", {
-    width: 160,
+    width: 180,
     margin: 1,
     color: {
       dark: "#000000",
@@ -396,19 +423,19 @@ export async function generateDebtNotificationPdfBuffer(
       pageTable = {
         table: {
           widths: [275, 275],
-          heights: [380],
+          heights: [382],
           dontBreakRows: true,
           body: [[cell0, cell1]],
         },
         layout: {
           hLineWidth: () => 0,
-          vLineWidth: (i: number) => (i === 1 ? 0.8 : 0),
-          vLineColor: () => "#555555",
-          vLineStyle: () => ({ dash: { length: 4, space: 3 } }),
+          vLineWidth: (i: number) => (i === 1 ? 0.6 : 0),
+          vLineColor: () => "#888888",
+          vLineStyle: () => ({ dash: { length: 2, space: 2 } }),
           paddingLeft: () => 6,
           paddingRight: () => 6,
-          paddingTop: () => 4,
-          paddingBottom: () => 4,
+          paddingTop: () => 5,
+          paddingBottom: () => 5,
         },
         margin: [0, 0, 0, 0],
       };
@@ -427,7 +454,7 @@ export async function generateDebtNotificationPdfBuffer(
       pageTable = {
         table: {
           widths: [275, 275],
-          heights: [385, 385],
+          heights: [388, 388],
           dontBreakRows: true,
           body: [
             [cell0, cell1],
@@ -435,16 +462,16 @@ export async function generateDebtNotificationPdfBuffer(
           ],
         },
         layout: {
-          hLineWidth: (i: number) => (i === 1 ? 0.8 : 0),
-          vLineWidth: (i: number) => (i === 1 ? 0.8 : 0),
-          hLineColor: () => "#555555",
-          vLineColor: () => "#555555",
-          hLineStyle: () => ({ dash: { length: 4, space: 3 } }),
-          vLineStyle: () => ({ dash: { length: 4, space: 3 } }),
+          hLineWidth: (i: number) => (i === 1 ? 0.6 : 0),
+          vLineWidth: (i: number) => (i === 1 ? 0.6 : 0),
+          hLineColor: () => "#888888",
+          vLineColor: () => "#888888",
+          hLineStyle: () => ({ dash: { length: 2, space: 2 } }),
+          vLineStyle: () => ({ dash: { length: 2, space: 2 } }),
           paddingLeft: () => 6,
           paddingRight: () => 6,
-          paddingTop: () => 4,
-          paddingBottom: () => 4,
+          paddingTop: () => 5,
+          paddingBottom: () => 5,
         },
         margin: [0, 0, 0, 0],
       };
@@ -463,8 +490,8 @@ export async function generateDebtNotificationPdfBuffer(
     pageMargins: [14, 10, 14, 10],
     content,
     defaultStyle: {
-      font: "Roboto",
-      fontSize: 7.2,
+      font: "Times",
+      fontSize: 8.5,
       color: "#000000",
     },
   };
