@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { Button } from "@/components/ui/button";
-import { Printer, X, FileText } from "lucide-react";
+import { Printer, X, FileText, FileDown } from "lucide-react";
 
 export interface DebtNotificationBill {
   id: string;
@@ -65,6 +65,19 @@ export function DebtNotificationPrint({
     window.print();
   };
 
+  const handleExportPdf = () => {
+    const originalTitle = document.title;
+    const cleanClassName = className ? `_Lop_${className.replace(/\s+/g, "_")}` : "_Toan_Truong";
+    const layoutSuffix = isA5 ? "_A5_Ngang" : "_A4_Doc";
+    document.title = `Thong_Bao_Phat_Hanh_Phieu_Thanh_Toan${cleanClassName}_T${String(month).padStart(2, "0")}_${year}${layoutSuffix}`;
+
+    window.print();
+
+    setTimeout(() => {
+      document.title = originalTitle;
+    }, 2000);
+  };
+
   // Chia nhom theo layout:
   // - A5_LANDSCAPE_2UP: 2 phieu A6 tren 1 to A5 ngang
   // - A4_PORTRAIT_4UP: 4 phieu A6 tren 1 to A4 doc
@@ -118,16 +131,25 @@ export function DebtNotificationPrint({
 
           <Button
             onClick={handlePrint}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium flex items-center gap-2 shadow-sm cursor-pointer"
+            className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold flex items-center gap-2 shadow hover:shadow-lg hover:shadow-indigo-500/25 hover:-translate-y-0.5 hover:scale-[1.02] active:translate-y-0 active:scale-[0.98] transition-all duration-200 cursor-pointer"
           >
             <Printer className="w-4 h-4" />
             In ngay (Print)
           </Button>
 
           <Button
+            onClick={handleExportPdf}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex items-center gap-2 shadow hover:shadow-lg hover:shadow-emerald-500/25 hover:-translate-y-0.5 hover:scale-[1.02] active:translate-y-0 active:scale-[0.98] transition-all duration-200 cursor-pointer"
+            title="Lưu file PDF với tên đặt sẵn chuẩn đẹp (Chọn 'Lưu dưới dạng PDF' trong cửa sổ in)"
+          >
+            <FileDown className="w-4 h-4" />
+            Xuất PDF
+          </Button>
+
+          <Button
             onClick={onClose}
             variant="outline"
-            className="border-slate-300 text-slate-700 hover:bg-slate-100 cursor-pointer"
+            className="border-slate-300 text-slate-700 hover:bg-slate-100 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 cursor-pointer"
           >
             <X className="w-4 h-4 mr-1" /> Đóng
           </Button>
