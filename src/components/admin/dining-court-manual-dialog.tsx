@@ -54,7 +54,7 @@ export function DiningCourtManualDialog({
   selectedDate,
   onSaved,
 }: DiningCourtManualDialogProps) {
-  const [activeShift, setActiveShift] = useState<'TIET_4' | 'TIET_5'>('TIET_4');
+  const [activeShift, setActiveShift] = useState<'ALL' | 'TIET_4' | 'TIET_5'>('ALL');
   const [courts, setCourts] = useState<ManualCourtItem[]>([]);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
@@ -141,37 +141,71 @@ export function DiningCourtManualDialog({
     setCourts(initialCourts);
   }, [isOpen, data]);
 
-  // Các lớp thuộc ca đang chọn
+  // Các lớp thuộc ca đang chọn (hoặc tất cả các ca nếu chọn ALL)
   const shiftClasses = useMemo(() => {
     if (!data?.availableClasses) return [];
+    if (activeShift === 'ALL') {
+      return [...data.availableClasses.TIET_4, ...data.availableClasses.TIET_5];
+    }
     return activeShift === 'TIET_4' ? data.availableClasses.TIET_4 : data.availableClasses.TIET_5;
   }, [data, activeShift]);
 
-  // Các sân thuộc ca đang chọn
+  // Các sân thuộc ca đang chọn (nếu là ALL thì hiển thị tất cả các sân sắp xếp theo số sân)
   const currentShiftCourts = useMemo(() => {
-    return courts.filter((c) => c.shift === activeShift);
+    if (activeShift === 'ALL') {
+      return [...courts].sort((a, b) => a.courtNumber - b.courtNumber);
+    }
+    return courts
+      .filter((c) => c.shift === activeShift)
+      .sort((a, b) => a.courtNumber - b.courtNumber);
   }, [courts, activeShift]);
 
-  // Tập hợp các classId đã được gán vào sân ở ca hiện tại
-  const assignedClassIds = useMemo(() => {
+  // Tập hợp các classId đã được gán vào sân
+  const assignedClassKeys = useMemo(() => {
     const set = new Set<string>();
-    currentShiftCourts.forEach((c) => {
-      c.classIds.forEach((id) => set.add(id));
+    courts.forEach((c) => {
+      c.classIds.forEach((id) => {
+        set.add(id);
+        set.add(`${id}::${c.shift}`);
+      });
     });
     return set;
-  }, [currentShiftCourts]);
+  }, [courts]);
 
-  // Các lớp chưa được xếp vào sân nào ở ca này
+  // Các lớp chưa được xếp vào sân nào ở chế độ xem hiện tại
   const unassignedClasses = useMemo(() => {
-    return shiftClasses.filter((c) => !assignedClassIds.has(c.classId));
-  }, [shiftClasses, assignedClassIds]);
+    return shiftClasses.filter(
+      (c) => !assignedClassKeys.has(`${c.classId}::${c.shift}`) && !assignedClassKeys.has(c.classId)
+    );
+  }, [shiftClasses, assignedClassKeys]);
 
-  // Thêm sân mới cho ca hiện tại
-  // Thêm sân mới cho ca hiện tại (tự động gán số sân nhỏ nhất chưa dùng từ 1 đến 16)
-  const handleAddCourt = () => {
-    const shiftCourts = courts.filter((c) => c.shift === activeShift);
+  // Thêm sân mới (tự động gán số sân nhỏ nhất chưa dùng từ 1 đến 16, hỏi ca nếu đang ở tab ALL)
+  const handleAddCourt = async () => {
+    let targetShift: 'TIET_4' | 'TIET_5' = activeShift === 'ALL' ? 'TIET_4' : activeShift;
+
+    if (activeShift === 'ALL') {
+      const result = await Swal.fire({
+        title: 'Thêm sân mới',
+        text: 'Vui lòng chọn ca học cho sân mới:',
+        input: 'radio',
+        inputOptions: {
+          TIET_4: 'Tiết 4 (Ca 1)',
+          TIET_5: 'Tiết 5 (Ca 2)',
+        },
+        inputValue: 'TIET_4',
+        showCancelButton: true,
+        confirmButtonText: 'Tạo sân',
+        cancelButtonText: 'Hủy',
+        confirmButtonColor: '#2563eb',
+      });
+
+      if (!result.isConfirmed || !result.value) return;
+      targetShift = result.value as 'TIET_4' | 'TIET_5';
+    }
+
+    const shiftCourts = courts.filter((c) => c.shift === targetShift);
     if (shiftCourts.length >= 16) {
-      Swal.fire('Thông báo', 'Mỗi tiết học chỉ được phân tối đa 16 sân ăn.', 'warning');
+      Swal.fire('Thông báo', `Ca ${targetShift === 'TIET_4' ? 'Tiết 4' : 'Tiết 5'} đã đạt tối đa 16 sân ăn.`, 'warning');
       return;
     }
 
@@ -181,11 +215,15 @@ export function DiningCourtManualDialog({
     while (usedNums.has(newCourtNumber) && newCourtNumber <= 16) {
       newCourtNumber++;
     }
+    if (newCourtNumber > 16) {
+      Swal.fire('Thông báo', 'Đã dùng hết 16 số sân ăn trong hệ thống.', 'warning');
+      return;
+    }
     const newCartNumber = Math.ceil(newCourtNumber / 2);
 
     const newCourt: ManualCourtItem = {
-      id: `court-${activeShift}-${Date.now()}`,
-      shift: activeShift,
+      id: `court-${targetShift}-${Date.now()}`,
+      shift: targetShift,
       courtNumber: newCourtNumber,
       courtName: `Sân ${newCourtNumber}`,
       cartNumber: newCartNumber,
@@ -400,31 +438,44 @@ export function DiningCourtManualDialog({
     });
   };
 
-  // Di chuyển sân lên hoặc xuống trong cùng ca học
+  // Di chuyển sân lên hoặc xuống trong danh sách hiển thị (hoán đổi số sân và xe giữa 2 sân liền kề)
   const handleMoveCourt = (courtId: string, direction: 'UP' | 'DOWN') => {
-    const shiftCourts = courts.filter((c) => c.shift === activeShift);
-    const otherCourts = courts.filter((c) => c.shift !== activeShift);
-    const index = shiftCourts.findIndex((c) => c.id === courtId);
+    const list = currentShiftCourts;
+    const index = list.findIndex((c) => c.id === courtId);
     if (index === -1) return;
 
-    if (direction === 'UP' && index > 0) {
-      const temp = shiftCourts[index - 1];
-      shiftCourts[index - 1] = shiftCourts[index];
-      shiftCourts[index] = temp;
-    } else if (direction === 'DOWN' && index < shiftCourts.length - 1) {
-      const temp = shiftCourts[index + 1];
-      shiftCourts[index + 1] = shiftCourts[index];
-      shiftCourts[index] = temp;
-    } else {
-      return;
-    }
+    const targetIndex = direction === 'UP' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= list.length) return;
 
-    const updated =
-      activeShift === 'TIET_4'
-        ? [...shiftCourts, ...otherCourts]
-        : [...otherCourts, ...shiftCourts];
+    const currentCourt = list[index];
+    const targetCourt = list[targetIndex];
 
-    setCourts(updated);
+    const tempCourtNum = currentCourt.courtNumber;
+    const tempCartNum = currentCourt.cartNumber;
+
+    setCourts((prev) =>
+      prev.map((c) => {
+        if (c.id === currentCourt.id) {
+          return {
+            ...c,
+            courtNumber: targetCourt.courtNumber,
+            courtName: `Sân ${targetCourt.courtNumber}`,
+            cartNumber: targetCourt.cartNumber,
+            cartName: `Xe ${targetCourt.cartNumber}`,
+          };
+        }
+        if (c.id === targetCourt.id) {
+          return {
+            ...c,
+            courtNumber: tempCourtNum,
+            courtName: `Sân ${tempCourtNum}`,
+            cartNumber: tempCartNum,
+            cartName: `Xe ${tempCartNum}`,
+          };
+        }
+        return c;
+      })
+    );
   };
 
   // Thêm lớp vào sân
@@ -559,15 +610,27 @@ export function DiningCourtManualDialog({
           </div>
         </DialogHeader>
 
-        {/* Thanh chọn ca học (Tiết 4 / Tiết 5) */}
+        {/* Thanh chọn ca học (Tất cả / Tiết 4 / Tiết 5) */}
         <div className="bg-white px-5 py-2.5 border-b flex items-center justify-between gap-3 shrink-0">
-          <Tabs value={activeShift} onValueChange={(val) => setActiveShift(val as 'TIET_4' | 'TIET_5')}>
+          <Tabs value={activeShift} onValueChange={(val) => setActiveShift(val as 'ALL' | 'TIET_4' | 'TIET_5')}>
             <TabsList className="bg-slate-100 p-1">
-              <TabsTrigger value="TIET_4" className="text-xs font-semibold data-[state=active]:bg-orange-600 data-[state=active]:text-white">
-                Tiết 4 (Ca 1) - {data?.availableClasses?.TIET_4.length || 0} lớp
+              <TabsTrigger
+                value="ALL"
+                className="text-xs font-semibold data-[state=active]:bg-blue-600 data-[state=active]:text-white cursor-pointer"
+              >
+                Tất cả ({(data?.availableClasses?.TIET_4.length || 0) + (data?.availableClasses?.TIET_5.length || 0)} lớp)
               </TabsTrigger>
-              <TabsTrigger value="TIET_5" className="text-xs font-semibold data-[state=active]:bg-indigo-600 data-[state=active]:text-white">
-                Tiết 5 (Ca 2) - {data?.availableClasses?.TIET_5.length || 0} lớp
+              <TabsTrigger
+                value="TIET_4"
+                className="text-xs font-semibold data-[state=active]:bg-orange-600 data-[state=active]:text-white cursor-pointer"
+              >
+                Tiết 4 (10g30) - {data?.availableClasses?.TIET_4.length || 0} lớp
+              </TabsTrigger>
+              <TabsTrigger
+                value="TIET_5"
+                className="text-xs font-semibold data-[state=active]:bg-indigo-600 data-[state=active]:text-white cursor-pointer"
+              >
+                Tiết 5 (11g20) - {data?.availableClasses?.TIET_5.length || 0} lớp
               </TabsTrigger>
             </TabsList>
           </Tabs>
@@ -591,7 +654,7 @@ export function DiningCourtManualDialog({
               className="text-xs h-8 bg-blue-600 hover:bg-blue-700 text-white cursor-pointer gap-1 font-semibold"
             >
               <Plus className="h-3.5 w-3.5" />
-              <span>Thêm sân ({activeShift === 'TIET_4' ? 'Tiết 4' : 'Tiết 5'})</span>
+              <span>Thêm sân {activeShift === 'ALL' ? '' : activeShift === 'TIET_4' ? '(Tiết 4)' : '(Tiết 5)'}</span>
             </Button>
           </div>
         </div>
@@ -617,17 +680,31 @@ export function DiningCourtManualDialog({
                 <div className="p-6 text-center border-2 border-dashed border-emerald-200 rounded-lg bg-emerald-50/50">
                   <CheckCircle2 className="h-6 w-6 text-emerald-600 mx-auto mb-1.5" />
                   <p className="text-xs font-bold text-emerald-800">Đã xếp xong toàn bộ lớp!</p>
-                  <p className="text-[11px] text-emerald-600 mt-0.5">Không còn lớp nào bị bỏ sót ở ca này.</p>
+                  <p className="text-[11px] text-emerald-600 mt-0.5">
+                    Không còn lớp nào bị bỏ sót {activeShift === 'ALL' ? 'trong ngày' : 'ở ca này'}.
+                  </p>
                 </div>
               ) : (
                 <div className="space-y-2 max-h-[52vh] overflow-y-auto pr-1">
                   {unassignedClasses.map((cls) => (
                     <div
-                      key={cls.classId}
+                      key={`${cls.classId}::${cls.shift}`}
                       className="p-2.5 rounded-lg border border-slate-200 bg-slate-50/70 hover:bg-slate-100 transition-colors flex items-center justify-between"
                     >
                       <div>
-                        <span className="font-bold text-sm text-slate-800">{cls.className}</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-sm text-slate-800">{cls.className}</span>
+                          <Badge
+                            variant="outline"
+                            className={`text-[10px] px-1.5 py-0 font-semibold ${
+                              cls.shift === 'TIET_4'
+                                ? 'bg-orange-50 text-orange-700 border-orange-200'
+                                : 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                            }`}
+                          >
+                            {cls.shift === 'TIET_4' ? 'Tiết 4' : 'Tiết 5'}
+                          </Badge>
+                        </div>
                         <div className="text-[11px] text-slate-500">
                           Mặn: {cls.manCount} | Chay: {cls.chayCount} | Cháo: {cls.chaoCount}
                         </div>
@@ -648,6 +725,7 @@ export function DiningCourtManualDialog({
                 <span>Tiêu chuẩn chia sân ăn:</span>
               </div>
               <ul className="list-disc pl-4 text-[11px] space-y-0.5 text-amber-800">
+                <li>Giờ ăn: <strong>Tiết 4 (10g30)</strong>, <strong>Tiết 5 (11g20)</strong>.</li>
                 <li>Sức chứa chuẩn: <strong>40 - 60 suất / sân</strong>.</li>
                 <li>Khuyến nghị tối đa: <strong>60 suất / sân</strong>.</li>
                 <li>1 Xe cơm phục vụ 2 sân liên tiếp (Sân 1-2: Xe 1, Sân 3-4: Xe 2).</li>
@@ -660,7 +738,9 @@ export function DiningCourtManualDialog({
             {currentShiftCourts.length === 0 ? (
               <div className="bg-white p-12 text-center rounded-xl border border-dashed border-slate-300">
                 <Layers className="h-10 w-10 text-slate-300 mx-auto mb-2" />
-                <p className="text-sm font-bold text-slate-700">Chưa có sân nào cho {activeShift === 'TIET_4' ? 'Tiết 4' : 'Tiết 5'}</p>
+                <p className="text-sm font-bold text-slate-700">
+                  Chưa có sân nào {activeShift === 'ALL' ? 'trong ngày' : activeShift === 'TIET_4' ? 'cho Tiết 4' : 'cho Tiết 5'}
+                </p>
                 <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
                   Bấm nút "+ Thêm sân" ở góc trên bên phải để bắt đầu tạo sân và phân lớp.
                 </p>
@@ -697,6 +777,18 @@ export function DiningCourtManualDialog({
                       {/* Tiêu đề sân */}
                       <div className="px-4 py-2.5 bg-slate-50/80 border-b flex items-center justify-between">
                         <div className="flex items-center gap-2">
+                          {/* Badge ca học */}
+                          <Badge
+                            variant="outline"
+                            className={`text-[10px] font-bold px-1.5 py-0.5 ${
+                              court.shift === 'TIET_4'
+                                ? 'bg-orange-50 text-orange-700 border-orange-200'
+                                : 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                            }`}
+                          >
+                            {court.shift === 'TIET_4' ? 'Tiết 4' : 'Tiết 5'}
+                          </Badge>
+
                           {/* Dropdown chọn trực tiếp số sân */}
                           <div className="flex items-center gap-1 bg-slate-900 text-white rounded-md px-1.5 py-0.5 border border-slate-800 shadow-2xs">
                             <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Sân:</span>
@@ -846,31 +938,35 @@ export function DiningCourtManualDialog({
                           )}
                         </div>
 
-                        {/* Dropdown thêm lớp vào sân */}
-                        {unassignedClasses.length > 0 && (
-                          <div className="pt-2 border-t border-slate-100 flex items-center gap-2">
-                            <span className="text-xs text-slate-500 shrink-0 font-medium">+ Thêm lớp vào sân:</span>
-                            <select
-                              defaultValue=""
-                              onChange={(e) => {
-                                if (e.target.value) {
-                                  handleAddClassToCourt(court.id, e.target.value);
-                                  e.target.value = '';
-                                }
-                              }}
-                              className="h-8 rounded-md border border-slate-300 bg-white px-2.5 text-xs text-slate-800 shadow-2xs focus:border-blue-500 focus:outline-none"
-                            >
-                              <option value="" disabled>
-                                -- Chọn lớp để thêm ({unassignedClasses.length} lớp còn lại) --
-                              </option>
-                              {unassignedClasses.map((cls) => (
-                                <option key={cls.classId} value={cls.classId}>
-                                  Lớp {cls.className} ({cls.totalMeals} suất)
+                        {/* Dropdown thêm lớp vào sân (chỉ hiện các lớp thuộc ca của sân này) */}
+                        {(() => {
+                          const courtAvailableClasses = unassignedClasses.filter((c) => c.shift === court.shift);
+                          if (courtAvailableClasses.length === 0) return null;
+                          return (
+                            <div className="pt-2 border-t border-slate-100 flex items-center gap-2">
+                              <span className="text-xs text-slate-500 shrink-0 font-medium">+ Thêm lớp vào sân:</span>
+                              <select
+                                defaultValue=""
+                                onChange={(e) => {
+                                  if (e.target.value) {
+                                    handleAddClassToCourt(court.id, e.target.value);
+                                    e.target.value = '';
+                                  }
+                                }}
+                                className="h-8 rounded-md border border-slate-300 bg-white px-2.5 text-xs text-slate-800 shadow-2xs focus:border-blue-500 focus:outline-none"
+                              >
+                                <option value="" disabled>
+                                  -- Chọn lớp ({court.shift === 'TIET_4' ? 'Tiết 4' : 'Tiết 5'} - còn {courtAvailableClasses.length} lớp) --
                                 </option>
-                              ))}
-                            </select>
-                          </div>
-                        )}
+                                {courtAvailableClasses.map((cls) => (
+                                  <option key={`${cls.classId}::${cls.shift}`} value={cls.classId}>
+                                    Lớp {cls.className} ({cls.totalMeals} suất)
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
                   );

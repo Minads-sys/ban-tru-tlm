@@ -585,7 +585,7 @@ export function DiningCourtSummaryPrint({
           <div className="mt-4 pt-3 border-t border-slate-200 print:break-inside-avoid">
             <p className="text-[11px] text-slate-600 italic mb-6 leading-relaxed">
               * <strong>Lưu ý nhiệm vụ:</strong> Nhân viên phụ trách nhà bếp tập kết đúng và đủ số suất ăn (Mặn / Chay / Cháo)
-              đến từng vị trí sân trước giờ ăn (Tiết 4 lúc 10h45, Tiết 5 lúc 11h35). Giáo viên trực sân kiểm tra số lượng,
+              đến từng vị trí sân trước giờ ăn (Tiết 4 lúc 10g30, Tiết 5 lúc 11g20). Giáo viên trực sân kiểm tra số lượng,
               ký xác nhận và phân chia cho học sinh.
             </p>
 

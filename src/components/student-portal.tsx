@@ -777,7 +777,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                     Gửi yêu cầu Cắt suất ăn
                   </CardTitle>
                   <CardDescription>
-                    Chọn ngày muốn cắt suất/đổi món ăn. Học sinh phải có lịch ăn bán trú vào ngày này và chỉ được cắt suất/đổi món trong tuần hiện tại, hệ thống sẽ mở tuần kế tiếp vào thứ Bảy
+                    Chọn ngày muốn cắt suất/đổi món ăn. Học sinh phải có lịch ăn bán trú vào ngày này và chỉ được cắt suất/đổi món trong tuần hiện tại, hệ thống sẽ mở tuần kế tiếp vào thứ Bảy.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="pt-6">
@@ -891,7 +891,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                       Đăng ký Đổi món
                     </CardTitle>
                     <CardDescription>
-                      Chọn ngày muốn cắt suất/đổi món ăn. Học sinh phải có lịch ăn bán trú vào ngày này và chỉ được cắt suất/đổi món trong tuần hiện tại, hệ thống sẽ mở tuần kế tiếp vào thứ Bảy
+                      Chọn ngày muốn cắt suất/đổi món ăn. Học sinh phải có lịch ăn bán trú vào ngày này và chỉ được cắt suất/đổi món trong tuần hiện tại, hệ thống sẽ mở tuần kế tiếp vào thứ Bảy.
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="pt-6">

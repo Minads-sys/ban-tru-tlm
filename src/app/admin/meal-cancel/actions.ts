@@ -305,6 +305,19 @@ export async function getBulkActionStudentStatus(classId: string, dateStr: strin
         if (schedule) {
           hasSchedule = true;
           scheduleScheduleType = (schedule as any)[dayField] || 'LUNCH';
+        } else {
+          // Kiểm tra thêm xem lớp có học sinh nào có Lịch ăn đặc biệt ngày này không
+          const specialCount = await prisma.studentSpecialMeal.count({
+            where: {
+              student: { classId },
+              date: requestDate,
+              shift: { not: 'NONE' },
+            },
+          });
+          if (specialCount > 0) {
+            hasSchedule = true;
+            scheduleScheduleType = 'Đặc biệt';
+          }
         }
       }
     }
@@ -505,7 +518,18 @@ export async function bulkCreateAndApproveCancellations(params: {
     });
 
     if (!schedule) {
-      return { success: false, error: `Lớp không có lịch ăn bán trú vào ngày ${cancelDate} theo Thời khóa biểu.` };
+      // Kiểm tra xem các học sinh được chọn có Lịch ăn đặc biệt ngày này không
+      const specialMealsCount = await prisma.studentSpecialMeal.count({
+        where: {
+          studentId: { in: studentIds },
+          date: requestDate,
+          shift: { not: 'NONE' },
+        },
+      });
+
+      if (specialMealsCount === 0) {
+        return { success: false, error: `Lớp và các học sinh được chọn không có lịch ăn bán trú vào ngày ${cancelDate}.` };
+      }
     }
 
     // 5. Thực thi Transaction Upsert các bản ghi MealCancellation
@@ -692,7 +716,18 @@ export async function bulkOverrideMeals(params: {
     });
 
     if (!schedule) {
-      return { success: false, error: `Lớp không có lịch ăn bán trú vào ngày ${date} theo Thời khóa biểu.` };
+      // Kiểm tra xem các học sinh được chọn có Lịch ăn đặc biệt ngày này không
+      const specialMealsCount = await prisma.studentSpecialMeal.count({
+        where: {
+          studentId: { in: studentIds },
+          date: requestDate,
+          shift: { not: 'NONE' },
+        },
+      });
+
+      if (specialMealsCount === 0) {
+        return { success: false, error: `Lớp và các học sinh được chọn không có lịch ăn bán trú vào ngày ${date}.` };
+      }
     }
 
     // 5. Kiểm tra ràng buộc: Loại bỏ học sinh đã có đơn cắt suất còn hiệu lực

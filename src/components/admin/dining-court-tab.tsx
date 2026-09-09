@@ -712,7 +712,7 @@ export function DiningCourtTab({ cutoffTime, schoolName }: DiningCourtTabProps) 
                 {/* Tiết 4 */}
                 <div className="bg-orange-50/60 rounded-xl p-3.5 border border-orange-200 space-y-2">
                   <div className="flex items-center justify-between text-xs font-bold text-orange-950">
-                    <span>Tiết 4 (Ca 1): {data.availableClasses?.TIET_4.length || 0} lớp</span>
+                    <span>Tiết 4 (10g30): {data.availableClasses?.TIET_4.length || 0} lớp</span>
                     <span>{data.shifts.TIET_4.totalMeals} suất</span>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
@@ -730,7 +730,7 @@ export function DiningCourtTab({ cutoffTime, schoolName }: DiningCourtTabProps) 
                 {/* Tiết 5 */}
                 <div className="bg-indigo-50/60 rounded-xl p-3.5 border border-indigo-200 space-y-2">
                   <div className="flex items-center justify-between text-xs font-bold text-indigo-950">
-                    <span>Tiết 5 (Ca 2): {data.availableClasses?.TIET_5.length || 0} lớp</span>
+                    <span>Tiết 5 (11g20): {data.availableClasses?.TIET_5.length || 0} lớp</span>
                     <span>{data.shifts.TIET_5.totalMeals} suất</span>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
@@ -830,7 +830,7 @@ export function DiningCourtTab({ cutoffTime, schoolName }: DiningCourtTabProps) 
                         </Badge>
                       )}
                       <span className="text-xs font-semibold text-slate-700">
-                        {isTiet4 ? 'Tiết 4 (Ca 1)' : 'Tiết 5 (Ca 2)'}
+                        {isTiet4 ? 'Tiết 4 (10g30)' : 'Tiết 5 (11g20)'}
                       </span>
                       {court.isSingleClass ? (
                         <Badge variant="outline" className="text-[11px] bg-white text-slate-600 border-slate-300">

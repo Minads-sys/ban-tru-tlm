@@ -145,9 +145,24 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // Nếu lớp không có lịch TKB thường, kiểm tra xem học sinh có Lịch ăn đặc biệt ngày này không
+    let hasSpecialMeal = false;
     if (!schedule) {
+      const specialMeal = await prisma.studentSpecialMeal.findFirst({
+        where: {
+          studentId: student.id,
+          date: requestDate,
+          shift: { not: "NONE" },
+        },
+      });
+      if (specialMeal) {
+        hasSpecialMeal = true;
+      }
+    }
+
+    if (!schedule && !hasSpecialMeal) {
       return NextResponse.json(
-        { error: "Lớp không có lịch ăn bán trú ngày này theo thời khóa biểu" },
+        { error: "Học sinh không có lịch ăn bán trú ngày này (theo Thời khóa biểu hoặc Lịch đặc biệt)" },
         { status: 400 }
       );
     }

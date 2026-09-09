@@ -20,6 +20,7 @@ import {
   Info,
   CalendarX,
   UtensilsCrossed,
+  RotateCcw,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
@@ -85,11 +86,19 @@ export function MealCancelManager({
   const [openBulkCancel, setOpenBulkCancel] = useState<boolean>(false);
   const [openBulkOverride, setOpenBulkOverride] = useState<boolean>(false);
 
+  // Filters for Pending Tab
+  const [pendingSearchQuery, setPendingSearchQuery] = useState('');
+  const [pendingClassFilter, setPendingClassFilter] = useState<string>('ALL');
+  const [pendingDateFrom, setPendingDateFrom] = useState<string>('');
+  const [pendingDateTo, setPendingDateTo] = useState<string>('');
+
   // Filters for History Tab
   const [searchQuery, setSearchQuery] = useState('');
   const [filterClass, setFilterClass] = useState<string>('ALL');
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
   const [filterType, setFilterType] = useState<string>('ALL');
+  const [historyDateFrom, setHistoryDateFrom] = useState<string>('');
+  const [historyDateTo, setHistoryDateTo] = useState<string>('');
 
   // Format helpers
   const formatDate = (date: Date | string) => {
@@ -101,6 +110,31 @@ export function MealCancelManager({
       return `${day}/${month}/${year}`;
     } catch {
       return String(date);
+    }
+  };
+
+  const getIsoDateString = (date: Date | string) => {
+    try {
+      const d = new Date(date);
+      const year = d.getUTCFullYear();
+      const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(d.getUTCDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    } catch {
+      return '';
+    }
+  };
+
+  const getTodayIsoString = () => {
+    try {
+      return new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Ho_Chi_Minh',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date());
+    } catch {
+      return new Date().toISOString().split('T')[0];
     }
   };
 
@@ -122,15 +156,94 @@ export function MealCancelManager({
     }
   };
 
-  // Selection logic for Pending
-  const allPendingIds = useMemo(() => initialPending.map((p) => p.id), [initialPending]);
-  const isAllSelected = allPendingIds.length > 0 && selectedIds.size === allPendingIds.length;
+  // Reset helpers
+  const resetPendingFilters = () => {
+    setPendingSearchQuery('');
+    setPendingClassFilter('ALL');
+    setPendingDateFrom('');
+    setPendingDateTo('');
+  };
+
+  const isPendingFiltered = Boolean(
+    pendingSearchQuery.trim() ||
+      pendingClassFilter !== 'ALL' ||
+      pendingDateFrom ||
+      pendingDateTo
+  );
+
+  const resetHistoryFilters = () => {
+    setSearchQuery('');
+    setFilterClass('ALL');
+    setFilterStatus('ALL');
+    setFilterType('ALL');
+    setHistoryDateFrom('');
+    setHistoryDateTo('');
+  };
+
+  const isHistoryFiltered = Boolean(
+    searchQuery.trim() ||
+      filterClass !== 'ALL' ||
+      filterStatus !== 'ALL' ||
+      filterType !== 'ALL' ||
+      historyDateFrom ||
+      historyDateTo
+  );
+
+  // Available classes for filter
+  const availablePendingClasses = useMemo(() => {
+    const set = new Set<string>();
+    initialPending.forEach((item) => {
+      const c = item.student?.class?.name || item.student?.classId;
+      if (c) set.add(c);
+    });
+    return Array.from(set).sort();
+  }, [initialPending]);
+
+  const availableClasses = useMemo(() => {
+    const set = new Set<string>();
+    initialHistory.forEach((item) => {
+      const c = item.student?.class?.name || item.student?.classId;
+      if (c) set.add(c);
+    });
+    return Array.from(set).sort();
+  }, [initialHistory]);
+
+  // Filtered Pending
+  const filteredPending = useMemo(() => {
+    return initialPending.filter((item) => {
+      if (pendingSearchQuery.trim()) {
+        const q = pendingSearchQuery.toLowerCase();
+        const name = item.student?.user?.fullName?.toLowerCase() || '';
+        const code = item.student?.studentCode?.toLowerCase() || '';
+        if (!name.includes(q) && !code.includes(q)) return false;
+      }
+
+      if (pendingClassFilter !== 'ALL') {
+        const c = item.student?.class?.name || item.student?.classId;
+        if (c !== pendingClassFilter) return false;
+      }
+
+      const itemDateStr = getIsoDateString(item.cancelDate);
+      if (pendingDateFrom && itemDateStr < pendingDateFrom) return false;
+      if (pendingDateTo && itemDateStr > pendingDateTo) return false;
+
+      return true;
+    });
+  }, [initialPending, pendingSearchQuery, pendingClassFilter, pendingDateFrom, pendingDateTo]);
+
+  // Selection logic for Pending (based on filtered results)
+  const filteredPendingIds = useMemo(() => filteredPending.map((p) => p.id), [filteredPending]);
+  const isAllSelected = filteredPendingIds.length > 0 && filteredPendingIds.every((id) => selectedIds.has(id));
 
   const toggleSelectAll = () => {
     if (isAllSelected) {
-      setSelectedIds(new Set());
+      const next = new Set(selectedIds);
+      filteredPendingIds.forEach((id) => next.delete(id));
+      setSelectedIds(next);
     } else {
-      setSelectedIds(new Set(allPendingIds));
+      const next = new Set(selectedIds);
+      filteredPendingIds.forEach((id) => next.add(id));
+      setSelectedIds(next);
     }
   };
 
@@ -179,13 +292,21 @@ export function MealCancelManager({
     });
   };
 
-  // Bulk Approve ALL
+  // Bulk Approve ALL (or all matching current filter)
   const handleApproveAll = () => {
-    if (allPendingIds.length === 0) return;
+    const targetIds = filteredPendingIds;
+    if (targetIds.length === 0) return;
+
+    const titleText = isPendingFiltered
+      ? `Duyệt tất cả ${targetIds.length} yêu cầu đang lọc?`
+      : `Duyệt tất cả ${targetIds.length} yêu cầu chờ xử lý?`;
+    const bodyText = isPendingFiltered
+      ? 'Toàn bộ các đơn đang hiển thị theo bộ lọc sẽ được chuyển sang trạng thái Đã duyệt bởi bạn.'
+      : 'Toàn bộ đơn chờ duyệt sẽ được chuyển sang trạng thái Đã duyệt bởi bạn.';
 
     Swal.fire({
-      title: `Duyệt tất cả ${allPendingIds.length} yêu cầu chờ xử lý?`,
-      text: 'Toàn bộ đơn chờ duyệt sẽ được chuyển sang trạng thái Đã duyệt bởi bạn.',
+      title: titleText,
+      text: bodyText,
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: '#059669',
@@ -195,7 +316,7 @@ export function MealCancelManager({
     }).then((result) => {
       if (result.isConfirmed) {
         startBulkTransition(async () => {
-          const res = await bulkApproveCancellations(allPendingIds);
+          const res = await bulkApproveCancellations(targetIds);
           if (res.success) {
             Swal.fire({
               icon: 'success',
@@ -237,16 +358,6 @@ export function MealCancelManager({
     });
   };
 
-  // Unique classes for filter in History
-  const availableClasses = useMemo(() => {
-    const set = new Set<string>();
-    initialHistory.forEach((item) => {
-      const c = item.student?.class?.name || item.student?.classId;
-      if (c) set.add(c);
-    });
-    return Array.from(set).sort();
-  }, [initialHistory]);
-
   // Filtered History
   const filteredHistory = useMemo(() => {
     return initialHistory.filter((item) => {
@@ -274,9 +385,14 @@ export function MealCancelManager({
         if (item.approvalType !== filterType) return false;
       }
 
+      // Cancel Date Range
+      const itemDateStr = getIsoDateString(item.cancelDate);
+      if (historyDateFrom && itemDateStr < historyDateFrom) return false;
+      if (historyDateTo && itemDateStr > historyDateTo) return false;
+
       return true;
     });
-  }, [initialHistory, searchQuery, filterClass, filterStatus, filterType]);
+  }, [initialHistory, searchQuery, filterClass, filterStatus, filterType, historyDateFrom, historyDateTo]);
 
   return (
     <div className="space-y-6">
@@ -402,13 +518,108 @@ export function MealCancelManager({
 
         {/* TAB 1: PENDING */}
         <TabsContent value="pending" className="mt-4 space-y-4">
+          {/* Filters Bar for Pending */}
+          <Card className="shadow-xs border-slate-200">
+            <CardContent className="p-3.5 space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2.5">
+                {/* Search */}
+                <div className="relative lg:col-span-4">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                  <Input
+                    placeholder="Tìm tên hoặc mã HS cắt suất..."
+                    value={pendingSearchQuery}
+                    onChange={(e) => setPendingSearchQuery(e.target.value)}
+                    className="pl-9 text-xs bg-white h-9"
+                  />
+                </div>
+
+                {/* Filter Class */}
+                <div className="lg:col-span-3">
+                  <Select value={pendingClassFilter} onValueChange={setPendingClassFilter}>
+                    <SelectTrigger className="text-xs bg-white h-9">
+                      <SelectValue placeholder="Chọn lớp học" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ALL">Tất cả lớp học</SelectItem>
+                      {availablePendingClasses.map((c) => (
+                        <SelectItem key={c} value={c}>
+                          Lớp {c}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Date Filters Row */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2 border-t border-slate-100">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <div className="flex items-center gap-1.5">
+                    <Calendar className="h-4 w-4 text-slate-400 shrink-0" />
+                    <span className="text-[11px] font-medium text-slate-600 shrink-0">Ngày cắt suất từ:</span>
+                    <Input
+                      type="date"
+                      value={pendingDateFrom}
+                      onChange={(e) => setPendingDateFrom(e.target.value)}
+                      className="text-xs bg-white h-8 w-36 px-2"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] font-medium text-slate-600 shrink-0">đến:</span>
+                    <Input
+                      type="date"
+                      value={pendingDateTo}
+                      onChange={(e) => setPendingDateTo(e.target.value)}
+                      className="text-xs bg-white h-8 w-36 px-2"
+                    />
+                  </div>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const today = getTodayIsoString();
+                      setPendingDateFrom(today);
+                      setPendingDateTo(today);
+                    }}
+                    className="text-xs h-8 px-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-300"
+                  >
+                    Hôm nay
+                  </Button>
+                </div>
+
+                {isPendingFiltered && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={resetPendingFilters}
+                    className="text-xs h-8 px-2.5 text-rose-600 hover:text-rose-700 hover:bg-rose-50 self-end sm:self-auto"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5 mr-1" />
+                    Đặt lại bộ lọc
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
           <Card className="shadow-xs border-slate-200">
             <CardHeader className="border-b bg-slate-50/50 pb-3.5 pt-3.5">
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                 <div>
-                  <CardTitle className="text-base font-bold text-slate-900">
-                    Danh sách yêu cầu đang chờ giáo viên xử lý
-                  </CardTitle>
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="text-base font-bold text-slate-900">
+                      Danh sách yêu cầu đang chờ giáo viên xử lý
+                    </CardTitle>
+                    {isPendingFiltered && (
+                      <Badge variant="outline" className="text-xs font-semibold bg-blue-50 text-blue-700 border-blue-200">
+                        Đang lọc: {filteredPending.length} / {initialPending.length} đơn
+                      </Badge>
+                    )}
+                  </div>
                   <CardDescription className="text-xs text-slate-500 mt-0.5">
                     Tích chọn nhiều đơn để duyệt hàng loạt hoặc bấm Từ chối nếu học sinh đi học bình thường
                   </CardDescription>
@@ -435,11 +646,15 @@ export function MealCancelManager({
                       size="sm"
                       variant="outline"
                       onClick={handleApproveAll}
-                      disabled={isBulkPending}
+                      disabled={isBulkPending || filteredPending.length === 0}
                       className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 bg-emerald-50/50 gap-1.5 text-xs h-8 shadow-xs cursor-pointer"
                     >
                       <CheckCircle className="h-3.5 w-3.5 text-emerald-600" />
-                      <span>Duyệt tất cả ({initialPending.length})</span>
+                      <span>
+                        {isPendingFiltered
+                          ? `Duyệt tất cả đang lọc (${filteredPending.length})`
+                          : `Duyệt tất cả (${initialPending.length})`}
+                      </span>
                     </Button>
                   </div>
                 )}
@@ -458,6 +673,27 @@ export function MealCancelManager({
                   <p className="mt-1 text-xs text-slate-500 max-w-sm">
                     Tất cả các đơn xin cắt suất ăn bán trú đã được xử lý hoặc chưa có học sinh nào gửi đơn mới.
                   </p>
+                </div>
+              ) : filteredPending.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center px-4">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-500 mb-2.5">
+                    <Filter className="h-6 w-6" />
+                  </div>
+                  <h3 className="text-sm font-semibold text-slate-900">
+                    Không tìm thấy đơn nào khớp với bộ lọc
+                  </h3>
+                  <p className="mt-1 text-xs text-slate-500 max-w-sm">
+                    Thử thay đổi từ khóa tìm kiếm học sinh, chọn lớp khác hoặc đổi khoảng thời gian ngày cắt suất.
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={resetPendingFilters}
+                    className="mt-3 text-xs gap-1.5 cursor-pointer"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    Xóa bộ lọc tìm kiếm
+                  </Button>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -493,7 +729,7 @@ export function MealCancelManager({
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {initialPending.map((item, index) => {
+                      {filteredPending.map((item, index) => {
                         const studentName = item.student?.user?.fullName || 'Chưa cập nhật';
                         const studentCode = item.student?.studentCode || '-';
                         const className = item.student?.class?.name || item.student?.classId || '-';
@@ -578,7 +814,7 @@ export function MealCancelManager({
         <TabsContent value="history" className="mt-4 space-y-4">
           {/* Filters Bar */}
           <Card className="shadow-xs border-slate-200">
-            <CardContent className="p-3.5">
+            <CardContent className="p-3.5 space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 {/* Search */}
                 <div className="relative">
@@ -587,14 +823,14 @@ export function MealCancelManager({
                     placeholder="Tìm tên hoặc mã HS..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9 text-xs bg-white"
+                    className="pl-9 text-xs bg-white h-9"
                   />
                 </div>
 
                 {/* Filter Class */}
                 <div>
                   <Select value={filterClass} onValueChange={setFilterClass}>
-                    <SelectTrigger className="text-xs bg-white">
+                    <SelectTrigger className="text-xs bg-white h-9">
                       <SelectValue placeholder="Chọn lớp" />
                     </SelectTrigger>
                     <SelectContent>
@@ -611,7 +847,7 @@ export function MealCancelManager({
                 {/* Filter Status */}
                 <div>
                   <Select value={filterStatus} onValueChange={setFilterStatus}>
-                    <SelectTrigger className="text-xs bg-white">
+                    <SelectTrigger className="text-xs bg-white h-9">
                       <SelectValue placeholder="Trạng thái" />
                     </SelectTrigger>
                     <SelectContent>
@@ -625,7 +861,7 @@ export function MealCancelManager({
                 {/* Filter Approval Type */}
                 <div>
                   <Select value={filterType} onValueChange={setFilterType}>
-                    <SelectTrigger className="text-xs bg-white">
+                    <SelectTrigger className="text-xs bg-white h-9">
                       <SelectValue placeholder="Hình thức duyệt" />
                     </SelectTrigger>
                     <SelectContent>
@@ -635,6 +871,59 @@ export function MealCancelManager({
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+
+              {/* Date Filters Row for History */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2 border-t border-slate-100">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <div className="flex items-center gap-1.5">
+                    <Calendar className="h-4 w-4 text-slate-400 shrink-0" />
+                    <span className="text-[11px] font-medium text-slate-600 shrink-0">Ngày cắt suất từ:</span>
+                    <Input
+                      type="date"
+                      value={historyDateFrom}
+                      onChange={(e) => setHistoryDateFrom(e.target.value)}
+                      className="text-xs bg-white h-8 w-36 px-2"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] font-medium text-slate-600 shrink-0">đến:</span>
+                    <Input
+                      type="date"
+                      value={historyDateTo}
+                      onChange={(e) => setHistoryDateTo(e.target.value)}
+                      className="text-xs bg-white h-8 w-36 px-2"
+                    />
+                  </div>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const today = getTodayIsoString();
+                      setHistoryDateFrom(today);
+                      setHistoryDateTo(today);
+                    }}
+                    className="text-xs h-8 px-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-300"
+                  >
+                    Hôm nay
+                  </Button>
+                </div>
+
+                {isHistoryFiltered && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={resetHistoryFilters}
+                    className="text-xs h-8 px-2.5 text-rose-600 hover:text-rose-700 hover:bg-rose-50 self-end sm:self-auto"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5 mr-1" />
+                    Đặt lại bộ lọc
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -651,16 +940,42 @@ export function MealCancelManager({
                     Hiển thị thông tin người duyệt, thời gian thao tác và hình thức duyệt để phân định trách nhiệm
                   </CardDescription>
                 </div>
-                <Badge variant="outline" className="text-xs font-semibold bg-white">
-                  Kết quả: {filteredHistory.length} đơn
-                </Badge>
+                <div className="flex items-center gap-2">
+                  {isHistoryFiltered && (
+                    <span className="text-xs text-slate-500 hidden sm:inline">
+                      (Tổng số: {initialHistory.length} đơn)
+                    </span>
+                  )}
+                  <Badge variant="outline" className="text-xs font-semibold bg-white">
+                    Kết quả: {filteredHistory.length} đơn
+                  </Badge>
+                </div>
               </div>
             </CardHeader>
 
             <CardContent className="p-0">
               {filteredHistory.length === 0 ? (
-                <div className="text-center py-14 text-slate-500 text-xs">
-                  Không tìm thấy đơn nào khớp với bộ lọc tìm kiếm.
+                <div className="flex flex-col items-center justify-center py-12 text-center px-4">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-500 mb-2.5">
+                    <Filter className="h-6 w-6" />
+                  </div>
+                  <h3 className="text-sm font-semibold text-slate-900">
+                    Không tìm thấy đơn nào khớp với bộ lọc tìm kiếm
+                  </h3>
+                  <p className="mt-1 text-xs text-slate-500 max-w-sm">
+                    Thử thay đổi từ khóa tìm kiếm học sinh, chọn lớp khác hoặc đổi khoảng thời gian ngày cắt suất.
+                  </p>
+                  {isHistoryFiltered && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={resetHistoryFilters}
+                      className="mt-3 text-xs gap-1.5 cursor-pointer"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      Xóa bộ lọc tìm kiếm
+                    </Button>
+                  )}
                 </div>
               ) : (
                 <div className="overflow-x-auto max-h-[600px]">

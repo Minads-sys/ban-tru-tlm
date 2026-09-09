@@ -625,7 +625,7 @@ export async function generateDiningCourtsSummaryPdfBuffer(
 
   // 6. Ghi chú & Chữ ký bàn giao
   content.push({
-    text: "* Lưu ý cho nhân viên bếp: Tập kết đúng và đủ số suất ăn (Mặn / Chay / Cháo) đến từng sân trước giờ ăn (Tiết 4 lúc 10h45, Tiết 5 lúc 11h35). Giáo viên trực sân nhận bàn giao và đối chiếu trước khi chia cho học sinh.",
+    text: "* Lưu ý cho nhân viên bếp: Tập kết đúng và đủ số suất ăn (Mặn / Chay / Cháo) đến từng sân trước giờ ăn (Tiết 4 lúc 10g30, Tiết 5 lúc 11g20). Giáo viên trực sân nhận bàn giao và đối chiếu trước khi chia cho học sinh.",
     italics: true,
     fontSize: 8,
     color: "#475569",
@@ -879,7 +879,7 @@ export async function generateWeeklyDiningMatrixPdfBuffer(
 
   // Ghi chú thời gian ăn Tiết 4 / Tiết 5
   content.push({
-    text: "* Ghi chú thời gian ăn: Tiết 4 (Ăn lúc 10h45)  |  Tiết 5 (Ăn lúc 11h35)",
+    text: "* Ghi chú thời gian ăn: Tiết 4 (Ăn lúc 10g30)  |  Tiết 5 (Ăn lúc 11g20)",
     fontSize: 8.5,
     italics: true,
     bold: true,

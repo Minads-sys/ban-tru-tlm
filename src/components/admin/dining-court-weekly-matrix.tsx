@@ -827,7 +827,7 @@ export function DiningCourtWeeklyMatrix({ schoolName = 'TRƯỜNG TIỂU HỌC B
                       const courtName = cell?.courtName || '';
                       const isTiet4 = cell?.shift === 'TIET_4';
                       const shiftLabel = isTiet4 ? '(Tiết 4)' : '(Tiết 5)';
-                      const shiftDesc = isTiet4 ? 'Ăn lúc 10h45' : 'Ăn lúc 11h35';
+                      const shiftDesc = isTiet4 ? 'Ăn lúc 10g30' : 'Ăn lúc 11g20';
 
                       return (
                         <td
@@ -880,8 +880,8 @@ export function DiningCourtWeeklyMatrix({ schoolName = 'TRƯỜNG TIỂU HỌC B
         <div className="footnote mt-3 pt-2 border-t border-slate-200 text-xs text-slate-700 font-medium italic flex flex-wrap items-center justify-between gap-2">
           <div>
             <span className="font-bold text-slate-900 not-italic">* Ghi chú thời gian ăn: </span>
-            <span className="text-amber-700 font-bold not-italic">Tiết 4</span> (Ăn lúc 10h45) &nbsp;|&nbsp;{' '}
-            <span className="text-indigo-700 font-bold not-italic">Tiết 5</span> (Ăn lúc 11h35)
+            <span className="text-amber-700 font-bold not-italic">Tiết 4</span> (Ăn lúc 10g30) &nbsp;|&nbsp;{' '}
+            <span className="text-indigo-700 font-bold not-italic">Tiết 5</span> (Ăn lúc 11g20)
           </div>
           <div className="text-[11px] text-slate-500 not-italic">
             Học sinh di chuyển xuống nhà ăn đúng giờ quy định theo từng tiết học
