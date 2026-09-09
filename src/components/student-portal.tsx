@@ -24,6 +24,9 @@ import {
   Check,
   CreditCard,
   History,
+  Wallet,
+  Sparkles,
+  ArrowRight,
 } from "lucide-react";
 import { generateMealPaymentQR } from "@/lib/vietqr";
 import {
@@ -121,6 +124,11 @@ interface StudentBill {
   qrCodeUrl: string | null;
   isPublished?: boolean;
   publishedAt?: string | Date | null;
+  liveActualDays?: number;
+  liveScheduleDelta?: number;
+  liveEstimatedSurplus?: number;
+  nextMonth?: number;
+  nextYear?: number;
   transactions?: Array<{
     id: string;
     amount: string | number;
@@ -152,6 +160,14 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
   const [loadingOverrides, setLoadingOverrides] = useState<boolean>(true);
 
   const [bills, setBills] = useState<StudentBill[]>([]);
+  const [unlinkedTransactions, setUnlinkedTransactions] = useState<Array<{
+    id: string;
+    amount: string | number;
+    transDate: string;
+    content?: string;
+    gateway?: string | null;
+    status: string;
+  }>>([]);
   const [loadingBills, setLoadingBills] = useState<boolean>(true);
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
@@ -179,6 +195,32 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
   const debtBills = bills.filter(
     (b) => b.paymentStatus === "UNPAID" || b.paymentStatus === "PARTIAL"
   );
+
+  // CẢI TIẾN 1: Danh sách các phiếu nộp thừa / chuyển khoản 2 lần
+  const overpaidBills = bills.filter((b) => {
+    const paid = (b.transactions || []).reduce((sum, t) => sum + Number(t.amount), 0);
+    return paid > Number(b.finalAmount) && Number(b.finalAmount) > 0;
+  });
+
+  const totalOverpaidExcess = overpaidBills.reduce((sum, b) => {
+    const paid = (b.transactions || []).reduce((s, t) => s + Number(t.amount), 0);
+    return sum + (paid - Number(b.finalAmount));
+  }, 0);
+  const totalUnlinkedExcess = unlinkedTransactions.reduce((sum, t) => sum + Number(t.amount), 0);
+  const totalTransferSurplus = totalOverpaidExcess + totalUnlinkedExcess;
+
+  // CẢI TIẾN 2: Danh sách các phiếu đã thanh toán nhưng TKB thực tế cập nhật giảm số buổi ăn
+  const scheduleSurplusBills = bills.filter((b) => {
+    return (
+      b.paymentStatus === "PAID" &&
+      typeof b.liveScheduleDelta === "number" &&
+      b.liveScheduleDelta < 0 &&
+      (b.liveEstimatedSurplus || 0) > 0
+    );
+  });
+  const totalScheduleSurplus = scheduleSurplusBills.reduce((sum, b) => {
+    return sum + (b.liveEstimatedSurplus || 0);
+  }, 0);
 
   // Danh sách các năm có hóa đơn
   const availableYears = Array.from(
@@ -327,6 +369,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
         const data = await res.json();
         const rawBills: StudentBill[] = data.data || [];
         setBills(rawBills.filter((b) => b.isPublished !== false));
+        setUnlinkedTransactions(data.unlinkedTransactions || []);
       }
     } catch (err) {
       console.error(err);
@@ -423,6 +466,12 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
 
   useRealtime({
     table: 'monthly_bills',
+    event: '*',
+    onChanged: () => { if (studentId && (effectiveShowDebtTab || effectiveShowHistoryTab)) fetchBills(studentId); },
+  });
+
+  useRealtime({
+    table: 'payment_transactions',
     event: '*',
     onChanged: () => { if (studentId && (effectiveShowDebtTab || effectiveShowHistoryTab)) fetchBills(studentId); },
   });
@@ -1184,53 +1233,233 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                   <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-blue-600" />
                   Đang tải thông tin công nợ & quyết toán...
                 </Card>
-              ) : debtBills.length === 0 ? (
-                <Card className="p-8 text-center bg-emerald-50/40 border border-emerald-200 shadow-xs">
-                  <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-3">
-                    <CheckCircle className="h-6 w-6" />
-                  </div>
-                  <h3 className="text-base font-bold text-slate-800">
-                    {isCancelled ? "Đã hoàn tất quyết toán tiền ăn" : "Không có công nợ tiền ăn"}
-                  </h3>
-                  <p className="text-xs text-slate-600 mt-1 max-w-md mx-auto">
-                    {isCancelled ? (
-                      `Học sinh ${studentInfo?.user?.fullName || ""} đã ngừng ăn bán trú và đã hoàn tất thanh toán toàn bộ các khoản quyết toán tiền ăn. Dịch vụ bán trú đã kết thúc. Cảm ơn quý phụ huynh đã đồng hành cùng nhà trường!`
-                    ) : (
-                      `Học sinh ${studentInfo?.user?.fullName || ""} hiện không có phiếu báo tiền ăn nào còn nợ. Cảm ơn quý phụ huynh đã hoàn thành đầy đủ các khoản tiền ăn bán trú!`
-                    )}
-                  </p>
-                  {effectiveShowHistoryTab && (
-                    <div className="mt-4">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setActiveTab("history")}
-                        className="text-xs text-blue-700 border-blue-200 bg-white hover:bg-blue-50"
-                      >
-                        <History className="h-3.5 w-3.5 mr-1.5" />
-                        Xem lại Lịch sử thanh toán trong năm
-                      </Button>
+              ) : (
+                <>
+                  {/* CẢI TIẾN 1: Thẻ thông báo Tiền thanh toán thừa / Chuyển khoản 2 lần */}
+                  {totalTransferSurplus > 0 && (
+                    <div className="p-4 sm:p-5 bg-gradient-to-br from-emerald-50 via-teal-50 to-emerald-50/70 border-2 border-emerald-400/80 rounded-2xl shadow-sm space-y-3.5">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-emerald-200/80 pb-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                            <Wallet className="h-5 w-5" />
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-emerald-950 text-sm sm:text-base flex items-center gap-2">
+                              Ghi nhận khoản thanh toán thừa / chuyển khoản 2 lần
+                            </h4>
+                            <p className="text-[11px] text-emerald-800">
+                              Hệ thống kế toán và cổng thanh toán đã ghi nhận khoản tiền nộp vượt mức
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 self-start sm:self-center">
+                          <span className="text-xs text-emerald-800 font-medium">Tổng tiền dư:</span>
+                          <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm px-3 py-1 shadow-xs">
+                            +{formatMoney(totalTransferSurplus)}
+                          </Badge>
+                        </div>
+                      </div>
+
+                      <div className="p-3 bg-white/90 border border-emerald-200/80 rounded-xl text-xs space-y-2 text-slate-800">
+                        <p className="text-[11px] text-emerald-900 leading-relaxed">
+                          Quý phụ huynh đã thực hiện chuyển khoản vượt số tiền cần đóng (hoặc quét mã QR thanh toán lặp lại). Toàn bộ số tiền thừa <strong>+{formatMoney(totalTransferSurplus)}</strong> đã được ghi nhận an toàn vào số dư của học sinh <strong>{studentInfo?.user?.fullName}</strong>.
+                        </p>
+                        <div className="flex items-start gap-1.5 text-[11px] text-emerald-800 bg-emerald-100/50 p-2 rounded-lg">
+                          <CheckCircle className="h-4 w-4 text-emerald-700 shrink-0 mt-0.5" />
+                          <span>
+                            <strong>Phương án xử lý:</strong> Số tiền này sẽ được <strong>tự động cấn trừ vào hóa đơn tiền ăn kỳ tiếp theo</strong>, hoặc quý phụ huynh có thể liên hệ kế toán nhà trường để nhận lại số tiền nộp dư.
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Chi tiết từng hóa đơn nộp thừa */}
+                      {overpaidBills.length > 0 && (
+                        <div className="space-y-2">
+                          <span className="text-[11px] font-bold text-emerald-950 block">
+                            Chi tiết các hóa đơn có tiền nộp thừa:
+                          </span>
+                          <div className="grid grid-cols-1 gap-2">
+                            {overpaidBills.map((b) => {
+                              const bPaid = (b.transactions || []).reduce((s, t) => s + Number(t.amount), 0);
+                              const bExcess = bPaid - Number(b.finalAmount);
+                              return (
+                                <div key={b.id} className="bg-white/95 p-3 rounded-xl border border-emerald-200/70 text-xs space-y-2">
+                                  <div className="flex flex-wrap items-center justify-between gap-1 border-b border-slate-100 pb-1.5">
+                                    <span className="font-bold text-slate-900">
+                                      Hóa đơn Tháng {b.month}/{b.year}
+                                    </span>
+                                    <span className="text-[11px] text-slate-600">
+                                      Tiền hóa đơn: <strong>{formatMoney(b.finalAmount)}</strong> | Đã thanh toán: <strong className="text-emerald-700">{formatMoney(bPaid)}</strong>
+                                    </span>
+                                    <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 font-bold text-[10px]">
+                                      Dư: +{formatMoney(bExcess)}
+                                    </Badge>
+                                  </div>
+                                  {b.transactions && b.transactions.length > 0 && (
+                                    <div className="space-y-1">
+                                      <span className="text-[10px] text-slate-500 font-semibold block">
+                                        Lịch sử các lần chuyển khoản ghi nhận vào hóa đơn này:
+                                      </span>
+                                      {b.transactions.map((tx, tidx) => (
+                                        <div key={tx.id || tidx} className="flex items-center justify-between text-[11px] bg-slate-50 p-1.5 rounded border border-slate-200/60">
+                                          <div className="flex items-center gap-2">
+                                            <span className="font-bold text-emerald-700">+{formatMoney(tx.amount)}</span>
+                                            <span className="text-[10px] text-slate-500">
+                                              {new Date(tx.transDate).toLocaleString("vi-VN")}
+                                            </span>
+                                          </div>
+                                          {tx.content && (
+                                            <span className="text-[10px] text-slate-600 font-mono truncate max-w-[200px] sm:max-w-xs">
+                                              {tx.content}
+                                            </span>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Giao dịch độc lập chưa gắn bill */}
+                      {unlinkedTransactions.length > 0 && (
+                        <div className="space-y-2">
+                          <span className="text-[11px] font-bold text-emerald-950 block">
+                            Giao dịch chuyển khoản bổ sung được ghi nhận:
+                          </span>
+                          <div className="space-y-1.5">
+                            {unlinkedTransactions.map((tx, uidx) => (
+                              <div key={tx.id || uidx} className="flex items-center justify-between text-xs bg-white/95 p-2.5 rounded-xl border border-emerald-200">
+                                <div>
+                                  <span className="font-bold text-emerald-700">+{formatMoney(tx.amount)}</span>
+                                  <span className="text-[10px] text-slate-500 ml-2">
+                                    {new Date(tx.transDate).toLocaleString("vi-VN")}
+                                  </span>
+                                  {tx.content && (
+                                    <p className="text-[10px] text-slate-600 font-mono mt-0.5">{tx.content}</p>
+                                  )}
+                                </div>
+                                <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-[10px]">
+                                  Bảo lưu cấn trừ
+                                </Badge>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
-                </Card>
-              ) : (
-                <div className="space-y-6">
-                  {/* Banner cảnh báo tiền dư nếu có hóa đơn nào bị nộp thừa */}
-                  {bills.some(b => {
-                    const p = (b.transactions || []).reduce((s, t) => s + Number(t.amount), 0);
-                    return p > Number(b.finalAmount) && Number(b.finalAmount) > 0;
-                  }) && (
-                    <div className="p-3 bg-amber-50 border-2 border-amber-300 rounded-xl flex items-start gap-2.5">
-                      <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
-                      <div className="text-xs">
-                        <p className="font-bold text-amber-900">Phát hiện giao dịch chuyển thừa tiền</p>
-                        <p className="text-amber-800 mt-0.5">
-                          Có hóa đơn đã được thanh toán vượt mức. Vui lòng liên hệ nhà trường để được hoàn tiền phần dư.
-                        </p>
+
+                  {/* CẢI TIẾN 2: Thẻ hiển thị Tiền dư do điều chỉnh Thời khóa biểu */}
+                  {scheduleSurplusBills.length > 0 && (
+                    <div className="p-4 sm:p-5 bg-gradient-to-br from-indigo-50 via-blue-50 to-indigo-50/70 border-2 border-indigo-400/80 rounded-2xl shadow-sm space-y-3.5">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-indigo-200/80 pb-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                            <Sparkles className="h-5 w-5" />
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-indigo-950 text-sm sm:text-base flex items-center gap-2">
+                              Tiền ăn dư do điều chỉnh Thời khóa biểu thực tế
+                            </h4>
+                            <p className="text-[11px] text-indigo-800">
+                              Thời khóa biểu thực tế tháng kết thúc có số buổi ăn ít hơn số buổi đã tạm tính trên hóa đơn
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 self-start sm:self-center">
+                          <span className="text-xs text-indigo-800 font-medium">Tổng tiền dư TKB:</span>
+                          <Badge className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-sm px-3 py-1 shadow-xs">
+                            +{formatMoney(totalScheduleSurplus)}
+                          </Badge>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2.5">
+                        {scheduleSurplusBills.map((sb) => {
+                          const reducedDays = Math.abs(sb.liveScheduleDelta || 0);
+                          return (
+                            <div key={sb.id} className="p-3.5 bg-white/90 border border-indigo-200 rounded-xl space-y-2.5 text-xs">
+                              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-bold text-slate-900 text-xs sm:text-sm">
+                                    Hóa đơn Tháng {sb.month}/{sb.year}
+                                  </span>
+                                  <Badge className="bg-green-100 text-green-800 border-green-300 text-[10px]">
+                                    Đã thanh toán đủ
+                                  </Badge>
+                                </div>
+                                <div className="text-[11px] text-indigo-900 font-bold">
+                                  Tiền dư bảo lưu: <span className="text-sm font-extrabold text-indigo-700">+{formatMoney(sb.liveEstimatedSurplus || 0)}</span>
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                                <div className="p-2 bg-slate-50 rounded-lg border border-slate-100">
+                                  <span className="text-slate-500 block text-[10px]">Số buổi đã tính & nộp:</span>
+                                  <span className="font-bold text-slate-800">{sb.scheduleMealDays} buổi ({formatMoney(sb.finalAmount)})</span>
+                                </div>
+                                <div className="p-2 bg-slate-50 rounded-lg border border-slate-100">
+                                  <span className="text-slate-500 block text-[10px]">TKB thực tế sau cập nhật:</span>
+                                  <span className="font-bold text-indigo-700">{sb.liveActualDays} buổi <span className="text-rose-600 font-normal">(-{reducedDays} buổi)</span></span>
+                                </div>
+                                <div className="p-2 bg-indigo-50/70 rounded-lg border border-indigo-100 col-span-2 sm:col-span-1">
+                                  <span className="text-indigo-700 block text-[10px]">Đơn giá / buổi:</span>
+                                  <span className="font-bold text-indigo-950">{formatMoney(sb.unitPrice)}</span>
+                                </div>
+                              </div>
+
+                              <div className="p-2.5 bg-indigo-50/80 border border-indigo-200/70 rounded-lg flex items-start gap-2 text-[11px] text-indigo-950">
+                                <ArrowRight className="h-4 w-4 text-indigo-600 shrink-0 mt-0.5" />
+                                <div>
+                                  <strong>Quy trình đối soát tự động:</strong> Khoản tiền dư <strong>+{formatMoney(sb.liveEstimatedSurplus || 0)}</strong> ({reducedDays} suất ăn chưa dùng) sẽ được hệ thống <strong>tự động trừ trực tiếp vào Phiếu báo tiền ăn Tháng {sb.nextMonth}/{sb.nextYear}</strong> (mục <i>'Bù trừ giảm từ tháng trước'</i>). Quý phụ huynh không cần làm thủ tục hoàn tiền.
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
-                  {debtBills.map((bill, index) => {
+
+                  {/* Trạng thái công nợ: Không có nợ hoặc Danh sách các phiếu còn nợ */}
+                  {debtBills.length === 0 ? (
+                    <Card className="p-8 text-center bg-emerald-50/40 border border-emerald-200 shadow-xs">
+                      <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-3">
+                        <CheckCircle className="h-6 w-6" />
+                      </div>
+                      <h3 className="text-base font-bold text-slate-800">
+                        {isCancelled ? "Đã hoàn tất quyết toán tiền ăn" : "Không có công nợ tiền ăn"}
+                      </h3>
+                      <p className="text-xs text-slate-600 mt-1 max-w-md mx-auto">
+                        {isCancelled ? (
+                          `Học sinh ${studentInfo?.user?.fullName || ""} đã ngừng ăn bán trú và đã hoàn tất thanh toán toàn bộ các khoản quyết toán tiền ăn. Dịch vụ bán trú đã kết thúc. Cảm ơn quý phụ huynh đã đồng hành cùng nhà trường!`
+                        ) : totalTransferSurplus > 0 || scheduleSurplusBills.length > 0 ? (
+                          `Học sinh ${studentInfo?.user?.fullName || ""} hiện không có phiếu báo tiền ăn nào còn nợ. Các khoản thanh toán thừa hoặc tiền dư do điều chỉnh thời khóa biểu đã được ghi nhận chi tiết ở phía trên.`
+                        ) : (
+                          `Học sinh ${studentInfo?.user?.fullName || ""} hiện không có phiếu báo tiền ăn nào còn nợ. Cảm ơn quý phụ huynh đã hoàn thành đầy đủ các khoản tiền ăn bán trú!`
+                        )}
+                      </p>
+                      {effectiveShowHistoryTab && (
+                        <div className="mt-4">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setActiveTab("history")}
+                            className="text-xs text-blue-700 border-blue-200 bg-white hover:bg-blue-50"
+                          >
+                            <History className="h-3.5 w-3.5 mr-1.5" />
+                            Xem lại Lịch sử thanh toán trong năm
+                          </Button>
+                        </div>
+                      )}
+                    </Card>
+                  ) : (
+                    <div className="space-y-6">
+                      {debtBills.map((bill, index) => {
                     const isLatest = index === 0;
                     const isPartial = bill.paymentStatus === "PARTIAL";
                     const billTotal = Number(bill.finalAmount);
@@ -1531,7 +1760,9 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                   })}
                 </div>
               )}
-            </div>
+            </>
+          )}
+          </div>
           </TabsContent>
           )}
 
@@ -1724,8 +1955,8 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                         <div>
                           <span className="text-slate-400 block">{paidAmount > billTotal ? 'Tiền dư:' : 'Còn nợ:'}</span>
                           {paidAmount > billTotal ? (
-                            <span className="font-bold text-amber-600">
-                              {formatMoney(paidAmount - billTotal)} (Chờ hoàn tiền)
+                            <span className="font-bold text-emerald-700">
+                              +{formatMoney(paidAmount - billTotal)} (Đã ghi nhận thừa)
                             </span>
                           ) : (
                             <span className={`font-bold ${isPaid ? "text-slate-400" : "text-rose-600"}`}>
@@ -1734,6 +1965,42 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                           )}
                         </div>
                       </div>
+
+                      {/* Banner ghi nhận nộp thừa / chuyển khoản 2 lần */}
+                      {paidAmount > billTotal && (
+                        <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-xs space-y-1">
+                          <div className="flex items-center justify-between font-bold text-emerald-900 text-[11px]">
+                            <span className="flex items-center gap-1.5">
+                              <Wallet className="h-3.5 w-3.5 text-emerald-700" />
+                              Phát hiện nộp thừa / chuyển khoản 2 lần:
+                            </span>
+                            <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-[10px]">
+                              Thừa +{formatMoney(paidAmount - billTotal)}
+                            </Badge>
+                          </div>
+                          <p className="text-[11px] text-emerald-800">
+                            Hóa đơn có tổng tiền {formatMoney(billTotal)}, phụ huynh đã chuyển khoản tổng cộng {formatMoney(paidAmount)}. Số tiền nộp thừa <strong>+{formatMoney(paidAmount - billTotal)}</strong> đã được ghi nhận trên hệ thống và sẽ được tự động cấn trừ kỳ sau hoặc hoàn trả theo yêu cầu.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Banner ghi nhận điều chỉnh Thời khóa biểu thực tế */}
+                      {isPaid && typeof bill.liveScheduleDelta === "number" && bill.liveScheduleDelta < 0 && (bill.liveEstimatedSurplus || 0) > 0 && (
+                        <div className="p-2.5 bg-indigo-50 border border-indigo-200 rounded-lg text-xs space-y-1">
+                          <div className="flex items-center justify-between font-bold text-indigo-900 text-[11px]">
+                            <span className="flex items-center gap-1.5">
+                              <Sparkles className="h-3.5 w-3.5 text-indigo-600" />
+                              Điều chỉnh số buổi theo TKB thực tế:
+                            </span>
+                            <Badge className="bg-indigo-100 text-indigo-800 border-indigo-300 text-[10px]">
+                              Dư +{formatMoney(bill.liveEstimatedSurplus || 0)}
+                            </Badge>
+                          </div>
+                          <p className="text-[11px] text-indigo-900">
+                            Hóa đơn đã thanh toán {bill.scheduleMealDays} buổi. Thời khóa biểu thực tế cập nhật cuối tháng chỉ còn <strong>{bill.liveActualDays} buổi</strong> (giảm {Math.abs(bill.liveScheduleDelta)} buổi). Số tiền ăn dư <strong>+{formatMoney(bill.liveEstimatedSurplus || 0)}</strong> sẽ được hệ thống <strong>tự động trừ trực tiếp vào hóa đơn Tháng {bill.nextMonth}/{bill.nextYear}</strong>.
+                          </p>
+                        </div>
+                      )}
 
                       {/* Lịch sử các giao dịch SePay nếu có */}
                       {bill.transactions && bill.transactions.length > 0 && (

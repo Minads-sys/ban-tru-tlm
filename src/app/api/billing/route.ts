@@ -5,6 +5,22 @@ import { BoardingStatus, CancellationStatus, PaymentStatus } from '@prisma/clien
 import { generateMealPaymentQR } from '@/lib/vietqr';
 import { broadcastChange } from '@/lib/realtime-hub';
 
+const dayFieldMap: Record<number, 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday'> = {
+  1: 'monday',
+  2: 'tuesday',
+  3: 'wednesday',
+  4: 'thursday',
+  5: 'friday',
+  6: 'saturday',
+};
+
+const getWeekNumber = (d: Date, targetYear: number): number => {
+  const startOfYear = new Date(Date.UTC(targetYear, 0, 1));
+  return Math.ceil(
+    ((d.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getUTCDay() + 1) / 7
+  );
+};
+
 // GET: Lấy danh sách hóa đơn theo bộ lọc (month, year, classId, paymentStatus)
 // Hỗ trợ phân trang server-side: page, limit
 export async function GET(request: NextRequest) {
@@ -131,6 +147,114 @@ export async function GET(request: NextRequest) {
       take: isAll ? undefined : limit,
     });
 
+    // Nếu có studentId (học sinh tra cứu qua cổng học sinh):
+    // Tự động tính toán Live Schedule Delta (chênh lệch TKB thực tế so với số ngày đã tạm tính trên phiếu)
+    let enrichedBills: any[] = bills;
+    let unlinkedTransactions: any[] = [];
+
+    if (studentId && bills.length > 0) {
+      // 1. Lấy thêm các giao dịch chuyển khoản chưa gán vào hóa đơn nào (nếu có)
+      unlinkedTransactions = await prisma.paymentTransaction.findMany({
+        where: {
+          studentId,
+          billId: null,
+          isVoided: false,
+        },
+        orderBy: { transDate: 'desc' },
+      });
+
+      // 2. Lấy TKB cho các năm xuất hiện trong hóa đơn của học sinh
+      const years = Array.from(new Set(bills.map((b) => b.year)));
+      const classIds = Array.from(new Set(bills.map((b) => b.student.classId)));
+
+      const schedules = await prisma.classWeeklySchedule.findMany({
+        where: {
+          year: { in: years },
+          classId: { in: classIds },
+        },
+      });
+
+      const scheduleMap = new Map<string, (typeof schedules)[0]>();
+      schedules.forEach((s) => {
+        scheduleMap.set(`${s.classId}_${s.year}_${s.weekNumber}`, s);
+      });
+
+      // 3. Lấy lịch ăn đặc biệt của học sinh
+      const specialMeals = await prisma.studentSpecialMeal.findMany({
+        where: {
+          studentId,
+        },
+        select: {
+          studentId: true,
+          date: true,
+          shift: true,
+          student: { select: { classId: true } },
+        },
+      });
+
+      enrichedBills = bills.map((bill) => {
+        const numDays = new Date(Date.UTC(bill.year, bill.month, 0)).getUTCDate();
+        let classDaysCount = 0;
+
+        for (let day = 1; day <= numDays; day++) {
+          const date = new Date(Date.UTC(bill.year, bill.month - 1, day));
+          if (bill.student.mealStartDate) {
+            const mDate = new Date(bill.student.mealStartDate);
+            const studentStartUTC = new Date(Date.UTC(mDate.getUTCFullYear(), mDate.getUTCMonth(), mDate.getUTCDate()));
+            if (date < studentStartUTC) continue;
+          }
+
+          const dayOfWeek = date.getUTCDay();
+          if (dayOfWeek === 0) continue;
+          const dayField = dayFieldMap[dayOfWeek];
+          if (!dayField) continue;
+
+          const wn = getWeekNumber(date, bill.year);
+          const scheduleKey = `${bill.student.classId}_${bill.year}_${wn}`;
+          const schedule = scheduleMap.get(scheduleKey);
+          if (schedule && schedule[dayField] && schedule[dayField] !== 'NONE') {
+            classDaysCount++;
+          }
+        }
+
+        // Lịch đặc biệt trong tháng của hóa đơn
+        const monthStart = new Date(Date.UTC(bill.year, bill.month - 1, 1));
+        const monthEnd = new Date(Date.UTC(bill.year, bill.month, 0, 23, 59, 59, 999));
+
+        let specialDaysCount = 0;
+        for (const sm of specialMeals) {
+          const smDate = new Date(sm.date);
+          if (smDate < monthStart || smDate > monthEnd) continue;
+
+          const dow = smDate.getUTCDay();
+          const df = dayFieldMap[dow];
+          if (!df) continue;
+
+          const wn = getWeekNumber(smDate, bill.year);
+          const schKey = `${sm.student.classId}_${bill.year}_${wn}`;
+          const sch = scheduleMap.get(schKey);
+          if (sch && sch[df] && sch[df] !== 'NONE') continue;
+
+          specialDaysCount++;
+        }
+
+        const liveActualDays = classDaysCount + specialDaysCount;
+        const liveScheduleDelta = liveActualDays - bill.scheduleMealDays;
+        const liveEstimatedSurplus = liveScheduleDelta < 0 ? Math.abs(liveScheduleDelta) * Number(bill.unitPrice) : 0;
+        const nextMonth = bill.month === 12 ? 1 : bill.month + 1;
+        const nextYear = bill.month === 12 ? bill.year + 1 : bill.year;
+
+        return {
+          ...bill,
+          liveActualDays,
+          liveScheduleDelta,
+          liveEstimatedSurplus,
+          nextMonth,
+          nextYear,
+        };
+      });
+    }
+
     // Tính tổng hợp trên toàn bộ dữ liệu (không phân trang)
     const stats = await prisma.monthlyBill.aggregate({
       where,
@@ -155,11 +279,12 @@ export async function GET(request: NextRequest) {
     });
 
     return NextResponse.json({
-      data: bills,
+      data: enrichedBills,
       total,
       page,
       limit,
       totalPages: Math.ceil(total / limit),
+      unlinkedTransactions,
       stats: {
         totalBills: stats._count.id,
         totalAmount: stats._sum.finalAmount?.toString() || '0',
@@ -278,22 +403,6 @@ export async function POST(request: NextRequest) {
     schedules.forEach((s) => {
       scheduleMap.set(`${s.classId}_${s.year}_${s.weekNumber}`, s);
     });
-
-    const dayFieldMap: Record<number, 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday'> = {
-      1: 'monday',
-      2: 'tuesday',
-      3: 'wednesday',
-      4: 'thursday',
-      5: 'friday',
-      6: 'saturday',
-    };
-
-    const getWeekNumber = (d: Date, targetYear: number): number => {
-      const startOfYear = new Date(Date.UTC(targetYear, 0, 1));
-      return Math.ceil(
-        ((d.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getUTCDay() + 1) / 7
-      );
-    };
 
     // Hàm tính số ngày ăn theo TKB của 1 lớp trong bất kỳ tháng/năm nào (theo TKB hiện có, có tính ngày bắt đầu ăn của HS)
     const calculateScheduleDaysForMonth = (
