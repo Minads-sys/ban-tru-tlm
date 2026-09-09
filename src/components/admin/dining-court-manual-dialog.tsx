@@ -167,6 +167,7 @@ export function DiningCourtManualDialog({
   }, [shiftClasses, assignedClassIds]);
 
   // Thêm sân mới cho ca hiện tại
+  // Thêm sân mới cho ca hiện tại (tự động gán số sân nhỏ nhất chưa dùng từ 1 đến 16)
   const handleAddCourt = () => {
     const shiftCourts = courts.filter((c) => c.shift === activeShift);
     if (shiftCourts.length >= 16) {
@@ -174,8 +175,12 @@ export function DiningCourtManualDialog({
       return;
     }
 
-    // Tính số thứ tự sân tiếp theo
-    const newCourtNumber = courts.length + 1;
+    // Tìm số sân nhỏ nhất chưa sử dụng trên toàn trường từ 1 đến 16
+    const usedNums = new Set(courts.map((c) => c.courtNumber));
+    let newCourtNumber = 1;
+    while (usedNums.has(newCourtNumber) && newCourtNumber <= 16) {
+      newCourtNumber++;
+    }
     const newCartNumber = Math.ceil(newCourtNumber / 2);
 
     const newCourt: ManualCourtItem = {
@@ -188,12 +193,12 @@ export function DiningCourtManualDialog({
       classIds: [],
     };
 
-    setCourts((prev) => renumberCourts([...prev, newCourt]));
+    setCourts((prev) => [...prev, newCourt]);
   };
 
   // Xóa sân
   const handleDeleteCourt = (courtId: string) => {
-    setCourts((prev) => renumberCourts(prev.filter((c) => c.id !== courtId)));
+    setCourts((prev) => prev.filter((c) => c.id !== courtId));
   };
 
   // Đánh số thứ tự sân và xe cơm liên tục cho cả Tiết 4 và Tiết 5
@@ -231,6 +236,105 @@ export function DiningCourtManualDialog({
     return result;
   };
 
+  // Thay đổi số sân (TỰ ĐỘNG HOÁN ĐỔI nếu số sân đã có sân khác sử dụng để tránh trùng)
+  const handleChangeCourtNumber = (courtId: string, targetNum: number) => {
+    setCourts((prev) => {
+      const currentCourt = prev.find((c) => c.id === courtId);
+      if (!currentCourt || currentCourt.courtNumber === targetNum) return prev;
+
+      const oldNum = currentCourt.courtNumber;
+      const targetCartNum = Math.ceil(targetNum / 2);
+      const oldCartNum = Math.ceil(oldNum / 2);
+
+      // Tìm xem targetNum đã có sân nào dùng chưa (kể cả cùng ca hoặc ca khác)
+      const existingWithTarget = prev.find((c) => c.courtNumber === targetNum && c.id !== courtId);
+
+      if (existingWithTarget) {
+        // Tự động hoán đổi số sân giữa 2 sân
+        const targetShiftLabel = existingWithTarget.shift === 'TIET_4' ? 'Tiết 4' : 'Tiết 5';
+        const currentShiftLabel = currentCourt.shift === 'TIET_4' ? 'Tiết 4' : 'Tiết 5';
+
+        const updated = prev.map((c) => {
+          if (c.id === courtId) {
+            return {
+              ...c,
+              courtNumber: targetNum,
+              courtName: `Sân ${targetNum}`,
+              cartNumber: targetCartNum,
+              cartName: `Xe ${targetCartNum}`,
+            };
+          }
+          if (c.id === existingWithTarget.id) {
+            return {
+              ...c,
+              courtNumber: oldNum,
+              courtName: `Sân ${oldNum}`,
+              cartNumber: oldCartNum,
+              cartName: `Xe ${oldCartNum}`,
+            };
+          }
+          return c;
+        });
+
+        Swal.fire({
+          icon: 'info',
+          title: 'Đã hoán đổi số Sân!',
+          html: `<div class="text-xs text-slate-600 text-left">
+            Đã hoán đổi: <b>Sân ${oldNum}</b> (${currentShiftLabel}) ⇄ <b>Sân ${targetNum}</b> (${targetShiftLabel}).<br/>
+            Số xe cơm cũng đã tự động cập nhật tương ứng theo quy chuẩn.
+          </div>`,
+          timer: 2500,
+          showConfirmButton: false,
+          toast: true,
+          position: 'top-end',
+        });
+
+        return updated;
+      } else {
+        // Số sân chưa ai dùng, chỉ cập nhật sân hiện tại
+        const updated = prev.map((c) => {
+          if (c.id === courtId) {
+            return {
+              ...c,
+              courtNumber: targetNum,
+              courtName: `Sân ${targetNum}`,
+              cartNumber: targetCartNum,
+              cartName: `Xe ${targetCartNum}`,
+            };
+          }
+          return c;
+        });
+
+        Swal.fire({
+          icon: 'success',
+          title: `Đã đổi thành Sân ${targetNum}`,
+          timer: 1500,
+          showConfirmButton: false,
+          toast: true,
+          position: 'top-end',
+        });
+
+        return updated;
+      }
+    });
+  };
+
+  // Thay đổi số xe cơm
+  const handleChangeCartNumber = (courtId: string, targetCartNum: number) => {
+    setCourts((prev) =>
+      prev.map((c) => {
+        if (c.id === courtId) {
+          return {
+            ...c,
+            cartNumber: targetCartNum,
+            cartName: `Xe ${targetCartNum}`,
+          };
+        }
+        return c;
+      })
+    );
+  };
+
   // Lấy tên hiển thị của lớp học
   const getClassName = (id: string, shift: 'TIET_4' | 'TIET_5') => {
     const cls = classMap.get(`${id}::${shift}`) || classMap.get(id);
@@ -238,7 +342,17 @@ export function DiningCourtManualDialog({
   };
 
   // Đánh lại số thứ tự sân và xe cơm (sắp xếp khoa học theo thứ tự lớp học & ca học)
-  const handleRenumber = () => {
+  const handleRenumber = async () => {
+    const confirm = await Swal.fire({
+      title: 'Đánh lại số Sân & Xe?',
+      text: 'Hệ thống sẽ sắp xếp lại toàn bộ sân theo khối lớp và đánh lại số thứ tự liên tục từ Sân 1. Bạn có chắc chắn?',
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'Đồng ý đánh lại',
+      cancelButtonText: 'Hủy bỏ',
+    });
+    if (!confirm.isConfirmed) return;
+
     // Sắp xếp các lớp bên trong từng sân theo thứ tự tự nhiên (VD: 10A1 trước 10A2)
     const sortClassesInsideCourts = (list: ManualCourtItem[]): ManualCourtItem[] => {
       return list.map((c) => ({
@@ -310,7 +424,7 @@ export function DiningCourtManualDialog({
         ? [...shiftCourts, ...otherCourts]
         : [...otherCourts, ...shiftCourts];
 
-    setCourts(renumberCourts(updated));
+    setCourts(updated);
   };
 
   // Thêm lớp vào sân
@@ -583,13 +697,41 @@ export function DiningCourtManualDialog({
                       {/* Tiêu đề sân */}
                       <div className="px-4 py-2.5 bg-slate-50/80 border-b flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <Badge className="bg-slate-900 text-white text-xs font-bold">
-                            {court.courtName}
-                          </Badge>
-                          <Badge variant="outline" className="text-[11px] font-bold text-rose-700 bg-rose-50 border-rose-200">
-                            {court.cartName}
-                          </Badge>
-                          <span className="text-xs text-slate-500">
+                          {/* Dropdown chọn trực tiếp số sân */}
+                          <div className="flex items-center gap-1 bg-slate-900 text-white rounded-md px-1.5 py-0.5 border border-slate-800 shadow-2xs">
+                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Sân:</span>
+                            <select
+                              value={court.courtNumber}
+                              onChange={(e) => handleChangeCourtNumber(court.id, Number(e.target.value))}
+                              className="bg-transparent text-white font-extrabold text-xs cursor-pointer focus:outline-none pr-0.5"
+                              title="Bấm để đổi số Sân (nếu trùng số sân đã có, hệ thống sẽ tự động hoán đổi)"
+                            >
+                              {Array.from({ length: 16 }, (_, i) => i + 1).map((n) => (
+                                <option key={n} value={n} className="bg-white text-slate-900 font-semibold">
+                                  {n}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          {/* Dropdown chọn số xe cơm */}
+                          <div className="flex items-center gap-1 bg-rose-50 text-rose-700 rounded-md px-1.5 py-0.5 border border-rose-200 shadow-2xs">
+                            <span className="text-[10px] text-rose-400 font-bold uppercase tracking-wider">Xe:</span>
+                            <select
+                              value={court.cartNumber}
+                              onChange={(e) => handleChangeCartNumber(court.id, Number(e.target.value))}
+                              className="bg-transparent text-rose-700 font-extrabold text-xs cursor-pointer focus:outline-none pr-0.5"
+                              title="Bấm để đổi số Xe cơm phục vụ sân này"
+                            >
+                              {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+                                <option key={n} value={n} className="bg-white text-slate-900 font-semibold">
+                                  {n}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <span className="text-xs text-slate-500 font-medium">
                             ({court.classIds.length} lớp)
                           </span>
                         </div>

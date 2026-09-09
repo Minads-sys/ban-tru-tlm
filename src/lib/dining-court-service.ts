@@ -1057,7 +1057,18 @@ export async function saveManualDiningCourtAllocation(
     }
   }
 
-  // Sắp xếp các sân theo ca và gán số thứ tự liên tục
+  // Validate: không để trùng lặp số sân trên toàn trường (giữa các ca)
+  const seenCourtNumbers = new Set<number>();
+  for (const c of courtsData) {
+    if (c.courtNumber && c.courtNumber > 0) {
+      if (seenCourtNumbers.has(c.courtNumber)) {
+        throw new Error(`Số Sân ${c.courtNumber} bị trùng lặp. Mỗi sân trong ngày phải có số thứ tự duy nhất.`);
+      }
+      seenCourtNumbers.add(c.courtNumber);
+    }
+  }
+
+  // Sắp xếp các sân theo ca
   const tiet4Inputs = courtsData.filter((c) => c.shift === "TIET_4");
   const tiet5Inputs = courtsData.filter((c) => c.shift === "TIET_5");
 
@@ -1074,11 +1085,24 @@ export async function saveManualDiningCourtAllocation(
     note: string | null;
   }> = [];
 
-  let currentCourtNumber = 1;
+  // Bộ cấp phát số sân cho các sân chưa có courtNumber
+  const usedCourtNumbers = new Set(seenCourtNumbers);
+  let nextFallbackNumber = 1;
+  const allocateCourtNumber = (c: ManualCourtInput) => {
+    if (c.courtNumber && c.courtNumber > 0) {
+      return c.courtNumber;
+    }
+    while (usedCourtNumbers.has(nextFallbackNumber)) {
+      nextFallbackNumber++;
+    }
+    const allocated = nextFallbackNumber++;
+    usedCourtNumbers.add(allocated);
+    return allocated;
+  };
 
   for (const c of tiet4Inputs) {
-    const num = currentCourtNumber++;
-    const cartNum = Math.ceil(num / 2);
+    const num = allocateCourtNumber(c);
+    const cartNum = c.cartNumber && c.cartNumber > 0 ? c.cartNumber : Math.ceil(num / 2);
     const regularClassIds = c.classIds.filter((cid) => !cid.startsWith("SPECIAL::"));
     const specialClassIds = c.classIds.filter((cid) => cid.startsWith("SPECIAL::"));
     const specialStudentIds: string[] = [];
@@ -1104,8 +1128,8 @@ export async function saveManualDiningCourtAllocation(
   }
 
   for (const c of tiet5Inputs) {
-    const num = currentCourtNumber++;
-    const cartNum = Math.ceil(num / 2);
+    const num = allocateCourtNumber(c);
+    const cartNum = c.cartNumber && c.cartNumber > 0 ? c.cartNumber : Math.ceil(num / 2);
     const regularClassIds = c.classIds.filter((cid) => !cid.startsWith("SPECIAL::"));
     const specialClassIds = c.classIds.filter((cid) => cid.startsWith("SPECIAL::"));
     const specialStudentIds: string[] = [];
@@ -1129,6 +1153,14 @@ export async function saveManualDiningCourtAllocation(
       note: c.note || null,
     });
   }
+
+  // Sắp xếp các sân trong từng ca theo courtNumber tăng dần
+  normalizedCourts.sort((a, b) => {
+    if (a.shift !== b.shift) {
+      return a.shift === "TIET_4" ? -1 : 1;
+    }
+    return a.courtNumber - b.courtNumber;
+  });
 
   await prisma.$transaction(async (tx) => {
     await tx.dailyDiningCourt.deleteMany({
