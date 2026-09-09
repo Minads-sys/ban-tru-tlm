@@ -2442,10 +2442,12 @@ export default function BillingPage() {
           onClose={() => setDebtPrintBills(null)}
         />
       )}
-      <div
-        className="absolute -z-50 opacity-0 print:static print:z-auto print:opacity-100 print:w-full print:m-0 print:p-0 print-bw"
-        style={{ fontFamily: "'Times New Roman', Times, serif" }}
-      >
+      {/* Chỉ render vùng in phiếu thu tiền ăn thường khi không mở popup in thông báo nợ để tránh xung đột @page CSS */}
+      {!debtPrintBills && (
+        <div
+          className="absolute -z-50 opacity-0 print:static print:z-auto print:opacity-100 print:w-full print:m-0 print:p-0 print-bw"
+          style={{ fontFamily: "'Times New Roman', Times, serif" }}
+        >
         <style
           dangerouslySetInnerHTML={{
             __html: `
@@ -2705,7 +2707,8 @@ export default function BillingPage() {
               </div>
             );
           })}
-      </div>
+        </div>
+      )}
     </>
   )}
 </div>
