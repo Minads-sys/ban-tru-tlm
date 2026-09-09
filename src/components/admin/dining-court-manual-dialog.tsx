@@ -23,6 +23,8 @@ import {
   Sparkles,
   ArrowRight,
   Info,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react';
 import { DiningAllocationResult, ClassMealSummary, ManualCourtInput } from '@/lib/dining-court-service';
 import Swal from 'sweetalert2';
@@ -229,6 +231,88 @@ export function DiningCourtManualDialog({
     return result;
   };
 
+  // Lấy tên hiển thị của lớp học
+  const getClassName = (id: string, shift: 'TIET_4' | 'TIET_5') => {
+    const cls = classMap.get(`${id}::${shift}`) || classMap.get(id);
+    return cls?.className || id;
+  };
+
+  // Đánh lại số thứ tự sân và xe cơm (sắp xếp khoa học theo thứ tự lớp học & ca học)
+  const handleRenumber = () => {
+    // Sắp xếp các lớp bên trong từng sân theo thứ tự tự nhiên (VD: 10A1 trước 10A2)
+    const sortClassesInsideCourts = (list: ManualCourtItem[]): ManualCourtItem[] => {
+      return list.map((c) => ({
+        ...c,
+        classIds: [...c.classIds].sort((aId, bId) => {
+          const nameA = getClassName(aId, c.shift);
+          const nameB = getClassName(bId, c.shift);
+          return nameA.localeCompare(nameB, 'vi', { numeric: true });
+        }),
+      }));
+    };
+
+    // Sắp xếp các sân trong từng ca theo lớp đại diện đầu tiên
+    const sortCourtByClass = (courtA: ManualCourtItem, courtB: ManualCourtItem) => {
+      if (courtA.classIds.length === 0 && courtB.classIds.length === 0) return 0;
+      if (courtA.classIds.length === 0) return 1; // Sân trống về sau
+      if (courtB.classIds.length === 0) return -1;
+
+      const getFirstClassName = (court: ManualCourtItem) => {
+        const sortedNames = court.classIds
+          .map((id) => getClassName(id, court.shift))
+          .sort((a, b) => a.localeCompare(b, 'vi', { numeric: true }));
+        return sortedNames[0] || '';
+      };
+
+      const nameA = getFirstClassName(courtA);
+      const nameB = getFirstClassName(courtB);
+      return nameA.localeCompare(nameB, 'vi', { numeric: true });
+    };
+
+    const t4 = sortClassesInsideCourts(courts.filter((c) => c.shift === 'TIET_4')).sort(sortCourtByClass);
+    const t5 = sortClassesInsideCourts(courts.filter((c) => c.shift === 'TIET_5')).sort(sortCourtByClass);
+
+    const renumbered = renumberCourts([...t4, ...t5]);
+    setCourts(renumbered);
+
+    Swal.fire({
+      icon: 'success',
+      title: 'Đã đánh lại số Sân & Xe!',
+      text: 'Các sân đã được sắp xếp khoa học theo thứ tự lớp học và đánh lại số liên tục.',
+      timer: 1800,
+      showConfirmButton: false,
+      toast: true,
+      position: 'top-end',
+    });
+  };
+
+  // Di chuyển sân lên hoặc xuống trong cùng ca học
+  const handleMoveCourt = (courtId: string, direction: 'UP' | 'DOWN') => {
+    const shiftCourts = courts.filter((c) => c.shift === activeShift);
+    const otherCourts = courts.filter((c) => c.shift !== activeShift);
+    const index = shiftCourts.findIndex((c) => c.id === courtId);
+    if (index === -1) return;
+
+    if (direction === 'UP' && index > 0) {
+      const temp = shiftCourts[index - 1];
+      shiftCourts[index - 1] = shiftCourts[index];
+      shiftCourts[index] = temp;
+    } else if (direction === 'DOWN' && index < shiftCourts.length - 1) {
+      const temp = shiftCourts[index + 1];
+      shiftCourts[index + 1] = shiftCourts[index];
+      shiftCourts[index] = temp;
+    } else {
+      return;
+    }
+
+    const updated =
+      activeShift === 'TIET_4'
+        ? [...shiftCourts, ...otherCourts]
+        : [...otherCourts, ...shiftCourts];
+
+    setCourts(renumberCourts(updated));
+  };
+
   // Thêm lớp vào sân
   const handleAddClassToCourt = (courtId: string, classId: string) => {
     if (!classId) return;
@@ -379,10 +463,11 @@ export function DiningCourtManualDialog({
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => setCourts((prev) => renumberCourts(prev))}
-              className="text-xs h-8 cursor-pointer gap-1"
+              onClick={handleRenumber}
+              className="text-xs h-8 cursor-pointer gap-1 hover:bg-slate-100 font-medium"
+              title="Sắp xếp các sân theo thứ tự khối lớp và đánh lại số sân & xe liên tục"
             >
-              <Layers className="h-3.5 w-3.5 text-slate-500" />
+              <Layers className="h-3.5 w-3.5 text-blue-600" />
               <span>Đánh lại số Sân &amp; Xe</span>
             </Button>
             <Button
@@ -477,7 +562,7 @@ export function DiningCourtManualDialog({
               </div>
             ) : (
               <div className="space-y-3.5">
-                {currentShiftCourts.map((court) => {
+                {currentShiftCourts.map((court, idx) => {
                   // Tính tổng suất của sân
                   const courtMeals = court.classIds.reduce((sum, cid) => {
                     const cls = classMap.get(`${cid}::${court.shift}`) || classMap.get(cid);
@@ -539,6 +624,32 @@ export function DiningCourtManualDialog({
                           }`}>
                             {courtMeals}/60 suất
                           </span>
+
+                          {/* Bộ nút di chuyển thứ tự sân lên / xuống */}
+                          <div className="flex items-center gap-0.5 bg-slate-100/80 p-0.5 rounded-lg border border-slate-200">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleMoveCourt(court.id, 'UP')}
+                              disabled={idx === 0}
+                              className="h-6 w-6 text-slate-500 hover:text-slate-900 hover:bg-white disabled:opacity-20 disabled:pointer-events-none cursor-pointer"
+                              title="Di chuyển sân lên trên (tự động cập nhật số Sân)"
+                            >
+                              <ChevronUp className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleMoveCourt(court.id, 'DOWN')}
+                              disabled={idx === currentShiftCourts.length - 1}
+                              className="h-6 w-6 text-slate-500 hover:text-slate-900 hover:bg-white disabled:opacity-20 disabled:pointer-events-none cursor-pointer"
+                              title="Di chuyển sân xuống dưới (tự động cập nhật số Sân)"
+                            >
+                              <ChevronDown className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
 
                           <Button
                             type="button"
