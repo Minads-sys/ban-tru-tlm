@@ -1131,9 +1131,9 @@ export default function BillingPage() {
                   if (cls) generateBillsForClass(cls.id, cls.name);
                 }}
                 disabled={generating}
-                variant="default"
+                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow hover:shadow-lg hover:shadow-blue-500/25 hover:-translate-y-0.5 hover:scale-[1.02] active:translate-y-0 active:scale-[0.98] transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:translate-y-0 disabled:hover:shadow-none"
               >
-                {generating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Calculator className="h-4 w-4 mr-2" />}
+                {generating ? <Loader2 className="h-4 w-4 animate-spin mr-2 text-white" /> : <Calculator className="h-4 w-4 mr-2 text-white" />}
                 Tạo hóa đơn lớp {classes.find((c) => c.id === classFilter)?.name} — T{month}/{year}
               </Button>
             ) : (
@@ -1165,36 +1165,37 @@ export default function BillingPage() {
             <Button
               onClick={generateBillsAll}
               disabled={generating}
-              variant="outline"
-              className="border-blue-300 text-blue-700 hover:bg-blue-50"
+              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow hover:shadow-lg hover:shadow-blue-500/25 hover:-translate-y-0.5 hover:scale-[1.02] active:translate-y-0 active:scale-[0.98] transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:translate-y-0 disabled:hover:shadow-none"
             >
-              {generating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Layers className="h-4 w-4 mr-2" />}
+              {generating ? <Loader2 className="h-4 w-4 animate-spin mr-2 text-white" /> : <Layers className="h-4 w-4 mr-2 text-white" />}
               Tạo tất cả ({classes.length} lớp)
             </Button>
 
-            <Button onClick={printBills} variant="outline" disabled={bills.length === 0}>
-              <Printer className="h-4 w-4 mr-2" />
+            <Button
+              onClick={printBills}
+              disabled={bills.length === 0}
+              className="bg-purple-600 hover:bg-purple-700 text-white font-semibold shadow hover:shadow-lg hover:shadow-purple-500/25 hover:-translate-y-0.5 hover:scale-[1.02] active:translate-y-0 active:scale-[0.98] transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:translate-y-0 disabled:hover:shadow-none"
+            >
+              <Printer className="h-4 w-4 mr-2 text-white" />
               In phiếu trang hiện tại
             </Button>
 
             <Button
               onClick={handleOpenDebtModal}
-              variant="outline"
-              className="border-amber-500 text-amber-800 hover:bg-amber-50 font-semibold flex items-center gap-1.5 cursor-pointer shadow-2xs"
+              className="bg-amber-600 hover:bg-amber-700 text-white font-semibold shadow hover:shadow-lg hover:shadow-amber-500/25 hover:-translate-y-0.5 hover:scale-[1.02] active:translate-y-0 active:scale-[0.98] transition-all duration-200 cursor-pointer flex items-center gap-1.5"
             >
-              <BellRing className="h-4 w-4 text-amber-600" />
+              <BellRing className="h-4 w-4 text-white" />
               <span>In thông báo nợ</span>
             </Button>
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
-                  variant="outline"
-                  className="border-emerald-500 text-emerald-700 hover:bg-emerald-50 font-semibold flex items-center gap-1.5"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow hover:shadow-lg hover:shadow-emerald-500/25 hover:-translate-y-0.5 hover:scale-[1.02] active:translate-y-0 active:scale-[0.98] transition-all duration-200 cursor-pointer flex items-center gap-1.5"
                 >
-                  <FileDown className="h-4 w-4 text-emerald-600" />
+                  <FileDown className="h-4 w-4 text-white" />
                   <span>Tải PDF theo lớp</span>
-                  <ChevronDown className="h-3.5 w-3.5 opacity-60 ml-0.5" />
+                  <ChevronDown className="h-3.5 w-3.5 text-white/90 ml-0.5" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-80 sm:w-96 p-1.5 shadow-xl bg-white border border-slate-200">
