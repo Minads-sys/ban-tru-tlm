@@ -20,6 +20,7 @@ import {
   Layers,
   Image as ImageIcon,
   FileDown,
+  Lock,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -42,6 +43,7 @@ import { toPng } from 'html-to-image';
 import Swal from 'sweetalert2';
 import { useSession } from 'next-auth/react';
 import { WeeklyDiningMatrixResult, WeeklyMatrixRow, WeeklyMatrixCell, WeeklyMatrixAllocation } from '@/lib/dining-court-service';
+import { getSchoolWeekFromNumber } from '@/lib/utils';
 
 interface DiningCourtWeeklyMatrixProps {
   schoolName?: string;
@@ -141,7 +143,7 @@ export function DiningCourtWeeklyMatrix({ schoolName = 'TRƯỜNG TIỂU HỌC B
 
   // Tự động phân bổ cả tuần
   const handleAutoAllocateWeek = async () => {
-    if (!canEdit || !matrixData) return;
+    if (!canEdit || !matrixData || matrixData.hasAnyAllocation) return;
 
     const confirm = await Swal.fire({
       title: 'Chia sân tự động cả tuần?',
@@ -613,8 +615,30 @@ export function DiningCourtWeeklyMatrix({ schoolName = 'TRƯỜNG TIỂU HỌC B
   const schoolWeekNumber = weekInfo?.schoolWeekNumber || 1;
   const schoolYear = weekInfo?.schoolYear || '2026 - 2027';
 
-  // Danh sách các tuần năm học (1 -> 35)
-  const schoolWeeksList = Array.from({ length: 35 }, (_, i) => i + 1);
+  const startYear = React.useMemo(() => {
+    return parseInt(schoolYear.split('-')[0].trim(), 10) || 2026;
+  }, [schoolYear]);
+
+  // Danh sách các tuần năm học (1 -> 35) kèm ngày bắt đầu - kết thúc (Thứ 2 đến Thứ 6)
+  const schoolWeeksList = React.useMemo(() => {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return Array.from({ length: 35 }, (_, i) => {
+      const w = i + 1;
+      const info = getSchoolWeekFromNumber(w, startYear);
+      const s = info.startDate;
+      const e = info.endDate;
+      const rangeStr = `${pad(s.getDate())}/${pad(s.getMonth() + 1)}/${s.getFullYear()} - ${pad(e.getDate())}/${pad(e.getMonth() + 1)}/${e.getFullYear()}`;
+      return {
+        week: w,
+        rangeStr,
+        label: `Tuần ${w} (${rangeStr})`,
+      };
+    });
+  }, [startYear]);
+
+  const currentWeekObj = React.useMemo(() => {
+    return schoolWeeksList.find((item) => item.week === schoolWeekNumber);
+  }, [schoolWeeksList, schoolWeekNumber]);
 
   return (
     <div className="space-y-4">
@@ -644,13 +668,13 @@ export function DiningCourtWeeklyMatrix({ schoolName = 'TRƯỜNG TIỂU HỌC B
                 onValueChange={handleSelectWeekNumber}
                 disabled={loading}
               >
-                <SelectTrigger className="h-8 border-none bg-transparent text-xs font-bold text-blue-700 focus:ring-0 shadow-none px-2.5">
-                  <SelectValue placeholder={`Tuần ${schoolWeekNumber}`} />
+                <SelectTrigger className="h-8 w-auto border-none bg-transparent text-xs font-bold text-blue-700 focus:ring-0 shadow-none px-2.5 cursor-pointer">
+                  <SelectValue placeholder={currentWeekObj?.label || `Tuần ${schoolWeekNumber}`} />
                 </SelectTrigger>
                 <SelectContent className="max-h-60">
-                  {schoolWeeksList.map((w) => (
-                    <SelectItem key={w} value={String(w)} className="text-xs font-medium cursor-pointer">
-                      Tuần {w}
+                  {schoolWeeksList.map((item) => (
+                    <SelectItem key={item.week} value={String(item.week)} className="text-xs font-medium cursor-pointer">
+                      {item.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -708,15 +732,37 @@ export function DiningCourtWeeklyMatrix({ schoolName = 'TRƯỜNG TIỂU HỌC B
             {/* Các nút hành động quản trị (Chỉ ADMIN & BOARDING_MANAGER) */}
             {canEdit && (
               <>
-                <Button
-                  size="sm"
-                  onClick={handleAutoAllocateWeek}
-                  disabled={loading || isAutoAllocating}
-                  className="h-8 text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-xs gap-1.5 cursor-pointer"
+                <div
+                  title={
+                    matrixData?.hasAnyAllocation
+                      ? 'Tuần này đã được phân bổ sân ăn. Nút chia tự động bị khóa để tránh bấm nhầm làm mất dữ liệu. Bấm nút Thùng rác bên cạnh để xóa phân sân nếu bạn muốn chia lại từ đầu.'
+                      : 'Chạy thuật toán tự động chia sân ăn cho cả tuần'
+                  }
                 >
-                  <Wand2 className="h-3.5 w-3.5" />
-                  <span>{isAutoAllocating ? 'Đang chia...' : 'Chia sân tự động tuần'}</span>
-                </Button>
+                  <Button
+                    size="sm"
+                    onClick={handleAutoAllocateWeek}
+                    disabled={loading || isAutoAllocating || Boolean(matrixData?.hasAnyAllocation)}
+                    className={`h-8 text-xs font-bold shadow-xs gap-1.5 ${
+                      matrixData?.hasAnyAllocation
+                        ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed hover:bg-slate-100 hover:text-slate-400'
+                        : 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer'
+                    }`}
+                  >
+                    {matrixData?.hasAnyAllocation ? (
+                      <Lock className="h-3.5 w-3.5 text-slate-400" />
+                    ) : (
+                      <Wand2 className="h-3.5 w-3.5" />
+                    )}
+                    <span>
+                      {isAutoAllocating
+                        ? 'Đang chia...'
+                        : matrixData?.hasAnyAllocation
+                        ? 'Chia sân tự động (Đã khóa)'
+                        : 'Chia sân tự động tuần'}
+                    </span>
+                  </Button>
+                </div>
 
                 <Button
                   size="sm"
@@ -739,7 +785,7 @@ export function DiningCourtWeeklyMatrix({ schoolName = 'TRƯỜNG TIỂU HỌC B
                     onClick={handleDeleteWeek}
                     disabled={loading || isDeletingWeek}
                     className="h-8 text-xs text-slate-500 hover:text-rose-600 hover:bg-rose-50 cursor-pointer px-2"
-                    title="Xóa phân sân cả tuần này"
+                    title="Xóa phân sân cả tuần này (Để chia lại từ đầu)"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
@@ -1063,10 +1109,10 @@ export function DiningCourtWeeklyMatrix({ schoolName = 'TRƯỜNG TIỂU HỌC B
                 </SelectTrigger>
                 <SelectContent className="max-h-60">
                   {schoolWeeksList
-                    .filter((w) => w !== schoolWeekNumber)
-                    .map((w) => (
-                      <SelectItem key={w} value={String(w)}>
-                        Tuần {w}
+                    .filter((item) => item.week !== schoolWeekNumber)
+                    .map((item) => (
+                      <SelectItem key={item.week} value={String(item.week)}>
+                        {item.label}
                       </SelectItem>
                     ))}
                 </SelectContent>

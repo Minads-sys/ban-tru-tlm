@@ -83,7 +83,7 @@ const NAV_ITEMS: NavItem[] = [
     permission: "MANAGE_MEALS",
   },
   {
-    title: "Chốt suất ăn",
+    title: "Chốt suất & Chia sân",
     href: "/admin/daily-meals",
     icon: ChefHat,
     permission: "MANAGE_MEALS",
@@ -226,7 +226,7 @@ export function SidebarNav({ user }: SidebarNavProps) {
                   {user?.role === "CASHIER" && item.href === "/admin/billing"
                     ? "Quầy Thu Ngân"
                     : user?.role === "CASHIER" && item.href === "/admin/daily-meals"
-                    ? "Chia Sân & Chốt Suất"
+                    ? "Chốt suất & Chia sân"
                     : user?.role === "ACCOUNTANT" && item.href === "/admin/meal-cancel"
                     ? "Lịch sử & Cắt suất"
                     : item.title}
