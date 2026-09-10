@@ -818,14 +818,16 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
-      <div className="sticky top-16 z-30 bg-white/95 backdrop-blur-md py-2.5 px-3.5 -mt-3 mb-2 -mx-4 sm:mx-0 sm:px-4 sm:py-3.5 sm:-mt-4 sm:mb-4 sm:rounded-lg border-b sm:border border-slate-200 shadow-xs">
-        <h1 className="text-[15px] sm:text-xl md:text-2xl font-bold text-slate-900 tracking-tight whitespace-nowrap overflow-hidden text-ellipsis">
-          TRANG THÔNG TIN SUẤT ĂN BÁN TRÚ
-        </h1>
-        <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-          <span className="font-semibold text-blue-600">{studentInfo?.user?.fullName || session?.user?.name}</span> {studentInfo?.class?.name ? `- Lớp: ${studentInfo.class.name}` : studentInfo?.classId ? `- Lớp: ${studentInfo.classId}` : ''}
-        </p>
-      </div>
+      {!readOnly && (
+        <div className="sticky top-16 z-30 bg-white/95 backdrop-blur-md py-2.5 px-3.5 -mt-3 mb-2 -mx-4 sm:mx-0 sm:px-4 sm:py-3.5 sm:-mt-4 sm:mb-4 sm:rounded-lg border-b sm:border border-slate-200 shadow-xs">
+          <h1 className="text-[15px] sm:text-xl md:text-2xl font-bold text-slate-900 tracking-tight whitespace-nowrap overflow-hidden text-ellipsis">
+            TRANG THÔNG TIN SUẤT ĂN BÁN TRÚ
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+            <span className="font-semibold text-blue-600">{studentInfo?.user?.fullName || session?.user?.name}</span> {studentInfo?.class?.name ? `- Lớp: ${studentInfo.class.name}` : studentInfo?.classId ? `- Lớp: ${studentInfo.classId}` : ''}
+          </p>
+        </div>
+      )}
 
       {/* Banner thông báo dành cho học sinh đã ngừng bán trú */}
       {isCancelled && (
@@ -1125,10 +1127,15 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                       {/* Loại lịch */}
                       <div className="p-3 bg-white/80 dark:bg-slate-800/80 rounded-lg border border-slate-200/80 dark:border-slate-800">
                         <span className="text-slate-400 block mb-0.5">Loại lịch học</span>
-                        <span className="font-bold text-purple-700 dark:text-purple-400 block truncate" title={monthlyScheduleData.todayInfo.scheduleName}>
-                          {monthlyScheduleData.todayInfo.mealCategory === "SPECIAL"
-                            ? `🌟 ${monthlyScheduleData.todayInfo.scheduleName}`
-                            : monthlyScheduleData.todayInfo.scheduleName}
+                        <span
+                          className={`font-bold block truncate ${
+                            monthlyScheduleData.todayInfo.mealCategory === "SPECIAL"
+                              ? "text-orange-700 dark:text-orange-400"
+                              : "text-blue-700 dark:text-blue-400"
+                          }`}
+                          title={monthlyScheduleData.todayInfo.scheduleName}
+                        >
+                          {monthlyScheduleData.todayInfo.scheduleName}
                         </span>
                       </div>
 
@@ -1175,38 +1182,38 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
               {/* 2. Lịch Ăn Cả Tháng */}
               <Card className="border-slate-200 shadow-xs">
                 <CardHeader className="pb-4 border-b border-slate-100">
-                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                     <div>
                       <CardTitle className="text-base sm:text-lg font-bold flex items-center gap-2 text-slate-900 dark:text-slate-100">
-                        <CalendarDays className="h-5 w-5 text-purple-600" />
-                        Lịch Ăn Tháng {scheduleMonth} / {scheduleYear}
+                        <CalendarDays className="h-5 w-5 text-purple-600 shrink-0" />
+                        <span>Lịch Ăn Tháng {scheduleMonth} / {scheduleYear}</span>
                       </CardTitle>
-                      <CardDescription className="text-xs text-slate-500 mt-1">
-                        Chi tiết từng ngày học thường, học đặc biệt, trạng thái cắt suất và vị trí sân ăn của bạn.
+                      <CardDescription className="text-xs text-slate-500 mt-0.5">
+                        Chi tiết lịch học thường, học đặc biệt, trạng thái suất và vị trí sân ăn của bạn.
                       </CardDescription>
                     </div>
 
                     {/* Bộ điều hướng tháng & Chế độ xem */}
-                    <div className="flex flex-wrap items-center gap-2.5">
+                    <div className="flex flex-wrap items-center gap-2">
                       {/* Nút Tháng trước / sau */}
                       <div className="flex items-center rounded-lg border border-slate-200 bg-white p-0.5 shadow-2xs">
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={handlePrevMonth}
-                          className="h-8 w-8 p-0 cursor-pointer"
+                          className="h-7 w-7 sm:h-8 sm:w-8 p-0 cursor-pointer"
                           title="Tháng trước"
                         >
                           <ChevronLeft className="h-4 w-4" />
                         </Button>
-                        <span className="px-3 text-xs font-bold text-slate-700">
+                        <span className="px-2 sm:px-3 text-xs font-bold text-slate-700 whitespace-nowrap">
                           Tháng {scheduleMonth} / {scheduleYear}
                         </span>
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={handleNextMonth}
-                          className="h-8 w-8 p-0 cursor-pointer"
+                          className="h-7 w-7 sm:h-8 sm:w-8 p-0 cursor-pointer"
                           title="Tháng sau"
                         >
                           <ChevronRight className="h-4 w-4" />
@@ -1219,20 +1226,20 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                           variant="outline"
                           size="sm"
                           onClick={handleResetToCurrentMonth}
-                          className="h-8 text-xs text-purple-700 border-purple-200 hover:bg-purple-50 cursor-pointer"
+                          className="h-7 sm:h-8 px-2 text-xs text-purple-700 border-purple-200 hover:bg-purple-50 cursor-pointer"
                         >
                           Về tháng này
                         </Button>
                       )}
 
                       {/* Toggle Lịch vs Danh sách */}
-                      <div className="flex items-center gap-1 p-0.5 bg-slate-100 rounded-lg border border-slate-200">
+                      <div className="flex items-center gap-0.5 p-0.5 bg-slate-100 rounded-lg border border-slate-200">
                         <Button
                           variant={scheduleViewMode === "calendar" ? "default" : "ghost"}
                           size="sm"
                           onClick={() => setScheduleViewMode("calendar")}
-                          className={`h-7 px-2.5 text-xs font-semibold cursor-pointer ${
-                            scheduleViewMode === "calendar" ? "bg-purple-600 hover:bg-purple-700 text-white" : "text-slate-600"
+                          className={`h-7 px-2 sm:px-2.5 text-xs font-semibold cursor-pointer ${
+                            scheduleViewMode === "calendar" ? "bg-purple-600 hover:bg-purple-700 text-white shadow-2xs" : "text-slate-600"
                           }`}
                         >
                           <LayoutGrid className="h-3.5 w-3.5 mr-1" />
@@ -1242,8 +1249,8 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                           variant={scheduleViewMode === "list" ? "default" : "ghost"}
                           size="sm"
                           onClick={() => setScheduleViewMode("list")}
-                          className={`h-7 px-2.5 text-xs font-semibold cursor-pointer ${
-                            scheduleViewMode === "list" ? "bg-purple-600 hover:bg-purple-700 text-white" : "text-slate-600"
+                          className={`h-7 px-2 sm:px-2.5 text-xs font-semibold cursor-pointer ${
+                            scheduleViewMode === "list" ? "bg-purple-600 hover:bg-purple-700 text-white shadow-2xs" : "text-slate-600"
                           }`}
                         >
                           <ListFilter className="h-3.5 w-3.5 mr-1" />
@@ -1255,24 +1262,24 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
 
                   {/* Thống kê tóm tắt tháng */}
                   {monthlyScheduleData?.summary && (
-                    <div className="flex flex-wrap items-center gap-2 pt-3">
-                      <Badge variant="outline" className="bg-blue-50 text-blue-800 border-blue-200 text-xs py-1 px-2.5">
-                        Dự kiến: <strong>{monthlyScheduleData.summary.totalScheduledDays}</strong> buổi
+                    <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 pt-3">
+                      <Badge variant="outline" className="bg-blue-50 text-blue-800 border-blue-200 text-[11px] sm:text-xs py-0.5 px-2">
+                        Dự kiến: <strong className="ml-1">{monthlyScheduleData.summary.totalScheduledDays}</strong> buổi
                       </Badge>
-                      <Badge variant="outline" className="bg-purple-50 text-purple-800 border-purple-200 text-xs py-1 px-2.5">
-                        Lịch đặc biệt: <strong>{monthlyScheduleData.summary.totalSpecialMealDays}</strong> buổi
+                      <Badge variant="outline" className="bg-purple-50 text-purple-800 border-purple-200 text-[11px] sm:text-xs py-0.5 px-2">
+                        Lịch đặc biệt: <strong className="ml-1">{monthlyScheduleData.summary.totalSpecialMealDays}</strong> buổi
                       </Badge>
                       {monthlyScheduleData.summary.totalCanceledDays > 0 && (
-                        <Badge variant="outline" className="bg-rose-50 text-rose-800 border-rose-200 text-xs py-1 px-2.5">
-                          Đã cắt suất: <strong>{monthlyScheduleData.summary.totalCanceledDays}</strong> buổi
+                        <Badge variant="outline" className="bg-rose-50 text-rose-800 border-rose-200 text-[11px] sm:text-xs py-0.5 px-2">
+                          Đã cắt suất: <strong className="ml-1">{monthlyScheduleData.summary.totalCanceledDays}</strong> buổi
                         </Badge>
                       )}
                       {monthlyScheduleData.summary.totalPendingCanceledDays > 0 && (
-                        <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-200 text-xs py-1 px-2.5">
-                          Chờ duyệt cắt: <strong>{monthlyScheduleData.summary.totalPendingCanceledDays}</strong> buổi
+                        <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-200 text-[11px] sm:text-xs py-0.5 px-2">
+                          Chờ duyệt cắt: <strong className="ml-1">{monthlyScheduleData.summary.totalPendingCanceledDays}</strong> buổi
                         </Badge>
                       )}
-                      <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white text-xs py-1 px-2.5 font-bold ml-auto">
+                      <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white text-[11px] sm:text-xs py-0.5 px-2.5 font-bold sm:ml-auto">
                         Thực tế ăn: {monthlyScheduleData.summary.totalMealDays} buổi
                       </Badge>
                     </div>
@@ -1375,13 +1382,13 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                                         <span
                                           className={`text-[10px] font-semibold truncate max-w-[85px] sm:max-w-full ${
                                             day.mealCategory === "SPECIAL"
-                                              ? "text-purple-700 dark:text-purple-300 font-bold"
-                                              : "text-slate-600 dark:text-slate-400"
+                                              ? "text-orange-700 dark:text-orange-400 font-bold"
+                                              : "text-blue-700 dark:text-blue-400 font-semibold"
                                           }`}
                                           title={day.scheduleName}
                                         >
                                           {day.mealCategory === "SPECIAL"
-                                            ? `🌟 ${day.scheduleName}`
+                                            ? day.scheduleName
                                             : "Lớp thường"}
                                         </span>
                                       </div>
@@ -1452,106 +1459,125 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                         }
 
                         return (
-                          <div className="border border-slate-200 dark:border-slate-800 rounded-lg overflow-hidden">
-                            <Table>
+                          <div className="border border-slate-200 dark:border-slate-800 rounded-lg overflow-x-auto shadow-2xs">
+                            <Table className="w-full text-xs min-w-[500px]">
                               <TableHeader className="bg-slate-50 dark:bg-slate-800/80">
-                                <TableRow>
-                                  <TableHead className="w-28 font-semibold text-xs">Ngày ăn</TableHead>
-                                  <TableHead className="w-24 text-center font-semibold text-xs">Thứ</TableHead>
-                                  <TableHead className="font-semibold text-xs">Lịch học & Ca ăn</TableHead>
-                                  <TableHead className="w-32 text-center font-semibold text-xs">Vị trí Sân ăn</TableHead>
-                                  <TableHead className="w-28 text-center font-semibold text-xs">Chế độ món</TableHead>
-                                  <TableHead className="w-40 text-center font-semibold text-xs">Trạng thái suất ăn</TableHead>
+                                <TableRow className="hover:bg-transparent border-b border-slate-200 dark:border-slate-700">
+                                  {/* Cột Ngày ăn - Cố định (Sticky) */}
+                                  <TableHead className="sticky left-0 z-20 bg-slate-100 dark:bg-slate-800 font-bold text-xs text-slate-900 dark:text-slate-100 w-[95px] min-w-[95px] sm:w-[110px] sm:min-w-[110px] px-2.5 py-2.5 border-r border-slate-200 dark:border-slate-700 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)]">
+                                    Ngày ăn
+                                  </TableHead>
+                                  <TableHead className="w-[65px] min-w-[65px] sm:w-[75px] text-center font-semibold text-xs px-1.5 py-2.5">
+                                    Thứ
+                                  </TableHead>
+                                  <TableHead className="min-w-[140px] font-semibold text-xs px-2.5 py-2.5">
+                                    Lịch học & Ca ăn
+                                  </TableHead>
+                                  <TableHead className="min-w-[105px] text-center font-semibold text-xs px-2 py-2.5">
+                                    Vị trí Sân ăn
+                                  </TableHead>
+                                  <TableHead className="min-w-[115px] text-center font-semibold text-xs px-2 py-2.5">
+                                    Suất ăn & Món
+                                  </TableHead>
                                 </TableRow>
                               </TableHeader>
                               <TableBody>
                                 {daysWithMeal.map((day: any) => (
                                   <TableRow
                                     key={day.dateStr}
-                                    className={`hover:bg-slate-50/80 dark:hover:bg-slate-900/50 ${
-                                      day.isToday ? "bg-purple-50/40 dark:bg-purple-950/20 font-semibold" : ""
+                                    className={`group transition-colors border-b border-slate-100 dark:border-slate-800/60 ${
+                                      day.isToday
+                                        ? "bg-purple-50/40 dark:bg-purple-950/20 font-semibold"
+                                        : "hover:bg-slate-50/80 dark:hover:bg-slate-900/50"
                                     }`}
                                   >
-                                    <TableCell className="text-xs font-mono">
-                                      <div className="flex items-center gap-1.5">
-                                        <span>{formatDate(day.dateStr)}</span>
+                                    {/* Cột Ngày ăn - Cố định (Sticky) */}
+                                    <TableCell
+                                      className={`sticky left-0 z-10 px-2.5 py-2 font-mono border-r border-slate-200 dark:border-slate-800 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)] ${
+                                        day.isToday
+                                          ? "bg-purple-50 dark:bg-purple-950/70"
+                                          : "bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800/80"
+                                      }`}
+                                    >
+                                      <div className="flex flex-col">
+                                        <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 whitespace-nowrap">
+                                          {formatDate(day.dateStr)}
+                                        </span>
                                         {day.isToday && (
-                                          <Badge className="bg-purple-600 text-white text-[9px] px-1 py-0">
+                                          <span className="inline-block mt-0.5 w-fit bg-purple-600 text-white text-[9px] font-bold px-1 py-0 rounded">
                                             Hôm nay
-                                          </Badge>
+                                          </span>
                                         )}
                                       </div>
                                     </TableCell>
-                                    <TableCell className="text-center text-xs font-medium text-slate-700 dark:text-slate-300">
+
+                                    {/* Thứ */}
+                                    <TableCell className="text-center text-xs font-medium text-slate-700 dark:text-slate-300 px-1.5 py-2 whitespace-nowrap">
                                       {day.dowName}
                                     </TableCell>
-                                    <TableCell className="text-xs">
-                                      <div className="flex items-center gap-1.5">
-                                        <Badge
-                                          variant="secondary"
-                                          className={`text-[10px] ${
-                                            day.shift === "TIET_4"
-                                              ? "bg-orange-100 text-orange-700"
-                                              : "bg-blue-100 text-blue-700"
-                                          }`}
-                                        >
-                                          {day.shift === "TIET_4" ? "Tiết 4" : "Tiết 5"}
-                                        </Badge>
-                                        <span
-                                          className={
-                                            day.mealCategory === "SPECIAL"
-                                              ? "font-bold text-purple-700 dark:text-purple-300"
-                                              : "text-slate-700 dark:text-slate-300"
-                                          }
-                                        >
-                                          {day.mealCategory === "SPECIAL"
-                                            ? `🌟 ${day.scheduleName}`
-                                            : day.scheduleName}
-                                        </span>
-                                      </div>
+
+                                    {/* Lịch học & Ca ăn: Lớp thường màu xanh chữ trắng, Lớp đặc biệt màu cam chữ trắng, bỏ icon */}
+                                    <TableCell className="text-xs px-2.5 py-2">
+                                      {day.mealCategory === "SPECIAL" ? (
+                                        <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-orange-600 text-white text-[11px] sm:text-xs font-semibold shadow-2xs whitespace-nowrap">
+                                          <span className="px-1 py-0.2 rounded bg-black/20 text-[10px] font-bold shrink-0">
+                                            {day.shift === "TIET_4" ? "Tiết 4" : "Tiết 5"}
+                                          </span>
+                                          <span className="truncate max-w-[130px] sm:max-w-none">{day.scheduleName}</span>
+                                        </div>
+                                      ) : (
+                                        <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-blue-600 text-white text-[11px] sm:text-xs font-semibold shadow-2xs whitespace-nowrap">
+                                          <span className="px-1 py-0.2 rounded bg-black/20 text-[10px] font-bold shrink-0">
+                                            {day.shift === "TIET_4" ? "Tiết 4" : "Tiết 5"}
+                                          </span>
+                                          <span className="truncate max-w-[130px] sm:max-w-none">{day.scheduleName}</span>
+                                        </div>
+                                      )}
                                     </TableCell>
-                                    <TableCell className="text-center text-xs">
+
+                                    {/* Vị trí Sân ăn: Bỏ icon MapPin, hiển thị nhãn gọn */}
+                                    <TableCell className="text-center text-xs px-2 py-2 whitespace-nowrap">
                                       {day.court ? (
-                                        <Badge
-                                          variant="outline"
-                                          className="bg-indigo-50 text-indigo-700 border-indigo-200 font-bold text-xs"
-                                        >
-                                          <MapPin className="h-3 w-3 mr-1" />
-                                          {day.court.courtName} ({day.court.cartName})
-                                        </Badge>
+                                        <span className="inline-block px-2 py-0.5 rounded-md bg-purple-100 text-purple-800 dark:bg-purple-900/60 dark:text-purple-200 font-bold text-xs border border-purple-200 dark:border-purple-800">
+                                          {day.court.courtName} {day.court.cartName ? `(${day.court.cartName})` : ""}
+                                        </span>
                                       ) : (
                                         <span className="text-slate-400 text-xs italic">Chưa phân sân</span>
                                       )}
                                     </TableCell>
-                                    <TableCell className="text-center text-xs">
-                                      <span
-                                        className={
-                                          day.isMealOverridden
-                                            ? "text-emerald-600 font-bold"
-                                            : "text-slate-700 dark:text-slate-300"
-                                        }
-                                      >
-                                        {day.mealTypeName}
-                                      </span>
-                                    </TableCell>
-                                    <TableCell className="text-center text-xs">
+
+                                    {/* Suất ăn & Món (Gộp 2 cột): "Có ăn" + Món, hoặc Badge Cắt suất */}
+                                    <TableCell className="text-center text-xs px-2 py-2 whitespace-nowrap">
                                       {day.cancellation ? (
-                                        <Badge
-                                          variant="outline"
-                                          className={
-                                            day.cancellation.status === "APPROVED"
-                                              ? "bg-emerald-50 text-emerald-700 border-emerald-300 font-bold"
-                                              : day.cancellation.status === "PENDING"
-                                              ? "bg-amber-50 text-amber-700 border-amber-300 font-bold"
-                                              : "bg-rose-50 text-rose-700 border-rose-300 font-bold"
-                                          }
-                                        >
-                                          {day.cancellation.cancellationNote}
-                                        </Badge>
+                                        <div className="flex flex-col items-center gap-0.5">
+                                          <Badge
+                                            variant="outline"
+                                            className={`text-[10px] font-bold px-1.5 py-0.5 ${
+                                              day.cancellation.status === "APPROVED"
+                                                ? "bg-emerald-50 text-emerald-700 border-emerald-300 line-through"
+                                                : day.cancellation.status === "PENDING"
+                                                ? "bg-amber-50 text-amber-700 border-amber-300"
+                                                : "bg-rose-50 text-rose-700 border-rose-300"
+                                            }`}
+                                          >
+                                            {day.cancellation.cancellationNote}
+                                          </Badge>
+                                          <span className="text-[11px] text-slate-400">
+                                            {day.mealTypeName}
+                                          </span>
+                                        </div>
                                       ) : (
-                                        <span className="text-teal-700 dark:text-teal-400 font-medium">
-                                          Bình thường (Có ăn)
-                                        </span>
+                                        <div className="flex flex-col items-center leading-tight">
+                                          <span className="text-emerald-700 dark:text-emerald-400 font-bold text-xs">
+                                            Có ăn
+                                          </span>
+                                          <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                                            {day.mealTypeName}
+                                            {day.isMealOverridden && (
+                                              <span className="text-amber-600 font-semibold ml-1">(Đã đổi)</span>
+                                            )}
+                                          </span>
+                                        </div>
                                       )}
                                     </TableCell>
                                   </TableRow>
