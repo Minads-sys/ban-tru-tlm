@@ -1455,11 +1455,51 @@ export async function getWeeklyDiningMatrix(referenceDate: Date | string): Promi
 
   const allRows: WeeklyMatrixRow[] = [...regularRows, ...specialRows];
 
+  // Lọc bỏ những lớp trống ngày ăn suốt cả tuần (không có bất kỳ ngày nào ăn trong tuần)
+  let displayRows: WeeklyMatrixRow[] = allRows;
+
+  if (courts.length > 0) {
+    // Tuần đã có phân bổ sân: chỉ giữ lại các lớp có ít nhất 1 ngày được phân sân ăn trong tuần
+    displayRows = allRows.filter((row) =>
+      days.some(
+        (day) =>
+          row.courts[day.dateStr] !== null &&
+          Boolean(row.courts[day.dateStr]?.courtName)
+      )
+    );
+  } else {
+    // Tuần chưa có phân bổ sân: lọc theo TKB tuần để chỉ giữ các lớp có lịch ăn đăng ký trong tuần
+    const weekNumber = weekInfo.calendarWeekNumber;
+    const year = startUtc.getUTCFullYear();
+    const activeScheduleClasses = await prisma.classWeeklySchedule.findMany({
+      where: {
+        weekNumber,
+        year,
+        OR: [
+          { monday: { not: "NONE" } },
+          { tuesday: { not: "NONE" } },
+          { wednesday: { not: "NONE" } },
+          { thursday: { not: "NONE" } },
+          { friday: { not: "NONE" } },
+        ],
+      },
+      select: { classId: true },
+    });
+    const activeClassIdSet = new Set(activeScheduleClasses.map((s) => s.classId));
+
+    displayRows = allRows.filter((row) => {
+      if (row.isSpecial) {
+        return specialSchedulesMap.has(extractSpecialScheduleName(row.classId));
+      }
+      return activeClassIdSet.has(row.classId);
+    });
+  }
+
   return {
     weekInfo,
     distinctCourts,
     days,
-    rows: allRows,
+    rows: displayRows,
     hasAnyAllocation: courts.length > 0,
     totalCourtsUsed: distinctCourts.length,
   };

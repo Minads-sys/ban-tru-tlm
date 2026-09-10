@@ -989,7 +989,9 @@ export function DiningCourtWeeklyMatrix({ schoolName = 'TRƯỜNG TIỂU HỌC B
               ) : (
                 <tr>
                   <td colSpan={6} className="border border-slate-950 py-8 text-center text-slate-500">
-                    Chưa có danh sách lớp học nào. Vui lòng kiểm tra lại dữ liệu lớp học.
+                    {matrixData && !matrixData.hasAnyAllocation
+                      ? 'Tuần này chưa có phân bổ sân ăn nào. Vui lòng bấm "Chia tự động cả tuần" hoặc "Sao chép từ tuần trước" để thiết lập.'
+                      : 'Không có lớp nào có lịch ăn bán trú trong tuần này.'}
                   </td>
                 </tr>
               )}
