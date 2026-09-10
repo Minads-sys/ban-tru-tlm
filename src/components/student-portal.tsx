@@ -27,8 +27,17 @@ import {
   Wallet,
   Sparkles,
   ArrowRight,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  MapPin,
+  Info,
+  Ban,
+  LayoutGrid,
+  ListFilter,
 } from "lucide-react";
 import { generateMealPaymentQR } from "@/lib/vietqr";
+import { formatDate } from "@/lib/utils";
 import {
   Card,
   CardHeader,
@@ -172,9 +181,55 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
   // Tab và Lịch sử thanh toán
-  const [activeTab, setActiveTab] = useState<string>("cancel");
+  const [activeTab, setActiveTab] = useState<string>("schedule");
   const [selectedHistoryYear, setSelectedHistoryYear] = useState<number>(new Date().getFullYear());
   const [selectedHistoryMonth, setSelectedHistoryMonth] = useState<number | null>(null);
+
+  // States cho Lịch ăn trong tháng & Sân ăn
+  const [scheduleMonth, setScheduleMonth] = useState<number>(() => new Date().getMonth() + 1);
+  const [scheduleYear, setScheduleYear] = useState<number>(() => new Date().getFullYear());
+  const [monthlyScheduleData, setMonthlyScheduleData] = useState<any | null>(null);
+  const [loadingSchedule, setLoadingSchedule] = useState<boolean>(true);
+  const [scheduleViewMode, setScheduleViewMode] = useState<"calendar" | "list">("calendar");
+
+  const fetchMonthlySchedule = useCallback(async (id: string, y: number, m: number) => {
+    try {
+      setLoadingSchedule(true);
+      const res = await fetch(`/api/student/monthly-schedule?studentId=${encodeURIComponent(id)}&year=${y}&month=${m}`);
+      if (res.ok) {
+        const data = await res.json();
+        setMonthlyScheduleData(data);
+      }
+    } catch (err) {
+      console.error("Lỗi khi tải lịch ăn tháng của học sinh:", err);
+    } finally {
+      setLoadingSchedule(false);
+    }
+  }, []);
+
+  const handlePrevMonth = () => {
+    if (scheduleMonth === 1) {
+      setScheduleMonth(12);
+      setScheduleYear(scheduleYear - 1);
+    } else {
+      setScheduleMonth(scheduleMonth - 1);
+    }
+  };
+
+  const handleNextMonth = () => {
+    if (scheduleMonth === 12) {
+      setScheduleMonth(1);
+      setScheduleYear(scheduleYear + 1);
+    } else {
+      setScheduleMonth(scheduleMonth + 1);
+    }
+  };
+
+  const handleResetToCurrentMonth = () => {
+    const d = new Date();
+    setScheduleMonth(d.getMonth() + 1);
+    setScheduleYear(d.getFullYear());
+  };
 
   // Cài đặt hiển thị tab theo cấu hình Quản trị viên Admin
   const [showDebtTab, setShowDebtTab] = useState<boolean>(false);
@@ -403,6 +458,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
       fetchStudentInfo(studentId);
       fetchCancellations(studentId);
       fetchOverrides(studentId);
+      fetchMonthlySchedule(studentId, scheduleYear, scheduleMonth);
       if (effectiveShowDebtTab || effectiveShowHistoryTab) {
         fetchBills(studentId);
       }
@@ -411,8 +467,9 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
       setLoadingCancellations(false);
       setLoadingOverrides(false);
       setLoadingBills(false);
+      setLoadingSchedule(false);
     }
-  }, [studentId, status, effectiveShowDebtTab, effectiveShowHistoryTab, fetchStudentInfo, fetchCancellations, fetchOverrides, fetchBills]);
+  }, [studentId, status, scheduleYear, scheduleMonth, effectiveShowDebtTab, effectiveShowHistoryTab, fetchStudentInfo, fetchCancellations, fetchOverrides, fetchBills, fetchMonthlySchedule]);
 
   // Realtime: tự động cập nhật khi admin bật/tắt tab trong cài đặt hệ thống
   useRealtime({
@@ -425,7 +482,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
 
   // Tự động chuyển tab:
   // Nếu học sinh đã hủy bán trú: luôn chuyển sang tab "debt" (Công nợ & Quyết toán)
-  // Nếu học sinh bình thường: chuyển về "cancel" nếu tab hiện tại bị admin ẩn đi
+  // Nếu học sinh bình thường: chuyển về "schedule" nếu tab hiện tại bị admin ẩn đi
   useEffect(() => {
     if (isCancelled) {
       if (activeTab === "cancel" || activeTab === "override") {
@@ -433,9 +490,9 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
       }
     } else {
       if (activeTab === "debt" && !showDebtTab) {
-        setActiveTab("cancel");
+        setActiveTab("schedule");
       } else if (activeTab === "history" && !showHistoryTab) {
-        setActiveTab("cancel");
+        setActiveTab("schedule");
       }
     }
   }, [activeTab, showDebtTab, showHistoryTab, isCancelled]);
@@ -448,6 +505,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
       if (studentId) {
         fetchStudentInfo(studentId);
         fetchBills(studentId);
+        fetchMonthlySchedule(studentId, scheduleYear, scheduleMonth);
       }
     },
   });
@@ -455,13 +513,43 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
   useRealtime({
     table: 'meal_cancellations',
     event: '*',
-    onChanged: () => { if (studentId) fetchCancellations(studentId); },
+    onChanged: () => {
+      if (studentId) {
+        fetchCancellations(studentId);
+        fetchMonthlySchedule(studentId, scheduleYear, scheduleMonth);
+      }
+    },
   });
 
   useRealtime({
     table: 'meal_overrides',
     event: '*',
-    onChanged: () => { if (studentId) fetchOverrides(studentId); },
+    onChanged: () => {
+      if (studentId) {
+        fetchOverrides(studentId);
+        fetchMonthlySchedule(studentId, scheduleYear, scheduleMonth);
+      }
+    },
+  });
+
+  useRealtime({
+    table: 'daily_dining_courts',
+    event: '*',
+    onChanged: () => {
+      if (studentId) {
+        fetchMonthlySchedule(studentId, scheduleYear, scheduleMonth);
+      }
+    },
+  });
+
+  useRealtime({
+    table: 'student_special_meals',
+    event: '*',
+    onChanged: () => {
+      if (studentId) {
+        fetchMonthlySchedule(studentId, scheduleYear, scheduleMonth);
+      }
+    },
   });
 
   useRealtime({
@@ -917,14 +1005,21 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
         <TabsList className={`grid w-full ${
           isCancelled
             ? effectiveShowHistoryTab
-              ? "grid-cols-2"
-              : "grid-cols-1"
+              ? "grid-cols-2 sm:grid-cols-3"
+              : "grid-cols-1 sm:grid-cols-2"
             : effectiveShowDebtTab && effectiveShowHistoryTab
-            ? "grid-cols-2 sm:grid-cols-4"
+            ? "grid-cols-2 sm:grid-cols-3 md:grid-cols-5"
             : effectiveShowDebtTab || effectiveShowHistoryTab
-            ? "grid-cols-3"
-            : "grid-cols-2"
+            ? "grid-cols-2 sm:grid-cols-4"
+            : "grid-cols-3"
         } mb-6 p-1.5 bg-slate-200 rounded-xl gap-1.5 h-auto border border-slate-300 shadow-2xs`}>
+          <TabsTrigger
+            value="schedule"
+            className="cursor-pointer transition-all duration-150 text-slate-700 hover:text-purple-900 hover:bg-purple-100/70 data-[state=active]:bg-purple-600 data-[state=active]:text-white font-semibold data-[state=active]:shadow-sm py-2 text-xs sm:text-sm group"
+          >
+            <CalendarDays className="h-4 w-4 mr-1.5 shrink-0 text-slate-600 group-data-[state=active]:text-white" />
+            Lịch ăn & Sân ăn
+          </TabsTrigger>
           {!isCancelled && (
             <>
               <TabsTrigger
@@ -967,6 +1062,512 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
             </TabsTrigger>
           )}
         </TabsList>
+
+        <TabsContent value="schedule">
+          {/* 1. Thẻ Hôm nay ăn gì & Ở sân nào? */}
+          {loadingSchedule && !monthlyScheduleData ? (
+            <Card className="border-slate-200 shadow-xs mb-6 p-8 flex flex-col items-center justify-center text-slate-400">
+              <Loader2 className="h-8 w-8 animate-spin text-purple-600 mb-2" />
+              <p className="text-sm font-medium">Đang tải lịch ăn và vị trí sân ăn...</p>
+            </Card>
+          ) : (
+            <>
+              {monthlyScheduleData?.todayInfo && (
+                <Card className="border-purple-200 dark:border-purple-800 bg-gradient-to-br from-purple-50/80 via-white to-indigo-50/60 dark:from-purple-950/40 dark:via-slate-900 dark:to-indigo-950/30 shadow-xs mb-6 overflow-hidden">
+                  <div className="p-4 sm:p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-purple-100 dark:border-purple-900/50">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <Badge className="bg-purple-600 hover:bg-purple-600 text-white font-bold text-xs uppercase px-2.5 py-0.5">
+                          Hôm nay: {monthlyScheduleData.todayInfo.dowName}
+                        </Badge>
+                        <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                          {formatDate(monthlyScheduleData.todayInfo.dateStr)}
+                        </span>
+                      </div>
+                      <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                        <Utensils className="h-5 w-5 text-purple-600" />
+                        {monthlyScheduleData.todayInfo.hasMeal
+                          ? "Thông Tin Suất Ăn & Sân Ăn Hôm Nay"
+                          : "Hôm nay không có lịch ăn bán trú"}
+                      </h3>
+                    </div>
+
+                    {/* Vị trí sân ăn hôm nay */}
+                    {monthlyScheduleData.todayInfo.hasMeal && (
+                      <div className="flex items-center gap-3 bg-white dark:bg-slate-800 p-3 px-4 rounded-xl border border-purple-200 dark:border-purple-800 shadow-xs self-stretch md:self-auto justify-between md:justify-start">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300 font-bold">
+                          <MapPin className="h-6 w-6" />
+                        </div>
+                        <div>
+                          <span className="text-[11px] uppercase tracking-wider font-semibold text-slate-400 block">
+                            Vị trí sân ăn
+                          </span>
+                          <span className="text-base sm:text-lg font-black text-purple-700 dark:text-purple-300 block">
+                            {monthlyScheduleData.todayInfo.court
+                              ? `${monthlyScheduleData.todayInfo.court.courtName} • ${monthlyScheduleData.todayInfo.court.cartName}`
+                              : "Chưa phân sân"}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {monthlyScheduleData.todayInfo.hasMeal ? (
+                    <div className="p-4 sm:p-5 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                      {/* Ca ăn */}
+                      <div className="p-3 bg-white/80 dark:bg-slate-800/80 rounded-lg border border-slate-200/80 dark:border-slate-800">
+                        <span className="text-slate-400 block mb-0.5">Ca ăn</span>
+                        <span className="font-bold text-slate-800 dark:text-slate-200 block text-sm">
+                          {monthlyScheduleData.todayInfo.shiftName}
+                        </span>
+                      </div>
+
+                      {/* Loại lịch */}
+                      <div className="p-3 bg-white/80 dark:bg-slate-800/80 rounded-lg border border-slate-200/80 dark:border-slate-800">
+                        <span className="text-slate-400 block mb-0.5">Loại lịch học</span>
+                        <span className="font-bold text-purple-700 dark:text-purple-400 block truncate" title={monthlyScheduleData.todayInfo.scheduleName}>
+                          {monthlyScheduleData.todayInfo.mealCategory === "SPECIAL"
+                            ? `🌟 ${monthlyScheduleData.todayInfo.scheduleName}`
+                            : monthlyScheduleData.todayInfo.scheduleName}
+                        </span>
+                      </div>
+
+                      {/* Chế độ ăn */}
+                      <div className="p-3 bg-white/80 dark:bg-slate-800/80 rounded-lg border border-slate-200/80 dark:border-slate-800">
+                        <span className="text-slate-400 block mb-0.5">Chế độ món</span>
+                        <span className="font-bold text-emerald-700 dark:text-emerald-400 block">
+                          {monthlyScheduleData.todayInfo.mealTypeName}
+                          {monthlyScheduleData.todayInfo.isMealOverridden && " (Đã đổi món)"}
+                        </span>
+                      </div>
+
+                      {/* Trạng thái cắt suất */}
+                      <div className="p-3 bg-white/80 dark:bg-slate-800/80 rounded-lg border border-slate-200/80 dark:border-slate-800">
+                        <span className="text-slate-400 block mb-0.5">Trạng thái suất ăn</span>
+                        {monthlyScheduleData.todayInfo.cancellation ? (
+                          <Badge
+                            variant="outline"
+                            className={
+                              monthlyScheduleData.todayInfo.cancellation.status === "APPROVED"
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-300 font-bold text-[11px]"
+                                : monthlyScheduleData.todayInfo.cancellation.status === "PENDING"
+                                ? "bg-amber-50 text-amber-700 border-amber-300 font-bold text-[11px]"
+                                : "bg-rose-50 text-rose-700 border-rose-300 font-bold text-[11px]"
+                            }
+                          >
+                            {monthlyScheduleData.todayInfo.cancellation.cancellationNote}
+                          </Badge>
+                        ) : (
+                          <span className="font-bold text-teal-700 dark:text-teal-400 block text-xs">
+                            Bình thường (Có ăn)
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-4 text-xs text-slate-500 italic">
+                      💡 Hôm nay không có suất ăn bán trú theo thời khóa biểu hoặc lịch đặc biệt.
+                    </div>
+                  )}
+                </Card>
+              )}
+
+              {/* 2. Lịch Ăn Cả Tháng */}
+              <Card className="border-slate-200 shadow-xs">
+                <CardHeader className="pb-4 border-b border-slate-100">
+                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                    <div>
+                      <CardTitle className="text-base sm:text-lg font-bold flex items-center gap-2 text-slate-900 dark:text-slate-100">
+                        <CalendarDays className="h-5 w-5 text-purple-600" />
+                        Lịch Ăn Tháng {scheduleMonth} / {scheduleYear}
+                      </CardTitle>
+                      <CardDescription className="text-xs text-slate-500 mt-1">
+                        Chi tiết từng ngày học thường, học đặc biệt, trạng thái cắt suất và vị trí sân ăn của bạn.
+                      </CardDescription>
+                    </div>
+
+                    {/* Bộ điều hướng tháng & Chế độ xem */}
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      {/* Nút Tháng trước / sau */}
+                      <div className="flex items-center rounded-lg border border-slate-200 bg-white p-0.5 shadow-2xs">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={handlePrevMonth}
+                          className="h-8 w-8 p-0 cursor-pointer"
+                          title="Tháng trước"
+                        >
+                          <ChevronLeft className="h-4 w-4" />
+                        </Button>
+                        <span className="px-3 text-xs font-bold text-slate-700">
+                          Tháng {scheduleMonth} / {scheduleYear}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleNextMonth}
+                          className="h-8 w-8 p-0 cursor-pointer"
+                          title="Tháng sau"
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </Button>
+                      </div>
+
+                      {/* Nút Về tháng hiện tại */}
+                      {(scheduleMonth !== new Date().getMonth() + 1 || scheduleYear !== new Date().getFullYear()) && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleResetToCurrentMonth}
+                          className="h-8 text-xs text-purple-700 border-purple-200 hover:bg-purple-50 cursor-pointer"
+                        >
+                          Về tháng này
+                        </Button>
+                      )}
+
+                      {/* Toggle Lịch vs Danh sách */}
+                      <div className="flex items-center gap-1 p-0.5 bg-slate-100 rounded-lg border border-slate-200">
+                        <Button
+                          variant={scheduleViewMode === "calendar" ? "default" : "ghost"}
+                          size="sm"
+                          onClick={() => setScheduleViewMode("calendar")}
+                          className={`h-7 px-2.5 text-xs font-semibold cursor-pointer ${
+                            scheduleViewMode === "calendar" ? "bg-purple-600 hover:bg-purple-700 text-white" : "text-slate-600"
+                          }`}
+                        >
+                          <LayoutGrid className="h-3.5 w-3.5 mr-1" />
+                          Lịch tháng
+                        </Button>
+                        <Button
+                          variant={scheduleViewMode === "list" ? "default" : "ghost"}
+                          size="sm"
+                          onClick={() => setScheduleViewMode("list")}
+                          className={`h-7 px-2.5 text-xs font-semibold cursor-pointer ${
+                            scheduleViewMode === "list" ? "bg-purple-600 hover:bg-purple-700 text-white" : "text-slate-600"
+                          }`}
+                        >
+                          <ListFilter className="h-3.5 w-3.5 mr-1" />
+                          Danh sách
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Thống kê tóm tắt tháng */}
+                  {monthlyScheduleData?.summary && (
+                    <div className="flex flex-wrap items-center gap-2 pt-3">
+                      <Badge variant="outline" className="bg-blue-50 text-blue-800 border-blue-200 text-xs py-1 px-2.5">
+                        Dự kiến: <strong>{monthlyScheduleData.summary.totalScheduledDays}</strong> buổi
+                      </Badge>
+                      <Badge variant="outline" className="bg-purple-50 text-purple-800 border-purple-200 text-xs py-1 px-2.5">
+                        Lịch đặc biệt: <strong>{monthlyScheduleData.summary.totalSpecialMealDays}</strong> buổi
+                      </Badge>
+                      {monthlyScheduleData.summary.totalCanceledDays > 0 && (
+                        <Badge variant="outline" className="bg-rose-50 text-rose-800 border-rose-200 text-xs py-1 px-2.5">
+                          Đã cắt suất: <strong>{monthlyScheduleData.summary.totalCanceledDays}</strong> buổi
+                        </Badge>
+                      )}
+                      {monthlyScheduleData.summary.totalPendingCanceledDays > 0 && (
+                        <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-200 text-xs py-1 px-2.5">
+                          Chờ duyệt cắt: <strong>{monthlyScheduleData.summary.totalPendingCanceledDays}</strong> buổi
+                        </Badge>
+                      )}
+                      <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white text-xs py-1 px-2.5 font-bold ml-auto">
+                        Thực tế ăn: {monthlyScheduleData.summary.totalMealDays} buổi
+                      </Badge>
+                    </div>
+                  )}
+                </CardHeader>
+
+                <CardContent className="pt-4">
+                  {loadingSchedule ? (
+                    <div className="py-12 flex flex-col items-center justify-center text-slate-400">
+                      <Loader2 className="h-6 w-6 animate-spin text-purple-600 mb-2" />
+                      <p className="text-xs">Đang tải lịch ăn...</p>
+                    </div>
+                  ) : scheduleViewMode === "calendar" ? (
+                    /* CHẾ ĐỘ LỊCH THÁNG (GRID) */
+                    <div className="space-y-2">
+                      {/* Tiêu đề 7 thứ trong tuần */}
+                      <div className="grid grid-cols-7 gap-1 sm:gap-2 text-center text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">
+                        {["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ Nhật"].map((dayName, idx) => (
+                          <div
+                            key={idx}
+                            className={`py-1.5 rounded-md ${
+                              idx >= 5 ? "bg-slate-100 dark:bg-slate-800/60 text-slate-400" : "bg-slate-100/70 dark:bg-slate-800"
+                            }`}
+                          >
+                            {dayName}
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Các ô ngày */}
+                      <div className="grid grid-cols-7 gap-1 sm:gap-2">
+                        {(() => {
+                          const days = monthlyScheduleData?.days || [];
+                          if (days.length === 0) return null;
+
+                          // Tính số ô đệm trước ngày 1
+                          const firstDow = days[0].dow; // 0=CN, 1=T2..6=T7
+                          const paddingCount = firstDow === 0 ? 6 : firstDow - 1;
+
+                          const gridItems: React.ReactNode[] = [];
+                          for (let p = 0; p < paddingCount; p++) {
+                            gridItems.push(
+                              <div
+                                key={`pad-${p}`}
+                                className="min-h-[85px] sm:min-h-[105px] rounded-lg bg-slate-50/40 dark:bg-slate-900/20 border border-dashed border-slate-200/60 dark:border-slate-800/40"
+                              />
+                            );
+                          }
+
+                          days.forEach((day: any) => {
+                            gridItems.push(
+                              <div
+                                key={day.dateStr}
+                                className={`min-h-[85px] sm:min-h-[105px] p-1.5 sm:p-2 rounded-lg border transition-all flex flex-col justify-between ${
+                                  day.isToday
+                                    ? "ring-2 ring-purple-500 bg-purple-50/50 dark:bg-purple-950/30 border-purple-300"
+                                    : day.hasMeal
+                                    ? day.mealCategory === "SPECIAL"
+                                      ? "bg-purple-50/30 dark:bg-purple-950/20 border-purple-200 dark:border-purple-900"
+                                      : "bg-white dark:bg-slate-800/90 border-slate-200 dark:border-slate-700"
+                                    : "bg-slate-50/60 dark:bg-slate-900/40 border-slate-100 dark:border-slate-800 text-slate-400"
+                                }`}
+                              >
+                                {/* Header ô ngày */}
+                                <div className="flex items-center justify-between">
+                                  <span
+                                    className={`text-xs font-bold ${
+                                      day.isToday
+                                        ? "h-5 w-5 rounded-full bg-purple-600 text-white flex items-center justify-center text-[11px]"
+                                        : day.isSunday
+                                        ? "text-rose-500"
+                                        : "text-slate-800 dark:text-slate-200"
+                                    }`}
+                                  >
+                                    {day.dayNum}
+                                  </span>
+                                  {day.isToday && (
+                                    <span className="hidden sm:inline-block text-[9px] font-bold text-purple-700 bg-purple-100 dark:bg-purple-900/60 px-1 py-0.2 rounded">
+                                      Hôm nay
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Body ô ngày */}
+                                <div className="space-y-1 my-1">
+                                  {day.hasMeal ? (
+                                    <>
+                                      {/* Tên lịch & ca ăn */}
+                                      <div className="flex flex-wrap items-center gap-0.5">
+                                        <Badge
+                                          variant="secondary"
+                                          className={`text-[9px] px-1 py-0 font-bold ${
+                                            day.shift === "TIET_4"
+                                              ? "bg-orange-100 text-orange-700 border-orange-200"
+                                              : "bg-blue-100 text-blue-700 border-blue-200"
+                                          }`}
+                                        >
+                                          {day.shift === "TIET_4" ? "T4" : "T5"}
+                                        </Badge>
+                                        <span
+                                          className={`text-[10px] font-semibold truncate max-w-[85px] sm:max-w-full ${
+                                            day.mealCategory === "SPECIAL"
+                                              ? "text-purple-700 dark:text-purple-300 font-bold"
+                                              : "text-slate-600 dark:text-slate-400"
+                                          }`}
+                                          title={day.scheduleName}
+                                        >
+                                          {day.mealCategory === "SPECIAL"
+                                            ? `🌟 ${day.scheduleName}`
+                                            : "Lớp thường"}
+                                        </span>
+                                      </div>
+
+                                      {/* Sân ăn */}
+                                      {day.court ? (
+                                        <div className="text-[10px] font-extrabold text-indigo-700 dark:text-indigo-300 flex items-center gap-0.5 truncate bg-indigo-50/80 dark:bg-indigo-950/60 px-1 py-0.5 rounded">
+                                          <MapPin className="h-2.5 w-2.5 shrink-0" />
+                                          <span className="truncate">{day.court.courtName}</span>
+                                        </div>
+                                      ) : (
+                                        <div className="text-[9px] text-slate-400 italic">
+                                          Chưa phân sân
+                                        </div>
+                                      )}
+
+                                      {/* Trạng thái cắt suất nếu có */}
+                                      {day.cancellation && (
+                                        <div>
+                                          <Badge
+                                            variant="outline"
+                                            className={`text-[8.5px] px-1 py-0 leading-tight block truncate font-bold ${
+                                              day.cancellation.status === "APPROVED"
+                                                ? "bg-emerald-50 text-emerald-700 border-emerald-300 line-through"
+                                                : day.cancellation.status === "PENDING"
+                                                ? "bg-amber-50 text-amber-700 border-amber-300"
+                                                : "bg-rose-50 text-rose-700 border-rose-300"
+                                            }`}
+                                            title={day.cancellation.cancellationNote}
+                                          >
+                                            {day.cancellation.cancellationNote}
+                                          </Badge>
+                                        </div>
+                                      )}
+                                    </>
+                                  ) : (
+                                    <div className="text-[10px] text-slate-400 text-center py-1">
+                                      {day.isSunday ? "Chủ Nhật" : "Không ăn"}
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Footer ô ngày: Đổi món nếu có */}
+                                {day.hasMeal && day.isMealOverridden && (
+                                  <div className="text-[9px] text-emerald-600 dark:text-emerald-400 font-semibold truncate">
+                                    {day.mealTypeName}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          });
+
+                          return gridItems;
+                        })()}
+                      </div>
+                    </div>
+                  ) : (
+                    /* CHẾ ĐỘ DANH SÁCH CHI TIẾT (LIST) */
+                    <div className="space-y-2">
+                      {(() => {
+                        const daysWithMeal = (monthlyScheduleData?.days || []).filter((d: any) => d.hasMeal);
+                        if (daysWithMeal.length === 0) {
+                          return (
+                            <div className="py-8 text-center text-slate-400 text-xs">
+                              Tháng này không có ngày nào có lịch ăn bán trú.
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div className="border border-slate-200 dark:border-slate-800 rounded-lg overflow-hidden">
+                            <Table>
+                              <TableHeader className="bg-slate-50 dark:bg-slate-800/80">
+                                <TableRow>
+                                  <TableHead className="w-28 font-semibold text-xs">Ngày ăn</TableHead>
+                                  <TableHead className="w-24 text-center font-semibold text-xs">Thứ</TableHead>
+                                  <TableHead className="font-semibold text-xs">Lịch học & Ca ăn</TableHead>
+                                  <TableHead className="w-32 text-center font-semibold text-xs">Vị trí Sân ăn</TableHead>
+                                  <TableHead className="w-28 text-center font-semibold text-xs">Chế độ món</TableHead>
+                                  <TableHead className="w-40 text-center font-semibold text-xs">Trạng thái suất ăn</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {daysWithMeal.map((day: any) => (
+                                  <TableRow
+                                    key={day.dateStr}
+                                    className={`hover:bg-slate-50/80 dark:hover:bg-slate-900/50 ${
+                                      day.isToday ? "bg-purple-50/40 dark:bg-purple-950/20 font-semibold" : ""
+                                    }`}
+                                  >
+                                    <TableCell className="text-xs font-mono">
+                                      <div className="flex items-center gap-1.5">
+                                        <span>{formatDate(day.dateStr)}</span>
+                                        {day.isToday && (
+                                          <Badge className="bg-purple-600 text-white text-[9px] px-1 py-0">
+                                            Hôm nay
+                                          </Badge>
+                                        )}
+                                      </div>
+                                    </TableCell>
+                                    <TableCell className="text-center text-xs font-medium text-slate-700 dark:text-slate-300">
+                                      {day.dowName}
+                                    </TableCell>
+                                    <TableCell className="text-xs">
+                                      <div className="flex items-center gap-1.5">
+                                        <Badge
+                                          variant="secondary"
+                                          className={`text-[10px] ${
+                                            day.shift === "TIET_4"
+                                              ? "bg-orange-100 text-orange-700"
+                                              : "bg-blue-100 text-blue-700"
+                                          }`}
+                                        >
+                                          {day.shift === "TIET_4" ? "Tiết 4" : "Tiết 5"}
+                                        </Badge>
+                                        <span
+                                          className={
+                                            day.mealCategory === "SPECIAL"
+                                              ? "font-bold text-purple-700 dark:text-purple-300"
+                                              : "text-slate-700 dark:text-slate-300"
+                                          }
+                                        >
+                                          {day.mealCategory === "SPECIAL"
+                                            ? `🌟 ${day.scheduleName}`
+                                            : day.scheduleName}
+                                        </span>
+                                      </div>
+                                    </TableCell>
+                                    <TableCell className="text-center text-xs">
+                                      {day.court ? (
+                                        <Badge
+                                          variant="outline"
+                                          className="bg-indigo-50 text-indigo-700 border-indigo-200 font-bold text-xs"
+                                        >
+                                          <MapPin className="h-3 w-3 mr-1" />
+                                          {day.court.courtName} ({day.court.cartName})
+                                        </Badge>
+                                      ) : (
+                                        <span className="text-slate-400 text-xs italic">Chưa phân sân</span>
+                                      )}
+                                    </TableCell>
+                                    <TableCell className="text-center text-xs">
+                                      <span
+                                        className={
+                                          day.isMealOverridden
+                                            ? "text-emerald-600 font-bold"
+                                            : "text-slate-700 dark:text-slate-300"
+                                        }
+                                      >
+                                        {day.mealTypeName}
+                                      </span>
+                                    </TableCell>
+                                    <TableCell className="text-center text-xs">
+                                      {day.cancellation ? (
+                                        <Badge
+                                          variant="outline"
+                                          className={
+                                            day.cancellation.status === "APPROVED"
+                                              ? "bg-emerald-50 text-emerald-700 border-emerald-300 font-bold"
+                                              : day.cancellation.status === "PENDING"
+                                              ? "bg-amber-50 text-amber-700 border-amber-300 font-bold"
+                                              : "bg-rose-50 text-rose-700 border-rose-300 font-bold"
+                                          }
+                                        >
+                                          {day.cancellation.cancellationNote}
+                                        </Badge>
+                                      ) : (
+                                        <span className="text-teal-700 dark:text-teal-400 font-medium">
+                                          Bình thường (Có ăn)
+                                        </span>
+                                      )}
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </>
+          )}
+        </TabsContent>
 
         <TabsContent value="cancel">
           <div className={`grid grid-cols-1 gap-6 ${!readOnly ? "md:grid-cols-2" : ""}`}>
