@@ -555,6 +555,31 @@ export async function getDayMealClasses(dateStr: string) {
   });
   const overrideMap = new Map(mealOverrides.map((o) => [o.studentId, o.mealType]));
 
+  // Lấy HS ăn đặc biệt ngày này
+  const specialMeals = await prisma.studentSpecialMeal.findMany({
+    where: { date },
+    include: {
+      student: {
+        include: {
+          user: { select: { fullName: true } },
+          class: { select: { id: true, name: true } },
+        },
+      },
+    },
+  });
+
+  // Tập hợp các học sinh có lịch ăn đặc biệt hợp lệ trong ngày (Ca Tiết 4 hoặc Tiết 5, đang bán trú, chưa cắt suất)
+  const specialMealStudentIds = new Set<string>();
+  for (const sm of specialMeals) {
+    if (
+      sm.student?.boardingStatus === BoardingStatus.ACTIVE &&
+      !cancelledStudentIds.has(sm.studentId) &&
+      (sm.shift === "TIET_4" || sm.shift === "TIET_5")
+    ) {
+      specialMealStudentIds.add(sm.studentId);
+    }
+  }
+
   const classSummariesTiet4: ClassMealSummary[] = [];
   const classSummariesTiet5: ClassMealSummary[] = [];
   const classMap = new Map<string, ClassMealSummary>();
@@ -564,7 +589,10 @@ export async function getDayMealClasses(dateStr: string) {
     if (shift !== "TIET_4" && shift !== "TIET_5") continue;
 
     const students = schedule.class.students;
-    const activeStudents = students.filter((s) => !cancelledStudentIds.has(s.id));
+    // Lọc ra các HS ăn theo lớp thường: KHÔNG bị cắt suất VÀ KHÔNG có lịch ăn đặc biệt ngày này
+    const activeStudents = students.filter(
+      (s) => !cancelledStudentIds.has(s.id) && !specialMealStudentIds.has(s.id)
+    );
 
     let manCount = 0;
     let chayCount = 0;
@@ -612,22 +640,6 @@ export async function getDayMealClasses(dateStr: string) {
   }
 
   // ==================== LỚP ẢO TỪ LỊCH ĂN ĐẶC BIỆT ====================
-  // Lấy HS ăn đặc biệt ngày này
-  const specialMeals = await prisma.studentSpecialMeal.findMany({
-    where: { date },
-    include: {
-      student: {
-        include: {
-          user: { select: { fullName: true } },
-          class: { select: { id: true, name: true } },
-        },
-      },
-    },
-  });
-
-  // Tạo map classId -> schedule để kiểm tra trùng TKB
-  const scheduleClassIds = new Set(schedules.map((s) => s.classId));
-
   // Gom HS đặc biệt theo scheduleName + shift → tạo "lớp ảo"
   const specialGroups = new Map<string, {
     scheduleName: string;
@@ -639,12 +651,6 @@ export async function getDayMealClasses(dateStr: string) {
     const student = sm.student;
     if (student.boardingStatus !== BoardingStatus.ACTIVE) continue;
     if (cancelledStudentIds.has(student.id)) continue;
-
-    // Kiểm tra lớp HS đã có TKB ngày này chưa
-    if (scheduleClassIds.has(student.classId)) {
-      // TRÙNG → HS đã nằm trong sân lớp rồi, bỏ qua
-      continue;
-    }
 
     const smShift = sm.shift as "TIET_4" | "TIET_5";
     if (smShift !== "TIET_4" && smShift !== "TIET_5") continue;
@@ -695,7 +701,7 @@ export async function getDayMealClasses(dateStr: string) {
       const virtualId = `SPECIAL::${group.scheduleName}::${group.shift}${suffix}`;
       const virtualClass: ClassMealSummary = {
         classId: virtualId,
-        className: `Lớp ${group.scheduleName}${suffix}`,
+        className: `[Đặc biệt] ${group.scheduleName}${suffix}`,
         shift: group.shift,
         totalMeals: batch.length,
         manCount,
@@ -785,7 +791,18 @@ export async function getDiningCourtAllocation(dateStr: string): Promise<DiningA
 
       for (const cid of sc.classIds) {
         assignedClassIds.add(cid);
-        const clsInfo = classMap.get(cid);
+        let clsInfo = classMap.get(cid);
+        if (!clsInfo && cid.startsWith("SPECIAL::")) {
+          const schedName = extractSpecialScheduleName(cid);
+          for (const [vId, vCls] of classMap) {
+            if (extractSpecialScheduleName(vId) === schedName && vCls.shift === courtShift) {
+              clsInfo = vCls;
+              assignedClassIds.add(vId);
+              break;
+            }
+          }
+        }
+
         if (clsInfo) {
           courtClassesInfo.push({
             classId: clsInfo.classId,
@@ -803,7 +820,7 @@ export async function getDiningCourtAllocation(dateStr: string): Promise<DiningA
         } else {
           courtClassesInfo.push({
             classId: cid,
-            className: cid,
+            className: cid.startsWith("SPECIAL::") ? `[Đặc biệt] ${extractSpecialScheduleName(cid)}` : cid,
             totalMeals: 0,
             manCount: 0,
             chayCount: 0,
@@ -812,13 +829,14 @@ export async function getDiningCourtAllocation(dateStr: string): Promise<DiningA
         }
       }
 
-      // Xử lý HS đặc biệt (lớp ảo) từ specialStudentIds
+      // Xử lý HS đặc biệt (lớp ảo) từ specialStudentIds (cho các bản ghi cũ chưa lưu classIds đặc biệt)
       if (sc.specialStudentIds && sc.specialStudentIds.length > 0) {
         // Tìm HS đặc biệt trong classMap (lớp ảo SPECIAL::)
         const specialStudentSet = new Set(sc.specialStudentIds);
         for (const [vId, vClass] of classMap) {
           if (!vId.startsWith("SPECIAL::")) continue;
           if (vClass.shift !== courtShift) continue;
+          if (assignedClassIds.has(vId)) continue; // Bỏ qua nếu đã được thêm từ sc.classIds
           const matchedStudents = vClass.students.filter((s) => specialStudentSet.has(s.id));
           if (matchedStudents.length > 0) {
             assignedClassIds.add(vId);
@@ -981,22 +999,22 @@ export async function saveAutoDiningCourtAllocation(dateStr: string): Promise<Di
     });
 
     const toCreate = [...courtsTiet4, ...courtsTiet5].map((court) => {
-      // Phân biệt lớp thường vs lớp ảo
+      // Lưu toàn bộ classId (bao gồm cả lớp thường lẫn lớp ảo SPECIAL::)
+      const allClassIds = court.classes.map((c) => c.classId);
       const regularClassIds = court.classes
         .filter((c) => !c.classId.startsWith("SPECIAL::"))
         .map((c) => c.classId);
       const specialClasses = court.classes
         .filter((c) => c.classId.startsWith("SPECIAL::"));
-      // Lấy student IDs từ các lớp ảo
+      // Lấy student IDs từ các lớp ảo (bảo toàn tính tương thích)
       const specialStudentIds = specialClasses.length > 0
         ? court.students
-          .filter((s) => !regularClassIds.includes(s.className) && specialClasses.some(() => true))
+          .filter((s) => !regularClassIds.includes(s.className))
           .filter((s) => {
-            // Kiểm tra student thuộc lớp ảo (className của student là lớp gốc, không nằm trong regularClassIds)
             const studentClassId = court.classes.find(
               (c) => !c.classId.startsWith("SPECIAL::") && c.className === s.className
             );
-            return !studentClassId; // Student không thuộc lớp thường nào trong sân
+            return !studentClassId;
           })
           .map((s) => s.id)
         : [];
@@ -1008,7 +1026,7 @@ export async function saveAutoDiningCourtAllocation(dateStr: string): Promise<Di
         courtName: court.courtName,
         cartNumber: court.cartNumber,
         cartName: court.cartName,
-        classIds: regularClassIds,
+        classIds: allClassIds,
         specialStudentIds,
         mode: "AUTO",
       };
@@ -1103,7 +1121,6 @@ export async function saveManualDiningCourtAllocation(
   for (const c of tiet4Inputs) {
     const num = allocateCourtNumber(c);
     const cartNum = c.cartNumber && c.cartNumber > 0 ? c.cartNumber : Math.ceil(num / 2);
-    const regularClassIds = c.classIds.filter((cid) => !cid.startsWith("SPECIAL::"));
     const specialClassIds = c.classIds.filter((cid) => cid.startsWith("SPECIAL::"));
     const specialStudentIds: string[] = [];
     for (const sid of specialClassIds) {
@@ -1120,7 +1137,7 @@ export async function saveManualDiningCourtAllocation(
       courtName: c.courtName || `Sân ${num}`,
       cartNumber: cartNum,
       cartName: c.cartName || `Xe ${cartNum}`,
-      classIds: regularClassIds,
+      classIds: c.classIds,
       specialStudentIds,
       mode: "MANUAL",
       note: c.note || null,
@@ -1130,7 +1147,6 @@ export async function saveManualDiningCourtAllocation(
   for (const c of tiet5Inputs) {
     const num = allocateCourtNumber(c);
     const cartNum = c.cartNumber && c.cartNumber > 0 ? c.cartNumber : Math.ceil(num / 2);
-    const regularClassIds = c.classIds.filter((cid) => !cid.startsWith("SPECIAL::"));
     const specialClassIds = c.classIds.filter((cid) => cid.startsWith("SPECIAL::"));
     const specialStudentIds: string[] = [];
     for (const sid of specialClassIds) {
@@ -1147,7 +1163,7 @@ export async function saveManualDiningCourtAllocation(
       courtName: c.courtName || `Sân ${num}`,
       cartNumber: cartNum,
       cartName: c.cartName || `Xe ${cartNum}`,
-      classIds: regularClassIds,
+      classIds: c.classIds,
       specialStudentIds,
       mode: "MANUAL",
       note: c.note || null,
@@ -1205,6 +1221,7 @@ export interface WeeklyMatrixRow {
   className: string;
   totalStudents: number;
   courts: Record<string, WeeklyMatrixCell | null>; // dateStr -> cell
+  isSpecial?: boolean;
 }
 
 export interface WeeklyDiningMatrixResult {
@@ -1257,6 +1274,66 @@ export async function getWeeklyDiningMatrix(referenceDate: Date | string): Promi
     orderBy: [{ date: "asc" }, { courtNumber: "asc" }],
   });
 
+  // 2b. Lấy các lịch ăn đặc biệt trong tuần
+  const specialMealsThisWeek = await prisma.studentSpecialMeal.findMany({
+    where: {
+      date: {
+        gte: startUtc,
+        lte: endUtc,
+      },
+    },
+    include: {
+      student: {
+        select: {
+          id: true,
+          boardingStatus: true,
+        },
+      },
+    },
+  });
+
+  // Gom các lịch đặc biệt có học sinh trong tuần
+  const specialSchedulesMap = new Map<string, {
+    scheduleName: string;
+    studentIds: Set<string>;
+    dates: Set<string>;
+  }>();
+
+  for (const sm of specialMealsThisWeek) {
+    if (sm.student?.boardingStatus !== BoardingStatus.ACTIVE) continue;
+    if (sm.shift !== "TIET_4" && sm.shift !== "TIET_5") continue;
+
+    const cd = new Date(sm.date);
+    const dStr = `${cd.getUTCFullYear()}-${String(cd.getUTCMonth() + 1).padStart(2, "0")}-${String(cd.getUTCDate()).padStart(2, "0")}`;
+
+    if (!specialSchedulesMap.has(sm.scheduleName)) {
+      specialSchedulesMap.set(sm.scheduleName, {
+        scheduleName: sm.scheduleName,
+        studentIds: new Set(),
+        dates: new Set(),
+      });
+    }
+    const item = specialSchedulesMap.get(sm.scheduleName)!;
+    item.studentIds.add(sm.studentId);
+    item.dates.add(dStr);
+  }
+
+  // Quét thêm trong courts của tuần để không sót bất kỳ lịch đặc biệt nào đã được xếp sân
+  for (const c of courts) {
+    for (const cid of c.classIds) {
+      if (cid.startsWith("SPECIAL::")) {
+        const schedName = extractSpecialScheduleName(cid);
+        if (!specialSchedulesMap.has(schedName)) {
+          specialSchedulesMap.set(schedName, {
+            scheduleName: schedName,
+            studentIds: new Set(),
+            dates: new Set(),
+          });
+        }
+      }
+    }
+  }
+
   // 3. Ánh xạ classId + dateStr -> court
   const cellMap = new Map<string, WeeklyMatrixCell>();
   const courtNamesSet = new Set<string>();
@@ -1265,13 +1342,39 @@ export async function getWeeklyDiningMatrix(referenceDate: Date | string): Promi
     const cd = new Date(c.date);
     const dStr = `${cd.getUTCFullYear()}-${String(cd.getUTCMonth() + 1).padStart(2, "0")}-${String(cd.getUTCDate()).padStart(2, "0")}`;
     courtNamesSet.add(c.courtName);
+
     for (const cid of c.classIds) {
-      cellMap.set(`${cid}_${dStr}`, {
+      const cellData: WeeklyMatrixCell = {
         courtName: c.courtName,
         courtNumber: c.courtNumber,
         cartName: c.cartName,
         shift: c.shift,
-      });
+      };
+      cellMap.set(`${cid}_${dStr}`, cellData);
+
+      // Nếu là lớp ảo SPECIAL::, cũng map theo scheduleName rút gọn
+      if (cid.startsWith("SPECIAL::")) {
+        const schedName = extractSpecialScheduleName(cid);
+        cellMap.set(`SPECIAL::${schedName}_${dStr}`, cellData);
+      }
+    }
+
+    // Tương thích ngược: nếu court có specialStudentIds cũ
+    if (c.specialStudentIds && c.specialStudentIds.length > 0) {
+      const studentSet = new Set(c.specialStudentIds);
+      for (const sm of specialMealsThisWeek) {
+        if (studentSet.has(sm.studentId)) {
+          const cellKey = `SPECIAL::${sm.scheduleName}_${dStr}`;
+          if (!cellMap.has(cellKey)) {
+            cellMap.set(cellKey, {
+              courtName: c.courtName,
+              courtNumber: c.courtNumber,
+              cartName: c.cartName,
+              shift: c.shift,
+            });
+          }
+        }
+      }
     }
   }
 
@@ -1280,8 +1383,8 @@ export async function getWeeklyDiningMatrix(referenceDate: Date | string): Promi
     a.localeCompare(b, "vi", { numeric: true })
   );
 
-  // 4. Lập các hàng ma trận cho từng lớp
-  const rows: WeeklyMatrixRow[] = allClasses.map((cls) => {
+  // 4. Lập các hàng ma trận cho từng lớp thường
+  const regularRows: WeeklyMatrixRow[] = allClasses.map((cls) => {
     const classCourts: Record<string, WeeklyMatrixCell | null> = {};
     for (const day of days) {
       const cell = cellMap.get(`${cls.id}_${day.dateStr}`) || null;
@@ -1292,14 +1395,36 @@ export async function getWeeklyDiningMatrix(referenceDate: Date | string): Promi
       className: cls.name || cls.id,
       totalStudents: cls._count.students,
       courts: classCourts,
+      isSpecial: false,
     };
   });
+
+  // 4b. Lập các hàng ma trận cho các lớp lịch ăn đặc biệt
+  const specialRows: WeeklyMatrixRow[] = Array.from(specialSchedulesMap.values())
+    .sort((a, b) => a.scheduleName.localeCompare(b.scheduleName, "vi", { numeric: true }))
+    .map((sched) => {
+      const specialClassId = `SPECIAL::${sched.scheduleName}`;
+      const classCourts: Record<string, WeeklyMatrixCell | null> = {};
+      for (const day of days) {
+        const cell = cellMap.get(`${specialClassId}_${day.dateStr}`) || null;
+        classCourts[day.dateStr] = cell;
+      }
+      return {
+        classId: specialClassId,
+        className: `[Đặc biệt] ${sched.scheduleName}`,
+        totalStudents: sched.studentIds.size,
+        courts: classCourts,
+        isSpecial: true,
+      };
+    });
+
+  const allRows: WeeklyMatrixRow[] = [...regularRows, ...specialRows];
 
   return {
     weekInfo,
     distinctCourts,
     days,
-    rows,
+    rows: allRows,
     hasAnyAllocation: courts.length > 0,
     totalCourtsUsed: distinctCourts.length,
   };
@@ -1357,6 +1482,7 @@ export async function copyDiningCourtWeek(
             cartNumber: c.cartNumber,
             cartName: c.cartName,
             classIds: c.classIds,
+            specialStudentIds: c.specialStudentIds || [],
             mode: "MANUAL",
             note: `Sao chép từ tuần ${sourceWeek.schoolWeekNumber}`,
           })),
@@ -1387,11 +1513,20 @@ export async function updateClassCourtCell(
     throw new Error("Ngày này chưa được tạo phân bổ sân. Vui lòng tạo phân bổ trước khi chỉnh sửa.");
   }
 
+  const isSpecial = classId.startsWith("SPECIAL::");
+  const specialSchedName = isSpecial ? extractSpecialScheduleName(classId) : "";
+
+  const matchClassId = (cid: string) => {
+    if (cid === classId) return true;
+    if (isSpecial && extractSpecialScheduleName(cid) === specialSchedName) return true;
+    return false;
+  };
+
   await prisma.$transaction(async (tx) => {
-    // 1. Xóa classId khỏi bất kỳ sân nào trước đó
+    // 1. Xóa classId khỏi bất kỳ sân nào trước đó trong ngày này
     for (const court of existingCourts) {
-      if (court.classIds.includes(classId)) {
-        const nextClasses = court.classIds.filter((id) => id !== classId);
+      if (court.classIds.some(matchClassId)) {
+        const nextClasses = court.classIds.filter((id) => !matchClassId(id));
         await tx.dailyDiningCourt.update({
           where: { id: court.id },
           data: { classIds: nextClasses },
@@ -1403,7 +1538,10 @@ export async function updateClassCourtCell(
     if (newCourtName) {
       const targetCourt = existingCourts.find((c) => c.courtName === newCourtName);
       if (targetCourt) {
-        const updatedIds = Array.from(new Set([...targetCourt.classIds, classId]));
+        const classIdToAdd = isSpecial
+          ? `SPECIAL::${specialSchedName}::${targetCourt.shift}`
+          : classId;
+        const updatedIds = Array.from(new Set([...targetCourt.classIds, classIdToAdd]));
         await tx.dailyDiningCourt.update({
           where: { id: targetCourt.id },
           data: { classIds: updatedIds },
@@ -1413,6 +1551,9 @@ export async function updateClassCourtCell(
         const numMatch = newCourtName.match(/\d+/);
         const courtNumber = numMatch ? parseInt(numMatch[0], 10) : existingCourts.length + 1;
         const cartNumber = Math.ceil(courtNumber / 2);
+        const classIdToAdd = isSpecial
+          ? `SPECIAL::${specialSchedName}::TIET_4`
+          : classId;
         await tx.dailyDiningCourt.create({
           data: {
             date: dateObj,
@@ -1421,7 +1562,7 @@ export async function updateClassCourtCell(
             courtName: newCourtName,
             cartNumber,
             cartName: `Xe ${cartNumber}`,
-            classIds: [classId],
+            classIds: [classIdToAdd],
             mode: "MANUAL",
           },
         });

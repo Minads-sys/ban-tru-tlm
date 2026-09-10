@@ -60,6 +60,13 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 
 export interface SettlementRecordItem {
   id: string;
@@ -191,6 +198,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
   const [monthlyScheduleData, setMonthlyScheduleData] = useState<any | null>(null);
   const [loadingSchedule, setLoadingSchedule] = useState<boolean>(true);
   const [scheduleViewMode, setScheduleViewMode] = useState<"calendar" | "list">("calendar");
+  const [selectedScheduleDay, setSelectedScheduleDay] = useState<any | null>(null);
 
   const fetchMonthlySchedule = useCallback(async (id: string, y: number, m: number) => {
     try {
@@ -1333,7 +1341,16 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                             gridItems.push(
                               <div
                                 key={day.dateStr}
-                                className={`min-h-[85px] sm:min-h-[105px] p-1.5 sm:p-2 rounded-lg border transition-all flex flex-col justify-between ${
+                                onClick={() => {
+                                  if (day.hasMeal) {
+                                    setSelectedScheduleDay(day);
+                                  }
+                                }}
+                                className={`min-h-[85px] sm:min-h-[105px] p-1.5 sm:p-2 rounded-lg border transition-all flex flex-col justify-between select-none ${
+                                  day.hasMeal
+                                    ? "cursor-pointer hover:shadow-md hover:border-purple-400 dark:hover:border-purple-600 active:scale-[0.98]"
+                                    : ""
+                                } ${
                                   day.isToday
                                     ? "ring-2 ring-purple-500 bg-purple-50/50 dark:bg-purple-950/30 border-purple-300"
                                     : day.hasMeal
@@ -1342,6 +1359,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                                       : "bg-white dark:bg-slate-800/90 border-slate-200 dark:border-slate-700"
                                     : "bg-slate-50/60 dark:bg-slate-900/40 border-slate-100 dark:border-slate-800 text-slate-400"
                                 }`}
+                                title={day.hasMeal ? "Bấm xem chi tiết suất ăn, sân ăn & xe cơm" : undefined}
                               >
                                 {/* Header ô ngày */}
                                 <div className="flex items-center justify-between">
@@ -1475,11 +1493,13 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                                 {daysWithMeal.map((day: any) => (
                                   <TableRow
                                     key={day.dateStr}
-                                    className={`group transition-colors border-b border-slate-100 dark:border-slate-800/60 ${
+                                    onClick={() => setSelectedScheduleDay(day)}
+                                    className={`group transition-colors border-b border-slate-100 dark:border-slate-800/60 cursor-pointer ${
                                       day.isToday
                                         ? "bg-purple-50/40 dark:bg-purple-950/20 font-semibold"
                                         : "hover:bg-slate-50/80 dark:hover:bg-slate-900/50"
                                     }`}
+                                    title="Bấm để xem chi tiết suất ăn, sân ăn & xe cơm"
                                   >
                                     {/* Cột Ngày ăn - Cố định (Sticky) */}
                                     <TableCell
@@ -1581,6 +1601,170 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                   )}
                 </CardContent>
               </Card>
+
+              {/* Modal Chi Tiết Suất Ăn & Vị Trí Nhận Cơm */}
+              <Dialog open={!!selectedScheduleDay} onOpenChange={(open) => !open && setSelectedScheduleDay(null)}>
+                <DialogContent className="max-w-md w-[92vw] sm:w-full p-5 sm:p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl">
+                  {selectedScheduleDay && (
+                    <div className="space-y-4">
+                      {/* Header modal */}
+                      <DialogHeader className="text-left space-y-1 pb-3 border-b border-slate-100 dark:border-slate-800">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-purple-700 dark:text-purple-400 bg-purple-100 dark:bg-purple-950/60 px-2 py-0.5 rounded-md">
+                            {selectedScheduleDay.dowName}
+                          </span>
+                          <span className="text-sm font-bold text-slate-900 dark:text-slate-100 font-mono">
+                            {formatDate(selectedScheduleDay.dateStr)}
+                          </span>
+                          {selectedScheduleDay.isToday && (
+                            <Badge className="bg-purple-600 text-white text-[10px] px-1.5 py-0 font-bold">
+                              Hôm nay
+                            </Badge>
+                          )}
+                        </div>
+                        <DialogTitle className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                          <Utensils className="h-5 w-5 text-purple-600 shrink-0" />
+                          Thông Tin Suất Ăn & Nhận Cơm
+                        </DialogTitle>
+                        <DialogDescription className="text-xs text-slate-500">
+                          Chi tiết lịch ăn bán trú, món ăn, vị trí sân ăn và xe cơm được phân công.
+                        </DialogDescription>
+                      </DialogHeader>
+
+                      {/* 1. Thẻ Sân ăn & Xe cơm nổi bật */}
+                      <div className="p-4 rounded-xl bg-gradient-to-r from-purple-50 via-indigo-50 to-blue-50 dark:from-purple-950/40 dark:via-indigo-950/30 dark:to-blue-950/20 border border-purple-200/80 dark:border-purple-800/60 shadow-xs">
+                        <div className="flex items-center gap-3.5">
+                          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-purple-600 text-white font-bold shadow-xs">
+                            <MapPin className="h-6 w-6" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <span className="text-[11px] font-bold text-purple-700 dark:text-purple-300 uppercase tracking-wider block">
+                              Vị trí nhận cơm
+                            </span>
+                            <div className="flex flex-wrap items-baseline gap-2 mt-0.5">
+                              <span className="text-lg sm:text-xl font-black text-purple-950 dark:text-purple-100">
+                                {selectedScheduleDay.court ? selectedScheduleDay.court.courtName : "Chưa phân sân"}
+                              </span>
+                              {selectedScheduleDay.court?.cartName && (
+                                <Badge className="bg-indigo-600 hover:bg-indigo-600 text-white font-bold text-xs px-2 py-0.5">
+                                  {selectedScheduleDay.court.cartName}
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        {!selectedScheduleDay.court && (
+                          <p className="text-[11px] text-slate-500 italic mt-2.5 pt-2 border-t border-purple-100 dark:border-purple-900/50">
+                            * Nhà trường sẽ phân công vị trí sân ăn và xe cơm trước buổi ăn. Vui lòng kiểm tra lại trước giờ ăn.
+                          </p>
+                        )}
+                      </div>
+
+                      {/* 2. Grid chi tiết các thông tin */}
+                      <div className="grid grid-cols-2 gap-2.5 text-xs">
+                        {/* Tên lịch ăn */}
+                        <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-800 space-y-1">
+                          <span className="text-slate-500 dark:text-slate-400 block text-[11px]">
+                            Tên lịch ăn
+                          </span>
+                          <div>
+                            {selectedScheduleDay.mealCategory === "SPECIAL" ? (
+                              <span className="inline-block px-2 py-0.5 rounded bg-orange-600 text-white text-xs font-bold truncate max-w-full">
+                                {selectedScheduleDay.scheduleName}
+                              </span>
+                            ) : (
+                              <span className="inline-block px-2 py-0.5 rounded bg-blue-600 text-white text-xs font-bold truncate max-w-full">
+                                {selectedScheduleDay.scheduleName}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Ca ăn */}
+                        <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-800 space-y-1">
+                          <span className="text-slate-500 dark:text-slate-400 block text-[11px]">
+                            Ca ăn
+                          </span>
+                          <span className="font-bold text-slate-800 dark:text-slate-200 block text-xs">
+                            {selectedScheduleDay.shiftName || (selectedScheduleDay.shift === "TIET_4" ? "Ca Tiết 4 (10:15)" : "Ca Tiết 5 (11:00)")}
+                          </span>
+                        </div>
+
+                        {/* Chế độ món */}
+                        <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-800 space-y-1">
+                          <span className="text-slate-500 dark:text-slate-400 block text-[11px]">
+                            Chế độ món
+                          </span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-bold text-slate-800 dark:text-slate-200 text-xs">
+                              {selectedScheduleDay.mealTypeName}
+                            </span>
+                            {selectedScheduleDay.isMealOverridden && (
+                              <Badge className="bg-emerald-100 text-emerald-800 text-[10px] px-1 py-0 border border-emerald-300">
+                                Đã đổi
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Trạng thái suất ăn */}
+                        <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-800 space-y-1">
+                          <span className="text-slate-500 dark:text-slate-400 block text-[11px]">
+                            Trạng thái suất
+                          </span>
+                          {selectedScheduleDay.cancellation ? (
+                            <Badge
+                              variant="outline"
+                              className={`text-[10px] font-bold px-1.5 py-0.5 ${
+                                selectedScheduleDay.cancellation.status === "APPROVED"
+                                  ? "bg-emerald-50 text-emerald-700 border-emerald-300 line-through"
+                                  : selectedScheduleDay.cancellation.status === "PENDING"
+                                  ? "bg-amber-50 text-amber-700 border-amber-300"
+                                  : "bg-rose-50 text-rose-700 border-rose-300"
+                              }`}
+                            >
+                              {selectedScheduleDay.cancellation.cancellationNote}
+                            </Badge>
+                          ) : (
+                            <span className="text-emerald-700 dark:text-emerald-400 font-bold text-xs block">
+                              Có ăn
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Thông tin Xe cơm */}
+                      <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between text-xs">
+                        <span className="text-slate-500 dark:text-slate-400">
+                          Xe cơm nhận suất:
+                        </span>
+                        <span className="font-bold text-indigo-700 dark:text-indigo-300">
+                          {selectedScheduleDay.court?.cartName || "Chưa xếp xe"}
+                        </span>
+                      </div>
+
+                      {/* Ghi chú đơn cắt suất nếu có */}
+                      {selectedScheduleDay.cancellation?.reason && (
+                        <div className="p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-xs text-amber-900 dark:text-amber-200">
+                          <strong>Lý do cắt suất:</strong> {selectedScheduleDay.cancellation.reason}
+                        </div>
+                      )}
+
+                      {/* Footer */}
+                      <div className="pt-2 flex justify-end">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSelectedScheduleDay(null)}
+                          className="cursor-pointer text-xs"
+                        >
+                          Đóng
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </DialogContent>
+              </Dialog>
             </>
           )}
         </TabsContent>

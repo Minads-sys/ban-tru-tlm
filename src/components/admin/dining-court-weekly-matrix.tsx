@@ -479,6 +479,15 @@ export function DiningCourtWeeklyMatrix({ schoolName = 'TRƯỜNG TIỂU HỌC B
               padding: 4px 6px;
               text-align: center;
             }
+            .text-left {
+              text-align: left !important;
+            }
+            .special-section-header {
+              background-color: #fef3c7 !important;
+              color: #78350f !important;
+              font-weight: 800 !important;
+              text-align: left !important;
+            }
             th {
               background-color: #f1f5f9 !important;
               font-weight: bold;
@@ -814,57 +823,98 @@ export function DiningCourtWeeklyMatrix({ schoolName = 'TRƯỜNG TIỂU HỌC B
                   </td>
                 </tr>
               ) : matrixData && matrixData.rows.length > 0 ? (
-                matrixData.rows.map((row) => (
-                  <tr key={row.classId} className="hover:bg-slate-50/80 transition-colors">
-                    {/* Cột Lớp */}
-                    <td className="border border-slate-950 font-bold text-slate-900 px-2.5 py-1.5 bg-slate-50/50">
-                      {row.className}
-                    </td>
+                matrixData.rows.map((row, index) => {
+                  const isFirstSpecialRow =
+                    row.isSpecial && (index === 0 || !matrixData.rows[index - 1].isSpecial);
 
-                    {/* 5 Cột Thứ 2 -> Thứ 6 */}
-                    {matrixData.days.map((day) => {
-                      const cell = row.courts[day.dateStr];
-                      const courtName = cell?.courtName || '';
-                      const isTiet4 = cell?.shift === 'TIET_4';
-                      const shiftLabel = isTiet4 ? '(Tiết 4)' : '(Tiết 5)';
-                      const shiftDesc = isTiet4 ? 'Ăn lúc 10g30' : 'Ăn lúc 11g20';
-
-                      return (
+                  return (
+                    <React.Fragment key={row.classId}>
+                      {isFirstSpecialRow && (
+                        <tr key="special-divider-row" className="bg-amber-100 special-section-header">
+                          <td
+                            colSpan={6}
+                            className="border border-slate-950 px-3 py-1.5 text-left text-xs sm:text-sm font-extrabold uppercase tracking-wide text-amber-900 bg-amber-100"
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <Sparkles className="h-4 w-4 text-amber-700 no-print" />
+                              <span>CÁC LỚP LỊCH ĂN ĐẶC BIỆT (LIÊN LỚP / NGOẠI NGỮ 2 / GDQP...)</span>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                      <tr
+                        className={`hover:bg-slate-50/80 transition-colors ${
+                          row.isSpecial ? 'bg-amber-50/30' : ''
+                        }`}
+                      >
+                        {/* Cột Lớp */}
                         <td
-                          key={day.dateStr}
-                          onClick={() => handleCellClick(courtName || null, row, day.dateStr, day.dayLabel)}
-                          className={`border border-slate-950 px-2 py-1.5 transition-all ${
-                            canEdit ? 'cursor-pointer hover:bg-blue-50/70' : ''
-                          } ${courtName ? 'text-slate-900 bg-white' : 'text-slate-300 bg-slate-50/30'}`}
-                          title={
-                            courtName
-                              ? `Lớp ${row.className} - ${courtName} (${shiftLabel.replace(/[()]/g, '')} - ${shiftDesc})${canEdit ? '\nClick để sửa/đổi sân cho lớp này' : ''}`
-                              : canEdit
-                              ? `Chưa có sân. Click để gán sân cho lớp ${row.className}`
-                              : 'Không ăn'
-                          }
+                          className={`border border-slate-950 font-bold px-2.5 py-1.5 ${
+                            row.isSpecial
+                              ? 'bg-amber-50 text-amber-950'
+                              : 'bg-slate-50/50 text-slate-900'
+                          }`}
                         >
-                          {courtName ? (
-                            <div className="flex flex-col items-center justify-center leading-tight py-0.5">
-                              <span className="font-bold tracking-tight uppercase text-xs sm:text-sm">
-                                {courtName}
+                          {row.isSpecial ? (
+                            <div className="flex flex-col items-center justify-center gap-0.5">
+                              <span className="inline-block px-1.5 py-0.2 rounded text-[9px] sm:text-[10px] bg-amber-200 text-amber-900 border border-amber-300 font-extrabold uppercase tracking-wider">
+                                ĐẶC BIỆT
                               </span>
-                              <span
-                                className={`text-[10px] sm:text-[11px] font-semibold mt-0.5 ${
-                                  isTiet4 ? 'text-amber-700 shift-tiet4' : 'text-indigo-700 shift-tiet5'
-                                }`}
-                              >
-                                {shiftLabel}
+                              <span className="font-bold text-xs sm:text-sm text-slate-900">
+                                {row.className.replace(/^\[Đặc biệt\]\s*/, '')}
                               </span>
                             </div>
                           ) : (
-                            <span className="text-slate-300 select-none">&nbsp;</span>
+                            row.className
                           )}
                         </td>
-                      );
-                    })}
-                  </tr>
-                ))
+
+                        {/* 5 Cột Thứ 2 -> Thứ 6 */}
+                        {matrixData.days.map((day) => {
+                          const cell = row.courts[day.dateStr];
+                          const courtName = cell?.courtName || '';
+                          const isTiet4 = cell?.shift === 'TIET_4';
+                          const shiftLabel = isTiet4 ? '(Tiết 4)' : '(Tiết 5)';
+                          const shiftDesc = isTiet4 ? 'Ăn lúc 10g30' : 'Ăn lúc 11g20';
+
+                          return (
+                            <td
+                              key={day.dateStr}
+                              onClick={() => handleCellClick(courtName || null, row, day.dateStr, day.dayLabel)}
+                              className={`border border-slate-950 px-2 py-1.5 transition-all ${
+                                canEdit ? 'cursor-pointer hover:bg-blue-50/70' : ''
+                              } ${courtName ? 'text-slate-900 bg-white' : 'text-slate-300 bg-slate-50/30'}`}
+                              title={
+                                courtName
+                                  ? `${row.className} - ${courtName} (${shiftLabel.replace(/[()]/g, '')} - ${shiftDesc})${canEdit ? '\nClick để sửa/đổi sân cho lớp này' : ''}`
+                                  : canEdit
+                                  ? `Chưa có sân. Click để gán sân cho ${row.className}`
+                                  : 'Không ăn'
+                              }
+                            >
+                              {courtName ? (
+                                <div className="flex flex-col items-center justify-center leading-tight py-0.5">
+                                  <span className="font-bold tracking-tight uppercase text-xs sm:text-sm">
+                                    {courtName}
+                                  </span>
+                                  <span
+                                    className={`text-[10px] sm:text-[11px] font-semibold mt-0.5 ${
+                                      isTiet4 ? 'text-amber-700 shift-tiet4' : 'text-indigo-700 shift-tiet5'
+                                    }`}
+                                  >
+                                    {shiftLabel}
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-slate-300 select-none">&nbsp;</span>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    </React.Fragment>
+                  );
+                })
               ) : (
                 <tr>
                   <td colSpan={6} className="border border-slate-950 py-8 text-center text-slate-500">

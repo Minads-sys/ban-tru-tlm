@@ -807,15 +807,36 @@ export async function generateWeeklyDiningMatrixPdfBuffer(
       {}, {}, {}, {}, {},
     ]);
   } else {
+    let hasRenderedSpecialHeader = false;
     rows.forEach((r, idx) => {
+      if (r.isSpecial && !hasRenderedSpecialHeader) {
+        hasRenderedSpecialHeader = true;
+        tableBody.push([
+          {
+            text: "CÁC LỚP LỊCH ĂN ĐẶC BIỆT (LIÊN LỚP / NGOẠI NGỮ 2 / GDQP...)",
+            colSpan: 6,
+            bold: true,
+            alignment: "left",
+            fontSize: 8.5,
+            fillColor: "#fef3c7",
+            color: "#78350f",
+            margin: [4, 2, 4, 2],
+          },
+          {}, {}, {}, {}, {},
+        ]);
+      }
+
       const isEven = idx % 2 === 0;
-      const rowFill = isEven ? "#ffffff" : "#f8fafc";
+      const rowFill = r.isSpecial
+        ? (isEven ? "#fffbeb" : "#fef9c3")
+        : (isEven ? "#ffffff" : "#f8fafc");
       const rowCells: any[] = [
         {
           text: r.className,
           bold: true,
           alignment: "center",
-          fontSize: 9,
+          fontSize: r.isSpecial ? 8.5 : 9,
+          color: r.isSpecial ? "#78350f" : "#000000",
           fillColor: rowFill,
           margin: [0, 3, 0, 3],
         },
