@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { action, date, sourceDate, targetDate, classId, newCourtName } = body;
+    const { action, date, sourceDate, targetDate, classId, newCourtName, shift } = body;
 
     if (action === "AUTO_WEEK") {
       if (!date) {
@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
-      await updateClassCourtCell(date, classId, newCourtName || null);
+      await updateClassCourtCell(date, classId, newCourtName || null, shift);
       const result = await getWeeklyDiningMatrix(date);
       return NextResponse.json({
         success: true,

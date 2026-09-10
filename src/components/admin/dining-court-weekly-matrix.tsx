@@ -41,7 +41,7 @@ import {
 import { toPng } from 'html-to-image';
 import Swal from 'sweetalert2';
 import { useSession } from 'next-auth/react';
-import { WeeklyDiningMatrixResult, WeeklyMatrixRow } from '@/lib/dining-court-service';
+import { WeeklyDiningMatrixResult, WeeklyMatrixRow, WeeklyMatrixCell, WeeklyMatrixAllocation } from '@/lib/dining-court-service';
 
 interface DiningCourtWeeklyMatrixProps {
   schoolName?: string;
@@ -70,9 +70,12 @@ export function DiningCourtWeeklyMatrix({ schoolName = 'TRƯỜNG TIỂU HỌC B
     classId: string;
     className: string;
     dayLabel: string;
+    isSpecial?: boolean;
     currentCourtName: string | null;
   } | null>(null);
   const [selectedNewCourt, setSelectedNewCourt] = useState<string>('');
+  const [selectedT4Court, setSelectedT4Court] = useState<string>('NONE');
+  const [selectedT5Court, setSelectedT5Court] = useState<string>('NONE');
   const [isUpdatingCell, setIsUpdatingCell] = useState<boolean>(false);
 
   const printTableRef = useRef<HTMLDivElement>(null);
@@ -286,24 +289,60 @@ export function DiningCourtWeeklyMatrix({ schoolName = 'TRƯỜNG TIỂU HỌC B
 
     setIsUpdatingCell(true);
     try {
-      const res = await fetch('/api/dining-areas/weekly', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'UPDATE_CELL',
-          date: editCellData.dateStr,
-          classId: editCellData.classId,
-          newCourtName: selectedNewCourt === 'NONE' ? null : selectedNewCourt,
-        }),
-      });
+      if (editCellData.isSpecial) {
+        // Cập nhật ca Tiết 4
+        await fetch('/api/dining-areas/weekly', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'UPDATE_CELL',
+            date: editCellData.dateStr,
+            classId: editCellData.classId,
+            newCourtName: selectedT4Court === 'NONE' ? null : selectedT4Court,
+            shift: 'TIET_4',
+          }),
+        });
 
-      const resJson = await res.json();
-      if (!res.ok) {
-        throw new Error(resJson.error || 'Lỗi khi cập nhật sân cho lớp');
+        // Cập nhật ca Tiết 5
+        const res = await fetch('/api/dining-areas/weekly', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'UPDATE_CELL',
+            date: editCellData.dateStr,
+            classId: editCellData.classId,
+            newCourtName: selectedT5Court === 'NONE' ? null : selectedT5Court,
+            shift: 'TIET_5',
+          }),
+        });
+
+        const resJson = await res.json();
+        if (!res.ok) {
+          throw new Error(resJson.error || 'Lỗi khi cập nhật sân cho lớp đặc biệt');
+        }
+
+        setMatrixData(resJson.data);
+        setEditCellData(null);
+      } else {
+        const res = await fetch('/api/dining-areas/weekly', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'UPDATE_CELL',
+            date: editCellData.dateStr,
+            classId: editCellData.classId,
+            newCourtName: selectedNewCourt === 'NONE' ? null : selectedNewCourt,
+          }),
+        });
+
+        const resJson = await res.json();
+        if (!res.ok) {
+          throw new Error(resJson.error || 'Lỗi khi cập nhật sân cho lớp');
+        }
+
+        setMatrixData(resJson.data);
+        setEditCellData(null);
       }
-
-      setMatrixData(resJson.data);
-      setEditCellData(null);
     } catch (err) {
       console.error('Update cell error:', err);
       Swal.fire('Lỗi', err instanceof Error ? err.message : 'Không thể cập nhật sân', 'error');
@@ -551,17 +590,23 @@ export function DiningCourtWeeklyMatrix({ schoolName = 'TRƯỜNG TIỂU HỌC B
   };
 
   // Xử lý khi click vào ô: Mở modal sửa hoặc gán sân nếu có quyền quản trị
-  const handleCellClick = (courtName: string | null, row: WeeklyMatrixRow, dateStr: string, dayLabel: string) => {
+  const handleCellClick = (cell: WeeklyMatrixCell | null, row: WeeklyMatrixRow, dateStr: string, dayLabel: string) => {
     if (!canEdit) return;
+
+    const t4Alloc = cell?.allocations?.find((a: WeeklyMatrixAllocation) => a.shift === 'TIET_4') || (cell?.shift === 'TIET_4' ? cell : null);
+    const t5Alloc = cell?.allocations?.find((a: WeeklyMatrixAllocation) => a.shift === 'TIET_5') || (cell?.shift === 'TIET_5' ? cell : null);
 
     setEditCellData({
       dateStr,
       classId: row.classId,
       className: row.className,
       dayLabel,
-      currentCourtName: courtName,
+      isSpecial: Boolean(row.isSpecial),
+      currentCourtName: cell?.courtName || null,
     });
-    setSelectedNewCourt(courtName || matrixData?.distinctCourts[0] || 'SÂN 1');
+    setSelectedNewCourt(cell?.courtName || matrixData?.distinctCourts[0] || 'SÂN 1');
+    setSelectedT4Court(t4Alloc?.courtName || 'NONE');
+    setSelectedT5Court(t5Alloc?.courtName || 'NONE');
   };
 
   const weekInfo = matrixData?.weekInfo;
@@ -872,6 +917,7 @@ export function DiningCourtWeeklyMatrix({ schoolName = 'TRƯỜNG TIỂU HỌC B
                         {/* 5 Cột Thứ 2 -> Thứ 6 */}
                         {matrixData.days.map((day) => {
                           const cell = row.courts[day.dateStr];
+                          const hasMultiAllocs = cell?.allocations && cell.allocations.length > 1;
                           const courtName = cell?.courtName || '';
                           const isTiet4 = cell?.shift === 'TIET_4';
                           const shiftLabel = isTiet4 ? '(Tiết 4)' : '(Tiết 5)';
@@ -880,22 +926,47 @@ export function DiningCourtWeeklyMatrix({ schoolName = 'TRƯỜNG TIỂU HỌC B
                           return (
                             <td
                               key={day.dateStr}
-                              onClick={() => handleCellClick(courtName || null, row, day.dateStr, day.dayLabel)}
+                              onClick={() => handleCellClick(cell || null, row, day.dateStr, day.dayLabel)}
                               className={`border border-slate-950 px-2 py-1.5 transition-all ${
                                 canEdit ? 'cursor-pointer hover:bg-blue-50/70' : ''
                               } ${courtName ? 'text-slate-900 bg-white' : 'text-slate-300 bg-slate-50/30'}`}
                               title={
                                 courtName
-                                  ? `${row.className} - ${courtName} (${shiftLabel.replace(/[()]/g, '')} - ${shiftDesc})${canEdit ? '\nClick để sửa/đổi sân cho lớp này' : ''}`
+                                  ? `${row.className} - ${courtName}${canEdit ? '\nClick để sửa/đổi sân cho lớp này' : ''}`
                                   : canEdit
                                   ? `Chưa có sân. Click để gán sân cho ${row.className}`
                                   : 'Không ăn'
                               }
                             >
-                              {courtName ? (
+                              {hasMultiAllocs ? (
+                                <div className="flex flex-col items-center justify-center divide-y divide-slate-200 w-full py-0.5">
+                                  {cell!.allocations!.map((alloc, aIdx) => {
+                                    const isT4 = alloc.shift === 'TIET_4';
+                                    return (
+                                      <div
+                                        key={aIdx}
+                                        className={`w-full flex flex-col items-center justify-center ${
+                                          aIdx > 0 ? 'pt-1 mt-0.5' : 'pb-1'
+                                        }`}
+                                      >
+                                        <span className="font-bold tracking-tight uppercase text-xs sm:text-sm">
+                                          {alloc.courtName}
+                                        </span>
+                                        <span
+                                          className={`text-[10px] sm:text-[11px] font-semibold mt-0.5 ${
+                                            isT4 ? 'text-amber-700 shift-tiet4' : 'text-indigo-700 shift-tiet5'
+                                          }`}
+                                        >
+                                          {isT4 ? '(Tiết 4)' : '(Tiết 5)'}
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ) : courtName ? (
                                 <div className="flex flex-col items-center justify-center leading-tight py-0.5">
                                   <span className="font-bold tracking-tight uppercase text-xs sm:text-sm">
-                                    {courtName}
+                                    {cell?.allocations?.[0]?.courtName || courtName}
                                   </span>
                                   <span
                                     className={`text-[10px] sm:text-[11px] font-semibold mt-0.5 ${
@@ -1042,24 +1113,70 @@ export function DiningCourtWeeklyMatrix({ schoolName = 'TRƯỜNG TIỂU HỌC B
           </DialogHeader>
 
           <div className="space-y-3 py-2 text-sm">
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-700">Chọn sân mới:</label>
-              <Select value={selectedNewCourt} onValueChange={setSelectedNewCourt}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Chọn sân" />
-                </SelectTrigger>
-                <SelectContent className="max-h-60">
-                  <SelectItem value="NONE" className="text-rose-600 font-medium">
-                    (Không xếp sân / Bỏ sân)
-                  </SelectItem>
-                  {Array.from({ length: 16 }, (_, i) => `SÂN ${i + 1}`).map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {s}
+            {editCellData?.isSpecial ? (
+              <>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-amber-800">
+                    Sân Ca Tiết 4 (Ăn lúc 10g30):
+                  </label>
+                  <Select value={selectedT4Court} onValueChange={setSelectedT4Court}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Chọn sân ca Tiết 4" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-60">
+                      <SelectItem value="NONE" className="text-rose-600 font-medium">
+                        (Không xếp sân / Bỏ sân Tiết 4)
+                      </SelectItem>
+                      {Array.from({ length: 16 }, (_, i) => `SÂN ${i + 1}`).map((s) => (
+                        <SelectItem key={s} value={s}>
+                          {s}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1 pt-1">
+                  <label className="text-xs font-semibold text-indigo-800">
+                    Sân Ca Tiết 5 (Ăn lúc 11g20):
+                  </label>
+                  <Select value={selectedT5Court} onValueChange={setSelectedT5Court}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Chọn sân ca Tiết 5" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-60">
+                      <SelectItem value="NONE" className="text-rose-600 font-medium">
+                        (Không xếp sân / Bỏ sân Tiết 5)
+                      </SelectItem>
+                      {Array.from({ length: 16 }, (_, i) => `SÂN ${i + 1}`).map((s) => (
+                        <SelectItem key={s} value={s}>
+                          {s}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            ) : (
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700">Chọn sân mới:</label>
+                <Select value={selectedNewCourt} onValueChange={setSelectedNewCourt}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Chọn sân" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-60">
+                    <SelectItem value="NONE" className="text-rose-600 font-medium">
+                      (Không xếp sân / Bỏ sân)
                     </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+                    {Array.from({ length: 16 }, (_, i) => `SÂN ${i + 1}`).map((s) => (
+                      <SelectItem key={s} value={s}>
+                        {s}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
 
           <DialogFooter className="gap-2 sm:gap-0">

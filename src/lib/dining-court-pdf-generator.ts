@@ -844,12 +844,48 @@ export async function generateWeeklyDiningMatrixPdfBuffer(
 
       days.forEach((day) => {
         const cell = r.courts[day.dateStr];
+        const hasMultiAllocs = cell?.allocations && cell.allocations.length > 1;
         const courtName = cell?.courtName || "";
         const isTiet4 = cell?.shift === "TIET_4";
-        if (courtName) {
+
+        if (hasMultiAllocs) {
+          const stackItems: any[] = [];
+          cell.allocations!.forEach((alloc, aIdx) => {
+            const isT4 = alloc.shift === "TIET_4";
+            if (aIdx > 0) {
+              stackItems.push({
+                text: "───────",
+                fontSize: 5,
+                color: "#cbd5e1",
+                alignment: "center",
+                margin: [0, 0.5, 0, 0.5],
+              });
+            }
+            stackItems.push({
+              text: alloc.courtName,
+              bold: true,
+              fontSize: 8,
+              color: "#0f172a",
+            });
+            stackItems.push({
+              text: isT4 ? "(Tiết 4)" : "(Tiết 5)",
+              fontSize: 7,
+              bold: true,
+              color: isT4 ? "#b45309" : "#4338ca",
+              margin: [0, 0.5, 0, 0],
+            });
+          });
+
+          rowCells.push({
+            stack: stackItems,
+            alignment: "center",
+            fillColor: rowFill,
+            margin: [0, 1, 0, 1],
+          });
+        } else if (courtName) {
           rowCells.push({
             stack: [
-              { text: courtName, bold: true, fontSize: 8.5, color: "#0f172a" },
+              { text: cell?.allocations?.[0]?.courtName || courtName, bold: true, fontSize: 8.5, color: "#0f172a" },
               {
                 text: isTiet4 ? "(Tiết 4)" : "(Tiết 5)",
                 fontSize: 7.5,

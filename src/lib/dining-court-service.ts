@@ -1209,11 +1209,19 @@ export async function deleteDiningCourtAllocation(dateStr: string) {
 
 // ==================== BẢNG MA TRẬN THỐNG KÊ SÂN THEO TUẦN ====================
 
+export interface WeeklyMatrixAllocation {
+  courtName: string;
+  courtNumber: number;
+  cartName: string;
+  shift: string;
+}
+
 export interface WeeklyMatrixCell {
   courtName: string;
   courtNumber: number;
   cartName: string;
   shift: string;
+  allocations?: WeeklyMatrixAllocation[];
 }
 
 export interface WeeklyMatrixRow {
@@ -1343,19 +1351,54 @@ export async function getWeeklyDiningMatrix(referenceDate: Date | string): Promi
     const dStr = `${cd.getUTCFullYear()}-${String(cd.getUTCMonth() + 1).padStart(2, "0")}-${String(cd.getUTCDate()).padStart(2, "0")}`;
     courtNamesSet.add(c.courtName);
 
+    const allocItem: WeeklyMatrixAllocation = {
+      courtName: c.courtName,
+      courtNumber: c.courtNumber,
+      cartName: c.cartName,
+      shift: c.shift,
+    };
+
+    const addCellEntry = (key: string) => {
+      const existing = cellMap.get(key);
+      if (!existing) {
+        cellMap.set(key, {
+          courtName: c.courtName,
+          courtNumber: c.courtNumber,
+          cartName: c.cartName,
+          shift: c.shift,
+          allocations: [allocItem],
+        });
+      } else {
+        const allocs = existing.allocations ? [...existing.allocations] : [
+          {
+            courtName: existing.courtName,
+            courtNumber: existing.courtNumber,
+            cartName: existing.cartName,
+            shift: existing.shift,
+          },
+        ];
+        const alreadyIn = allocs.some(
+          (a) => a.courtName === c.courtName && a.shift === c.shift
+        );
+        if (!alreadyIn) {
+          allocs.push(allocItem);
+          allocs.sort((a, b) => (a.shift === "TIET_4" ? -1 : 1));
+          existing.allocations = allocs;
+          existing.courtName = allocs.map((a) => a.courtName).join(", ");
+          existing.shift = allocs.every((a) => a.shift === allocs[0].shift)
+            ? allocs[0].shift
+            : "BOTH";
+        }
+      }
+    };
+
     for (const cid of c.classIds) {
-      const cellData: WeeklyMatrixCell = {
-        courtName: c.courtName,
-        courtNumber: c.courtNumber,
-        cartName: c.cartName,
-        shift: c.shift,
-      };
-      cellMap.set(`${cid}_${dStr}`, cellData);
+      addCellEntry(`${cid}_${dStr}`);
 
       // Nếu là lớp ảo SPECIAL::, cũng map theo scheduleName rút gọn
       if (cid.startsWith("SPECIAL::")) {
         const schedName = extractSpecialScheduleName(cid);
-        cellMap.set(`SPECIAL::${schedName}_${dStr}`, cellData);
+        addCellEntry(`SPECIAL::${schedName}_${dStr}`);
       }
     }
 
@@ -1364,15 +1407,7 @@ export async function getWeeklyDiningMatrix(referenceDate: Date | string): Promi
       const studentSet = new Set(c.specialStudentIds);
       for (const sm of specialMealsThisWeek) {
         if (studentSet.has(sm.studentId)) {
-          const cellKey = `SPECIAL::${sm.scheduleName}_${dStr}`;
-          if (!cellMap.has(cellKey)) {
-            cellMap.set(cellKey, {
-              courtName: c.courtName,
-              courtNumber: c.courtNumber,
-              cartName: c.cartName,
-              shift: c.shift,
-            });
-          }
+          addCellEntry(`SPECIAL::${sm.scheduleName}_${dStr}`);
         }
       }
     }
@@ -1500,7 +1535,8 @@ export async function copyDiningCourtWeek(
 export async function updateClassCourtCell(
   dateStr: string,
   classId: string,
-  newCourtName: string | null
+  newCourtName: string | null,
+  targetShift?: "TIET_4" | "TIET_5"
 ): Promise<void> {
   const [y, m, d] = dateStr.split("-").map(Number);
   const dateObj = new Date(Date.UTC(y, m - 1, d));
@@ -1516,17 +1552,21 @@ export async function updateClassCourtCell(
   const isSpecial = classId.startsWith("SPECIAL::");
   const specialSchedName = isSpecial ? extractSpecialScheduleName(classId) : "";
 
-  const matchClassId = (cid: string) => {
+  const matchClassId = (cid: string, courtShift: string) => {
+    if (targetShift && courtShift !== targetShift) return false;
     if (cid === classId) return true;
-    if (isSpecial && extractSpecialScheduleName(cid) === specialSchedName) return true;
+    if (isSpecial && extractSpecialScheduleName(cid) === specialSchedName) {
+      if (targetShift) return courtShift === targetShift;
+      return true;
+    }
     return false;
   };
 
   await prisma.$transaction(async (tx) => {
-    // 1. Xóa classId khỏi bất kỳ sân nào trước đó trong ngày này
+    // 1. Xóa classId khỏi bất kỳ sân nào trước đó trong ngày này (thuộc ca targetShift nếu có)
     for (const court of existingCourts) {
-      if (court.classIds.some(matchClassId)) {
-        const nextClasses = court.classIds.filter((id) => !matchClassId(id));
+      if (court.classIds.some((cid) => matchClassId(cid, court.shift))) {
+        const nextClasses = court.classIds.filter((id) => !matchClassId(id, court.shift));
         await tx.dailyDiningCourt.update({
           where: { id: court.id },
           data: { classIds: nextClasses },
@@ -1538,8 +1578,9 @@ export async function updateClassCourtCell(
     if (newCourtName) {
       const targetCourt = existingCourts.find((c) => c.courtName === newCourtName);
       if (targetCourt) {
+        const effectiveShift = targetShift || targetCourt.shift;
         const classIdToAdd = isSpecial
-          ? `SPECIAL::${specialSchedName}::${targetCourt.shift}`
+          ? `SPECIAL::${specialSchedName}::${effectiveShift}`
           : classId;
         const updatedIds = Array.from(new Set([...targetCourt.classIds, classIdToAdd]));
         await tx.dailyDiningCourt.update({
@@ -1551,13 +1592,14 @@ export async function updateClassCourtCell(
         const numMatch = newCourtName.match(/\d+/);
         const courtNumber = numMatch ? parseInt(numMatch[0], 10) : existingCourts.length + 1;
         const cartNumber = Math.ceil(courtNumber / 2);
+        const effectiveShift = targetShift || "TIET_4";
         const classIdToAdd = isSpecial
-          ? `SPECIAL::${specialSchedName}::TIET_4`
+          ? `SPECIAL::${specialSchedName}::${effectiveShift}`
           : classId;
         await tx.dailyDiningCourt.create({
           data: {
             date: dateObj,
-            shift: "TIET_4",
+            shift: effectiveShift,
             courtNumber,
             courtName: newCourtName,
             cartNumber,
