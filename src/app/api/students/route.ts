@@ -4,7 +4,7 @@ import prisma from "@/lib/db";
 import { BoardingStatus, CancellationStatus, PaymentStatus } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { broadcastChange } from "@/lib/realtime-hub";
-import { removeVietnameseTones } from "@/lib/utils";
+import { removeVietnameseTones, getVietnamTodayUTC, isPastCutoffTime } from "@/lib/utils";
 import { logAudit, AUDIT_ACTIONS, AUDIT_MODULES } from "@/lib/audit-log";
 
 // GET: Lấy danh sách học sinh
@@ -215,6 +215,25 @@ export async function POST(request: NextRequest) {
       if (!parsedMealStartDate) {
         const now = new Date();
         parsedMealStartDate = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+      }
+
+      // Kiểm tra giờ chốt suất ngày (MEAL_LOCK_TIME_2 hoặc CUTOFF_TIME, mặc định 07:30)
+      const lockSettings = await prisma.systemSetting.findMany({
+        where: { key: { in: ["MEAL_LOCK_TIME_2", "CUTOFF_TIME"] } }
+      });
+      const lockTime2 = lockSettings.find(s => s.key === "MEAL_LOCK_TIME_2")?.value 
+                     || lockSettings.find(s => s.key === "CUTOFF_TIME")?.value 
+                     || "07:30";
+
+      const localToday = getVietnamTodayUTC();
+      const isPastLock = isPastCutoffTime(lockTime2);
+
+      // Nếu đăng ký mới khi đã qua giờ chốt suất ngày thì ngày ăn bắt đầu từ hôm sau
+      const nextDay = new Date(localToday);
+      nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+
+      if (isPastLock && parsedMealStartDate <= localToday) {
+        parsedMealStartDate = nextDay;
       }
 
       // Generate password (ddmmyyyy) from birthDate or default "123456"
@@ -674,6 +693,25 @@ async function calculateStudentSettlement({
       if (!parsedMealStartDate) {
         const today = new Date();
         parsedMealStartDate = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
+      }
+
+      // Kiểm tra giờ chốt suất ngày (MEAL_LOCK_TIME_2 hoặc CUTOFF_TIME, mặc định 07:30)
+      const lockSettings = await prisma.systemSetting.findMany({
+        where: { key: { in: ["MEAL_LOCK_TIME_2", "CUTOFF_TIME"] } }
+      });
+      const lockTime2 = lockSettings.find(s => s.key === "MEAL_LOCK_TIME_2")?.value 
+                     || lockSettings.find(s => s.key === "CUTOFF_TIME")?.value 
+                     || "07:30";
+
+      const localToday = getVietnamTodayUTC();
+      const isPastLock = isPastCutoffTime(lockTime2);
+
+      // Nếu mở lại bán trú khi đã qua giờ chốt suất ngày thì ngày ăn bắt đầu từ hôm sau
+      const nextDay = new Date(localToday);
+      nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+
+      if (isPastLock && parsedMealStartDate <= localToday) {
+        parsedMealStartDate = nextDay;
       }
 
       await prisma.student.update({

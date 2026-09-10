@@ -380,7 +380,7 @@ export function DiningCourtTab({ cutoffTime, schoolName }: DiningCourtTabProps) 
 
             {/* Các nút hành động chính (Tạo/Sửa/In/Xuất) */}
             <div className="flex flex-wrap items-center gap-2">
-              {/* Nếu đã tạo phân bổ: Nút Sửa thủ công & Chia lại tự động */}
+              {/* Nếu đã tạo phân bổ: Nút Sửa thủ công & Xóa phân bổ */}
               {data?.isConfigured && !isCashier && (
                 <>
                   <Button
@@ -396,22 +396,11 @@ export function DiningCourtTab({ cutoffTime, schoolName }: DiningCourtTabProps) 
 
                   <Button
                     size="sm"
-                    variant="outline"
-                    onClick={() => handleCreateAuto(true)}
-                    disabled={loading || isCreatingAuto || isDeleting}
-                    className="text-xs border-blue-200 bg-blue-50/60 hover:bg-blue-100 text-blue-800 shadow-2xs cursor-pointer gap-1.5 font-medium"
-                  >
-                    <Wand2 className="h-3.5 w-3.5 text-blue-600" />
-                    <span>{isCreatingAuto ? 'Đang chia lại...' : 'Chia lại tự động'}</span>
-                  </Button>
-
-                  <Button
-                    size="sm"
                     variant="ghost"
                     onClick={handleDeleteAllocation}
                     disabled={loading || isCreatingAuto || isDeleting}
                     className="text-xs text-slate-500 hover:text-rose-600 hover:bg-rose-50 cursor-pointer gap-1 h-8"
-                    title="Xóa phân bổ của ngày này"
+                    title="Xóa phân bổ của ngày này (Để chia lại từ đầu)"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>

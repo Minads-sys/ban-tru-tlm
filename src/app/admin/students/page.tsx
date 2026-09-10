@@ -166,6 +166,29 @@ export default function AdminStudentsPage() {
   });
   const [isSubmittingEdit, setIsSubmittingEdit] = useState<boolean>(false);
 
+  const [cutoffTime, setCutoffTime] = useState<string>('07:30');
+
+  // Tính ngày bắt đầu ăn: Nếu đã qua giờ chốt suất ngày hôm nay thì bắt đầu từ ngày mai
+  const getSmartMealStartDate = useCallback((customCutoff?: string) => {
+    const cTime = customCutoff || cutoffTime;
+    const vnTime = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+    const [hours, minutes] = cTime.split(':').map(Number);
+    const isPast = !isNaN(hours) && (vnTime.getHours() > hours || (vnTime.getHours() === hours && vnTime.getMinutes() >= (minutes || 0)));
+    
+    const target = new Date(vnTime);
+    if (isPast) {
+      target.setDate(target.getDate() + 1);
+    }
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${target.getFullYear()}-${pad(target.getMonth() + 1)}-${pad(target.getDate())}`;
+  }, [cutoffTime]);
+
+  const isPastCutoffToday = useMemo(() => {
+    const vnTime = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+    const [hours, minutes] = cutoffTime.split(':').map(Number);
+    return !isNaN(hours) && (vnTime.getHours() > hours || (vnTime.getHours() === hours && vnTime.getMinutes() >= (minutes || 0)));
+  }, [cutoffTime]);
+
   // Create student states
   const [creatingStudent, setCreatingStudent] = useState<boolean>(false);
   const [createFormData, setCreateFormData] = useState({
@@ -182,6 +205,23 @@ export default function AdminStudentsPage() {
   });
   const [isSubmittingCreate, setIsSubmittingCreate] = useState<boolean>(false);
   const [createError, setCreateError] = useState<string | null>(null);
+
+  const handleOpenCreateStudent = useCallback(() => {
+    setCreateFormData({
+      studentCode: '',
+      boardingCode: '',
+      fullName: '',
+      classId: selectedClass && selectedClass !== 'ALL' ? selectedClass : '',
+      mealType: 'MAN',
+      parentPhone: '',
+      gender: 'NAM',
+      birthDate: '',
+      mealStartDate: getSmartMealStartDate(),
+      generateBill: true,
+    });
+    setCreateError(null);
+    setCreatingStudent(true);
+  }, [selectedClass, getSmartMealStartDate]);
 
   // Delete dialog states
   const [deletingStudent, setDeletingStudent] = useState<StudentItem | null>(null);
@@ -258,6 +298,25 @@ export default function AdminStudentsPage() {
   useEffect(() => {
     fetchClasses();
   }, [fetchClasses]);
+
+  // Nạp cấu hình giờ chốt suất ngày từ cài đặt hệ thống
+  useEffect(() => {
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/settings');
+        if (res.ok) {
+          const data = await res.json();
+          const lockTime = data.MEAL_LOCK_TIME_2 || data.CUTOFF_TIME;
+          if (lockTime) {
+            setCutoffTime(lockTime);
+          }
+        }
+      } catch (err) {
+        console.error('Fetch settings error:', err);
+      }
+    }
+    loadSettings();
+  }, []);
 
   // Realtime: tự cập nhật khi có thay đổi trên bảng classes
   useRealtime({
@@ -448,7 +507,7 @@ export default function AdminStudentsPage() {
   // Handle Activate Boarding Action
   const handleOpenActivate = (student: StudentItem) => {
     setActivatingStudent(student);
-    setActivateMealStartDate(new Date().toISOString().slice(0, 10));
+    setActivateMealStartDate(getSmartMealStartDate());
   };
 
   const handleConfirmActivate = async () => {
@@ -588,7 +647,7 @@ export default function AdminStudentsPage() {
         parentPhone: '',
         gender: 'NAM',
         birthDate: '',
-        mealStartDate: new Date().toISOString().slice(0, 10),
+        mealStartDate: getSmartMealStartDate(),
         generateBill: true,
       });
       setStatusMessage({ type: 'success', text: data.message || 'Đăng ký học sinh mới thành công' });
@@ -772,7 +831,7 @@ export default function AdminStudentsPage() {
             <Button
               variant="default"
               size="sm"
-              onClick={() => setCreatingStudent(true)}
+              onClick={handleOpenCreateStudent}
               className="gap-2 bg-red-600 hover:bg-red-700 text-white shadow-xs cursor-pointer"
             >
               <UserPlus className="h-4 w-4" />
@@ -1730,6 +1789,12 @@ export default function AdminStudentsPage() {
                   onChange={(e) => setActivateMealStartDate(e.target.value)}
                   className="h-10 text-sm font-medium border-emerald-200 focus:border-emerald-500"
                 />
+                {isPastCutoffToday && (
+                  <p className="text-[11.5px] text-amber-700 bg-amber-50 p-2 rounded-md border border-amber-200 mt-1 flex items-center gap-1.5">
+                    <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
+                    <span>Đã qua giờ chốt suất ngày hôm nay ({cutoffTime}). Ngày ăn bắt đầu từ ngày mai.</span>
+                  </p>
+                )}
               </div>
 
               <div className="flex items-center gap-2 rounded-md bg-emerald-50 p-2.5 text-xs text-emerald-800 border border-emerald-200">
@@ -1909,6 +1974,12 @@ export default function AdminStudentsPage() {
                   onChange={(e) => setCreateFormData({ ...createFormData, mealStartDate: e.target.value })}
                   className="h-10 text-sm font-medium border-rose-200 focus:border-rose-500"
                 />
+                {isPastCutoffToday && (
+                  <p className="text-[11.5px] text-amber-700 bg-amber-50 p-2 rounded-md border border-amber-200 mt-1 flex items-center gap-1.5">
+                    <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
+                    <span>Đã qua giờ chốt suất ngày hôm nay ({cutoffTime}). Ngày ăn bắt đầu từ ngày mai.</span>
+                  </p>
+                )}
               </div>
             </div>
 

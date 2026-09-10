@@ -54,6 +54,10 @@ export async function GET(request: NextRequest) {
           students: {
             where: {
               boardingStatus: BoardingStatus.ACTIVE,
+              OR: [
+                { mealStartDate: null },
+                { mealStartDate: { lte: date } },
+              ],
             },
           },
         },
