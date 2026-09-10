@@ -813,7 +813,7 @@ export async function generateWeeklyDiningMatrixPdfBuffer(
         hasRenderedSpecialHeader = true;
         tableBody.push([
           {
-            text: "CÁC LỚP LỊCH ĂN ĐẶC BIỆT (LIÊN LỚP / NGOẠI NGỮ 2 / GDQP...)",
+            text: "CÁC LỚP LỊCH ĂN ĐẶC BIỆT",
             colSpan: 6,
             bold: true,
             alignment: "left",

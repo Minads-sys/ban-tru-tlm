@@ -837,7 +837,7 @@ export function DiningCourtWeeklyMatrix({ schoolName = 'TRƯỜNG TIỂU HỌC B
                           >
                             <div className="flex items-center gap-1.5">
                               <Sparkles className="h-4 w-4 text-amber-700 no-print" />
-                              <span>CÁC LỚP LỊCH ĂN ĐẶC BIỆT (LIÊN LỚP / NGOẠI NGỮ 2 / GDQP...)</span>
+                              <span>CÁC LỚP LỊCH ĂN ĐẶC BIỆT</span>
                             </div>
                           </td>
                         </tr>
