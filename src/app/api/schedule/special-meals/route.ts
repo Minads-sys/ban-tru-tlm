@@ -255,3 +255,115 @@ export async function DELETE(request: NextRequest) {
     );
   }
 }
+
+// POST: Thêm hoặc cập nhật học sinh vào lịch ăn đặc biệt
+export async function POST(request: NextRequest) {
+  try {
+    const session = await auth();
+    if (!session?.user) {
+      return NextResponse.json({ error: "Chưa đăng nhập" }, { status: 401 });
+    }
+
+    if (session.user.role === "CASHIER" || session.user.role === "ACCOUNTANT") {
+      return NextResponse.json(
+        { error: "Bạn không có quyền thêm hoặc chỉnh sửa lịch ăn đặc biệt" },
+        { status: 403 }
+      );
+    }
+
+    const body = await request.json();
+    const { scheduleName, shift, studentIds, dates } = body;
+
+    if (!scheduleName || typeof scheduleName !== "string" || !scheduleName.trim()) {
+      return NextResponse.json(
+        { error: "Vui lòng nhập tên lịch ăn đặc biệt" },
+        { status: 400 }
+      );
+    }
+
+    if (shift !== "TIET_4" && shift !== "TIET_5") {
+      return NextResponse.json(
+        { error: "Ca ăn không hợp lệ. Chỉ chấp nhận TIET_4 hoặc TIET_5" },
+        { status: 400 }
+      );
+    }
+
+    if (!Array.isArray(studentIds) || studentIds.length === 0) {
+      return NextResponse.json(
+        { error: "Vui lòng chọn ít nhất một học sinh" },
+        { status: 400 }
+      );
+    }
+
+    if (!Array.isArray(dates) || dates.length === 0) {
+      return NextResponse.json(
+        { error: "Vui lòng chọn ít nhất một ngày áp dụng" },
+        { status: 400 }
+      );
+    }
+
+    const cleanScheduleName = scheduleName.trim();
+    let upsertCount = 0;
+
+    for (const studentId of studentIds) {
+      for (const dateStr of dates) {
+        const [ey, em, ed] = dateStr.split("-").map(Number);
+        if (!ey || !em || !ed || isNaN(ey) || isNaN(em) || isNaN(ed)) continue;
+
+        const dateObj = new Date(Date.UTC(ey, em - 1, ed));
+
+        await prisma.studentSpecialMeal.upsert({
+          where: {
+            studentId_date: {
+              studentId,
+              date: dateObj,
+            },
+          },
+          create: {
+            studentId,
+            date: dateObj,
+            shift,
+            scheduleName: cleanScheduleName,
+            source: "MANUAL",
+          },
+          update: {
+            shift,
+            scheduleName: cleanScheduleName,
+            source: "MANUAL",
+          },
+        });
+        upsertCount++;
+      }
+    }
+
+    await logAudit({
+      req: request,
+      userId: session.user.id,
+      userName: (session.user as any).name || (session.user as any).username || "Quản trị viên",
+      userRole: session.user.role,
+      action: AUDIT_ACTIONS.CREATE,
+      module: AUDIT_MODULES.SCHEDULE,
+      description: `Thêm thủ công ${studentIds.length} học sinh vào lịch đặc biệt '${cleanScheduleName}' (${dates.length} ngày, ca ${shift === "TIET_4" ? "Tiết 4" : "Tiết 5"})`,
+      metadata: {
+        scheduleName: cleanScheduleName,
+        shift,
+        studentCount: studentIds.length,
+        dateCount: dates.length,
+        totalEntries: upsertCount,
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: `Đã thêm thành công ${upsertCount} suất ăn đặc biệt cho ${studentIds.length} học sinh`,
+      count: upsertCount,
+    });
+  } catch (error: any) {
+    console.error("Lỗi khi thêm lịch ăn đặc biệt:", error);
+    return NextResponse.json(
+      { error: "Không thể thêm học sinh vào lịch ăn đặc biệt", details: error.message },
+      { status: 500 }
+    );
+  }
+}
+
