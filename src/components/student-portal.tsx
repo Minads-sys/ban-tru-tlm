@@ -1338,7 +1338,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                                     ? "ring-2 ring-purple-500 bg-purple-50/50 dark:bg-purple-950/30 border-purple-300"
                                     : day.hasMeal
                                     ? day.mealCategory === "SPECIAL"
-                                      ? "bg-purple-50/30 dark:bg-purple-950/20 border-purple-200 dark:border-purple-900"
+                                      ? "bg-orange-50/30 dark:bg-orange-950/20 border-orange-200 dark:border-orange-900"
                                       : "bg-white dark:bg-slate-800/90 border-slate-200 dark:border-slate-700"
                                     : "bg-slate-50/60 dark:bg-slate-900/40 border-slate-100 dark:border-slate-800 text-slate-400"
                                 }`}
@@ -1367,37 +1367,27 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                                 <div className="space-y-1 my-1">
                                   {day.hasMeal ? (
                                     <>
-                                      {/* Tên lịch & ca ăn */}
-                                      <div className="flex flex-wrap items-center gap-0.5">
-                                        <Badge
-                                          variant="secondary"
-                                          className={`text-[9px] px-1 py-0 font-bold ${
-                                            day.shift === "TIET_4"
-                                              ? "bg-orange-100 text-orange-700 border-orange-200"
-                                              : "bg-blue-100 text-blue-700 border-blue-200"
-                                          }`}
-                                        >
-                                          {day.shift === "TIET_4" ? "T4" : "T5"}
-                                        </Badge>
-                                        <span
-                                          className={`text-[10px] font-semibold truncate max-w-[85px] sm:max-w-full ${
-                                            day.mealCategory === "SPECIAL"
-                                              ? "text-orange-700 dark:text-orange-400 font-bold"
-                                              : "text-blue-700 dark:text-blue-400 font-semibold"
-                                          }`}
-                                          title={day.scheduleName}
-                                        >
-                                          {day.mealCategory === "SPECIAL"
-                                            ? day.scheduleName
-                                            : "Lớp thường"}
-                                        </span>
-                                      </div>
+                                      {/* Tên lịch & ca ăn: Lớp thường xanh chữ trắng, Lớp đặc biệt cam chữ trắng */}
+                                      {day.mealCategory === "SPECIAL" ? (
+                                        <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-orange-600 text-white text-[10px] sm:text-[11px] font-semibold shadow-2xs">
+                                          <span className="px-1 py-0 rounded bg-black/20 text-[9px] font-bold shrink-0">
+                                            {day.shift === "TIET_4" ? "T4" : "T5"}
+                                          </span>
+                                          <span className="truncate" title={day.scheduleName}>{day.scheduleName}</span>
+                                        </div>
+                                      ) : (
+                                        <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-600 text-white text-[10px] sm:text-[11px] font-semibold shadow-2xs">
+                                          <span className="px-1 py-0 rounded bg-black/20 text-[9px] font-bold shrink-0">
+                                            {day.shift === "TIET_4" ? "T4" : "T5"}
+                                          </span>
+                                          <span className="truncate" title={day.scheduleName}>Lớp thường</span>
+                                        </div>
+                                      )}
 
-                                      {/* Sân ăn */}
+                                      {/* Sân ăn: Bỏ icon MapPin, hiển thị nhãn gọn */}
                                       {day.court ? (
-                                        <div className="text-[10px] font-extrabold text-indigo-700 dark:text-indigo-300 flex items-center gap-0.5 truncate bg-indigo-50/80 dark:bg-indigo-950/60 px-1 py-0.5 rounded">
-                                          <MapPin className="h-2.5 w-2.5 shrink-0" />
-                                          <span className="truncate">{day.court.courtName}</span>
+                                        <div className="text-[10px] font-extrabold text-purple-800 dark:text-purple-200 bg-purple-100 dark:bg-purple-900/60 px-1.5 py-0.5 rounded border border-purple-200 dark:border-purple-800 truncate">
+                                          {day.court.courtName} {day.court.cartName ? `(${day.court.cartName})` : ""}
                                         </div>
                                       ) : (
                                         <div className="text-[9px] text-slate-400 italic">
