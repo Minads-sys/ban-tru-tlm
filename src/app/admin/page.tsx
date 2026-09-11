@@ -26,9 +26,17 @@ import {
   TrendingUp,
 } from "lucide-react";
 
+import { auth } from "@/lib/auth";
+import { redirect } from "next/navigation";
+
 export const revalidate = 0; // Dynamic server component
 
 export default async function AdminDashboardPage() {
+  const session = await auth();
+  if (session?.user?.role === "KITCHEN_SECRETARY") {
+    redirect("/admin/central-kitchen");
+  }
+
   const now = new Date();
   const startOfToday = new Date(
     now.getFullYear(),

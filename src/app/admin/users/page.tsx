@@ -48,6 +48,7 @@ const ROLE_LABELS: Record<string, string> = {
   ACCOUNTANT: "Kế toán",
   BOARDING_STAFF: "Nhân viên bán trú",
   CASHIER: "Thu ngân",
+  KITCHEN_SECRETARY: "Thư ký bếp",
 };
 
 export default function UsersPage() {
@@ -363,6 +364,7 @@ export default function UsersPage() {
                     <SelectItem value="ACCOUNTANT">Kế toán</SelectItem>
                     <SelectItem value="BOARDING_STAFF">Nhân viên bán trú</SelectItem>
                     <SelectItem value="CASHIER">Thu ngân</SelectItem>
+                    <SelectItem value="KITCHEN_SECRETARY">Thư ký bếp</SelectItem>
                     <SelectItem value="TEACHER">Giáo viên</SelectItem>
                   </SelectContent>
                 </Select>

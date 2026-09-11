@@ -21,6 +21,7 @@ import {
   ShieldCheck,
   Utensils,
   History,
+  Building2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -87,6 +88,12 @@ const NAV_ITEMS: NavItem[] = [
     href: "/admin/daily-meals",
     icon: ChefHat,
     permission: "MANAGE_MEALS",
+  },
+  {
+    title: "Bếp Trung Tâm",
+    href: "/admin/central-kitchen",
+    icon: Building2,
+    permission: "MANAGE_KITCHEN",
   },
   {
     title: "Hóa đơn & Thanh toán",
@@ -172,6 +179,9 @@ export function SidebarNav({ user }: SidebarNavProps) {
         {/* Nav links */}
         <nav className="space-y-1 px-3 py-4">
           {NAV_ITEMS.filter(item => {
+            if (user?.role === "KITCHEN_SECRETARY") {
+              return item.href === "/admin/central-kitchen";
+            }
             if (item.adminOnly && user?.role !== "ADMIN") return false;
             if (!item.permission) return true;
             if (user?.role === "ADMIN") return true;
@@ -250,6 +260,8 @@ export function SidebarNav({ user }: SidebarNavProps) {
             <p className="truncate text-[11px] text-blue-400 font-medium">
               {user?.role === "ADMIN"
                 ? "Quản trị hệ thống"
+                : user?.role === "KITCHEN_SECRETARY"
+                ? "Thư ký bếp"
                 : user?.role === "CASHIER"
                 ? "Thu ngân"
                 : user?.role === "ACCOUNTANT"

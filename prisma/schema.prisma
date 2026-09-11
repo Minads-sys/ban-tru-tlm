@@ -35,6 +35,7 @@ enum UserRole {
   BOARDING_STAFF
   CASHIER
   ACCOUNTANT
+  KITCHEN_SECRETARY
 }
 
 model User {
@@ -466,5 +467,84 @@ model DailyDiningCourt {
   @@unique([date, shift, courtNumber])
   @@index([date])
   @@map("daily_dining_courts")
+}
+
+// ==================== BẾP TRUNG TÂM (CENTRAL KITCHEN) ====================
+
+enum KitchenLockStatus {
+  UNLOCKED        // Chưa chốt (đỏ)
+  LOCKED_MARKET   // Chốt đi chợ (xanh dương)
+  LOCKED_COOK     // Chốt nấu (xanh lá)
+}
+
+// 1. Quản lý danh mục Chi nhánh bếp phục vụ
+model CentralKitchenBranch {
+  id          String   @id @default(cuid())
+  code        String   @unique                // Mã viết tắt: "GD", "HHT", "TD", "TLM"
+  name        String                          // Tên: "Gia Định", "Hoàng Hoa Thám"...
+  color       String   @default("#2563eb")    // Mã HEX màu nhận diện thương hiệu
+  address     String?
+  isActive    Boolean  @default(true) @map("is_active")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  dailyEntries CentralKitchenDailyEntry[]
+
+  @@index([isActive])
+  @@map("central_kitchen_branches")
+}
+
+// 2. Danh mục nguyên liệu & định lượng chuẩn trên 1 suất
+model CentralKitchenIngredient {
+  id                 String   @id @default(cuid())
+  code               String   @unique           // "GAO_CHUAN", "BANH_PHO", "BUN_TO", "CHUOI"...
+  name               String                     // "Gạo nấu cơm", "Bánh phở", "Bún to"...
+  category           String                     // "GAO" | "MON_NUOC" | "TRAI_CAY" | "KHAC"
+  unit               String   @default("gram")  // "gram", "quả", "kg"
+  quantityPerServing Decimal  @map("quantity_per_serving") @db.Decimal(10, 2)
+                                                // Định lượng trên 1 suất ăn
+  isActive           Boolean  @default(true) @map("is_active")
+  sortOrder          Int      @default(0) @map("sort_order")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  @@index([category])
+  @@index([isActive])
+  @@map("central_kitchen_ingredients")
+}
+
+// 3. Nhật ký nhập liệu & chốt sản xuất hàng ngày của từng chi nhánh
+model CentralKitchenDailyEntry {
+  id            String            @id @default(cuid())
+  date          DateTime          @db.Date
+  branchId      String            @map("branch_id")
+  totalServings Int               @default(0) @map("total_servings")
+  servingsMan   Int               @default(0) @map("servings_man")
+  servingsChao  Int               @default(0) @map("servings_chao")
+  servingsChay  Int               @default(0) @map("servings_chay")
+
+  // Hình thức món mặn: "COM" (Mặn cơm) hoặc "NUOC" (Mặn nước)
+  manMealType   String            @default("COM") @map("man_meal_type")
+  noodleId      String?           @map("noodle_id")                     // FK tới CentralKitchenIngredient nếu ăn nước
+  noodleName    String?           @map("noodle_name")                   // Tên hiển thị loại bún/phở
+
+  // Trái cây tráng miệng
+  fruitId       String?           @map("fruit_id")                      // FK tới CentralKitchenIngredient loại trái cây
+  fruitName     String?           @map("fruit_name")                    // Tên trái cây hiển thị
+
+  // Trạng thái khóa: UNLOCKED → LOCKED_MARKET → LOCKED_COOK
+  lockStatus    KitchenLockStatus @default(UNLOCKED) @map("lock_status")
+
+  note          String?
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+
+  branch CentralKitchenBranch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([date, branchId])
+  @@index([date])
+  @@index([branchId])
+  @@map("central_kitchen_daily_entries")
 }
 
