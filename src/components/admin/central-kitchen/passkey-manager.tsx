@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { KeyRound, ShieldCheck, Copy, Check, Save, Lock, AlertTriangle } from "lucide-react";
 import { toast } from "@/lib/toast";
 
@@ -18,6 +18,12 @@ export function PasskeyManager({
   const [pin, setPin] = useState<string>(initialPasskey);
   const [saving, setSaving] = useState<boolean>(false);
   const [copiedType, setCopiedType] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialPasskey) {
+      setPin(initialPasskey);
+    }
+  }, [initialPasskey]);
 
   const origin =
     typeof window !== "undefined" && window.location.origin && window.location.origin !== "null"
@@ -82,7 +88,7 @@ export function PasskeyManager({
       </div>
 
       {/* FORM UPDATE 6-DIGIT PIN */}
-      {userRole === "ADMIN" ? (
+      {userRole === "ADMIN" || userRole === "BOARDING_MANAGER" || !userRole ? (
         <form onSubmit={handleSavePin} className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center gap-4">
             <div className="flex-1">

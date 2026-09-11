@@ -124,6 +124,9 @@ export default function CentralKitchenPage() {
       if (!dailyRes.ok) throw new Error("Lỗi tải dữ liệu bếp ngày");
       const dailyJson = await dailyRes.json();
       setDailyData(dailyJson);
+      if (dailyJson.passkey) {
+        setCurrentPasskey(dailyJson.passkey);
+      }
 
       if (branchesRes.ok) {
         const branchesJson = await branchesRes.json();
@@ -229,35 +232,46 @@ export default function CentralKitchenPage() {
 
       {/* MAIN NAVIGATION TABS */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-2 sm:grid-cols-4 w-full max-w-2xl bg-slate-100 dark:bg-slate-800 p-1 rounded-xl h-auto border border-slate-200 dark:border-slate-700">
+        <TabsList className="grid grid-cols-2 sm:grid-cols-4 w-full max-w-2xl bg-slate-200/80 dark:bg-slate-800/90 p-1.5 rounded-2xl h-auto border border-slate-300/80 dark:border-slate-700 gap-1.5 shadow-sm">
           <TabsTrigger
             value="entry"
-            className="flex items-center gap-2 py-2 text-xs sm:text-sm font-bold data-[state=active]:bg-white dark:data-[state=active]:bg-slate-900 data-[state=active]:shadow-sm rounded-lg"
+            className="group flex items-center justify-center gap-2 py-2.5 px-3 text-xs sm:text-sm font-bold rounded-xl transition-all duration-150 cursor-pointer
+              data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-md data-[state=active]:shadow-blue-600/30
+              data-[state=inactive]:text-slate-700 dark:data-[state=inactive]:text-slate-200 data-[state=inactive]:bg-transparent data-[state=inactive]:hover:bg-white/60 dark:data-[state=inactive]:hover:bg-slate-700/60"
           >
-            <FileEdit className="w-4 h-4 text-blue-600" />
-            Nhập số liệu
+            <FileEdit className="w-4 h-4 text-blue-600 group-data-[state=active]:text-white transition-colors shrink-0" />
+            <span>Nhập số liệu</span>
           </TabsTrigger>
+
           <TabsTrigger
             value="production"
-            className="flex items-center gap-2 py-2 text-xs sm:text-sm font-bold data-[state=active]:bg-white dark:data-[state=active]:bg-slate-900 data-[state=active]:shadow-sm rounded-lg"
+            className="group flex items-center justify-center gap-2 py-2.5 px-3 text-xs sm:text-sm font-bold rounded-xl transition-all duration-150 cursor-pointer
+              data-[state=active]:bg-amber-600 data-[state=active]:text-white data-[state=active]:shadow-md data-[state=active]:shadow-amber-600/30
+              data-[state=inactive]:text-slate-700 dark:data-[state=inactive]:text-slate-200 data-[state=inactive]:bg-transparent data-[state=inactive]:hover:bg-white/60 dark:data-[state=inactive]:hover:bg-slate-700/60"
           >
-            <Tv className="w-4 h-4 text-amber-500" />
-            Màn hình TV
+            <Tv className="w-4 h-4 text-amber-600 group-data-[state=active]:text-white transition-colors shrink-0" />
+            <span>Màn hình TV</span>
           </TabsTrigger>
+
           <TabsTrigger
             value="table"
-            className="flex items-center gap-2 py-2 text-xs sm:text-sm font-bold data-[state=active]:bg-white dark:data-[state=active]:bg-slate-900 data-[state=active]:shadow-sm rounded-lg"
+            className="group flex items-center justify-center gap-2 py-2.5 px-3 text-xs sm:text-sm font-bold rounded-xl transition-all duration-150 cursor-pointer
+              data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-md data-[state=active]:shadow-emerald-600/30
+              data-[state=inactive]:text-slate-700 dark:data-[state=inactive]:text-slate-200 data-[state=inactive]:bg-transparent data-[state=inactive]:hover:bg-white/60 dark:data-[state=inactive]:hover:bg-slate-700/60"
           >
-            <TableProperties className="w-4 h-4 text-emerald-600" />
-            Bảng tổng hợp
+            <TableProperties className="w-4 h-4 text-emerald-600 group-data-[state=active]:text-white transition-colors shrink-0" />
+            <span>Bảng tổng hợp</span>
           </TabsTrigger>
+
           {isSettingsAllowed && (
             <TabsTrigger
               value="settings"
-              className="flex items-center gap-2 py-2 text-xs sm:text-sm font-bold data-[state=active]:bg-white dark:data-[state=active]:bg-slate-900 data-[state=active]:shadow-sm rounded-lg"
+              className="group flex items-center justify-center gap-2 py-2.5 px-3 text-xs sm:text-sm font-bold rounded-xl transition-all duration-150 cursor-pointer
+                data-[state=active]:bg-purple-600 data-[state=active]:text-white data-[state=active]:shadow-md data-[state=active]:shadow-purple-600/30
+                data-[state=inactive]:text-slate-700 dark:data-[state=inactive]:text-slate-200 data-[state=inactive]:bg-transparent data-[state=inactive]:hover:bg-white/60 dark:data-[state=inactive]:hover:bg-slate-700/60"
             >
-              <Settings className="w-4 h-4 text-purple-600" />
-              Cài đặt
+              <Settings className="w-4 h-4 text-purple-600 group-data-[state=active]:text-white transition-colors shrink-0" />
+              <span>Cài đặt & PIN TV</span>
             </TabsTrigger>
           )}
         </TabsList>
@@ -289,8 +303,21 @@ export default function CentralKitchenPage() {
                   </code>
                 </div>
                 <div className="flex flex-wrap items-center gap-3 text-xs text-slate-300 mt-1">
-                  <span>
-                    🔑 Mã PIN bảo mật: <strong className="text-amber-400 font-mono text-sm tracking-widest">{currentPasskey}</strong>
+                  <span className="flex items-center gap-1.5">
+                    🔑 Mã PIN bảo mật:{" "}
+                    <strong className="text-amber-400 font-mono text-sm tracking-widest bg-black/40 px-2 py-0.5 rounded-md border border-amber-500/30">
+                      {currentPasskey}
+                    </strong>
+                    {isSettingsAllowed && (
+                      <button
+                        onClick={() => setActiveTab("settings")}
+                        className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold rounded-md border border-amber-500/30 transition cursor-pointer"
+                        title="Bấm để chuyển sang tab Cài đặt đổi mã PIN"
+                      >
+                        <Settings className="w-3 h-3" />
+                        Đổi PIN
+                      </button>
+                    )}
                   </span>
                   <span className="text-slate-500">•</span>
                   <span className="text-slate-400">
