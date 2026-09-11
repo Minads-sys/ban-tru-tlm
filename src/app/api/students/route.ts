@@ -657,10 +657,12 @@ async function calculateStudentSettlement({
 
       const localToday = getVietnamTodayUTC();
       const isPastLock = isPastCutoffTime(lockTime2);
+      const nextDay = new Date(localToday);
+      nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+      const nextDayStr = `${nextDay.getUTCFullYear()}-${String(nextDay.getUTCMonth() + 1).padStart(2, '0')}-${String(nextDay.getUTCDate()).padStart(2, '0')}`;
 
-      // Nếu đã qua giờ chốt của ngày ăn và ngày ngừng ăn là hôm nay hoặc quá khứ:
-      // Bắt buộc tính tiền suất ăn hôm nay (includeStopDate = true), chỉ ngừng ăn từ ngày tiếp theo
-      let effectiveIncludeStopDate = Boolean(includeStopDate);
+      // Nếu đã qua giờ chốt của ngày ăn: Ép ngày bắt đầu ngừng ăn phải từ ngày tiếp theo (ngày mai)
+      let effectiveStopDate = stopDate;
       if (isPastLock) {
         let stopDateObj: Date;
         if (stopDate && /^\d{4}-\d{2}-\d{2}$/.test(stopDate)) {
@@ -671,15 +673,15 @@ async function calculateStudentSettlement({
         }
 
         if (stopDateObj <= localToday) {
-          effectiveIncludeStopDate = true;
+          effectiveStopDate = nextDayStr;
         }
       }
 
       const calculation = await calculateStudentSettlement({
         studentId,
         classId: student.classId,
-        stopDateStr: stopDate,
-        includeStopDate: effectiveIncludeStopDate,
+        stopDateStr: effectiveStopDate,
+        includeStopDate: Boolean(includeStopDate),
         actualMealDaysOverride:
           actualMealDays !== undefined && actualMealDays !== null
             ? Number(actualMealDays)
@@ -811,11 +813,14 @@ async function calculateStudentSettlement({
       const localToday = getVietnamTodayUTC();
       const isPastLock = isPastCutoffTime(lockTime2);
 
-      // Quy tắc: Sau thời gian chốt suất của ngày ăn, không được hủy bán trú mà cắt suất hôm nay.
-      // Suất ăn hôm nay đã chốt với bếp nên học sinh vẫn tính tiền ăn hôm nay (includeStopDate = true),
-      // ngày dừng ăn thực tế chỉ tính từ ngày tiếp theo.
-      let effectiveIncludeStopDate = Boolean(includeStopDate);
-      let forcedTodayCharged = false;
+      // Quy tắc: Sau thời gian chốt suất của ngày ăn, không được hủy bán trú cho ngày hôm nay.
+      // Ngày bắt đầu ngừng ăn bắt buộc phải từ ngày tiếp theo (ngày mai).
+      const nextDay = new Date(localToday);
+      nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+      const nextDayStr = `${nextDay.getUTCFullYear()}-${String(nextDay.getUTCMonth() + 1).padStart(2, '0')}-${String(nextDay.getUTCDate()).padStart(2, '0')}`;
+
+      let effectiveStopDate = stopDate;
+      let forcedNextDay = false;
 
       if (isPastLock) {
         let stopDateObj: Date;
@@ -826,25 +831,25 @@ async function calculateStudentSettlement({
           stopDateObj = localToday;
         }
 
-        if (stopDateObj <= localToday && !effectiveIncludeStopDate) {
-          effectiveIncludeStopDate = true;
-          forcedTodayCharged = true;
+        if (stopDateObj <= localToday) {
+          effectiveStopDate = nextDayStr;
+          forcedNextDay = true;
         }
       }
 
       const calculation = await calculateStudentSettlement({
         studentId,
         classId: student.classId,
-        stopDateStr: stopDate,
-        includeStopDate: effectiveIncludeStopDate,
+        stopDateStr: effectiveStopDate,
+        includeStopDate: Boolean(includeStopDate),
         actualMealDaysOverride:
           actualMealDays !== undefined && actualMealDays !== null
             ? Number(actualMealDays)
             : null,
       });
 
-      const finalNote = note || (forcedTodayCharged
-        ? `Hủy đăng ký ăn bán trú sau giờ chốt sổ (${lockTime2}). Đã tính suất ăn ngày ${calculation.stopDate}, ngừng ăn từ ngày tiếp theo.`
+      const finalNote = note || (forcedNextDay
+        ? `Hủy bán trú sau giờ chốt sổ (${lockTime2}). Bắt đầu ngừng ăn từ ngày tiếp theo ${calculation.stopDate}.`
         : `Hủy đăng ký ăn bán trú từ ngày ${calculation.stopDate}`);
 
       // Tạo phiếu quyết toán

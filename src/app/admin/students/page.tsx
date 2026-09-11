@@ -445,18 +445,18 @@ export default function AdminStudentsPage() {
 
   // Open cancel dialog with default dates & preview
   const handleOpenCancelDialog = (student: StudentItem) => {
-    const today = getTodayString();
-    // Nếu đã qua giờ chốt suất của ngày hôm nay, suất ăn hôm nay đã chốt với bếp nên bắt buộc tính ăn hôm nay (includeStopDate = true)
-    const initialIncludeStopDate = isPastCutoffToday;
+    // Nếu đã qua giờ chốt suất của ngày hôm nay: Ép ngày bắt đầu ngừng ăn là ngày tiếp theo (ngày mai)
+    const initialDate = isPastCutoffToday ? getTomorrowString() : getTodayString();
+    const initialIncludeStopDate = false;
 
     setCancellingStudent(student);
     setCancelReason('');
-    setCancelStopDate(today);
+    setCancelStopDate(initialDate);
     setCancelIncludeStopDate(initialIncludeStopDate);
     setCancelActualMealDays(0);
     setIsManualMealDays(false);
     setSettlementPreview(null);
-    loadSettlementPreview(student.id, today, initialIncludeStopDate, null);
+    loadSettlementPreview(student.id, initialDate, initialIncludeStopDate, null);
   };
 
   // Handle Cancel Boarding Action
@@ -1403,19 +1403,18 @@ export default function AdminStudentsPage() {
                   <Input
                     id="cancelStopDate"
                     type="date"
+                    min={isPastCutoffToday ? getTomorrowString() : undefined}
                     value={cancelStopDate}
                     onChange={(e) => {
-                      const newDate = e.target.value;
-                      setCancelStopDate(newDate);
-                      const shouldForceInclude = isPastCutoffToday && newDate <= getTodayString();
-                      const nextInclude = shouldForceInclude ? true : cancelIncludeStopDate;
-                      if (shouldForceInclude) {
-                        setCancelIncludeStopDate(true);
+                      let newDate = e.target.value;
+                      if (isPastCutoffToday && newDate < getTomorrowString()) {
+                        newDate = getTomorrowString();
                       }
+                      setCancelStopDate(newDate);
                       if (!isManualMealDays) {
-                        loadSettlementPreview(cancellingStudent.id, newDate, nextInclude, null);
+                        loadSettlementPreview(cancellingStudent.id, newDate, cancelIncludeStopDate, null);
                       } else {
-                        loadSettlementPreview(cancellingStudent.id, newDate, nextInclude, cancelActualMealDays);
+                        loadSettlementPreview(cancellingStudent.id, newDate, cancelIncludeStopDate, cancelActualMealDays);
                       }
                     }}
                     className="h-10 text-sm font-medium"
@@ -1472,7 +1471,7 @@ export default function AdminStudentsPage() {
               </div>
 
               {/* Cảnh báo khi thao tác sau giờ chốt */}
-              {isPastCutoffToday && cancelStopDate <= getTodayString() && (
+              {isPastCutoffToday && (
                 <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-xs">
                   <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
                   <div className="flex-1">
@@ -1480,7 +1479,7 @@ export default function AdminStudentsPage() {
                       Đã quá giờ chốt suất ({cutoffTime}) của ngày hôm nay!
                     </span>
                     <span className="text-[11px] text-amber-700">
-                      Suất ăn hôm nay đã chốt với nhà bếp. Học sinh vẫn được tính tiền ăn ngày hôm nay, việc ngừng ăn bắt đầu từ ngày mai.
+                      Suất ăn hôm nay đã chốt với nhà bếp (học sinh vẫn tính tiền ăn hôm nay). Ngày bắt đầu ngừng ăn bắt buộc phải chọn từ ngày tiếp theo ({getTomorrowString()}).
                     </span>
                   </div>
                 </div>
@@ -1492,7 +1491,6 @@ export default function AdminStudentsPage() {
                   type="checkbox"
                   id="cancelIncludeStopDate"
                   checked={cancelIncludeStopDate}
-                  disabled={isPastCutoffToday && cancelStopDate <= getTodayString()}
                   onChange={(e) => {
                     const checked = e.target.checked;
                     setCancelIncludeStopDate(checked);
@@ -1502,24 +1500,17 @@ export default function AdminStudentsPage() {
                       loadSettlementPreview(cancellingStudent.id, cancelStopDate, checked, cancelActualMealDays);
                     }
                   }}
-                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer disabled:opacity-50"
+                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                 />
                 <label
                   htmlFor="cancelIncludeStopDate"
                   className="text-xs text-slate-700 leading-snug cursor-pointer select-none"
                 >
-                  <span className="font-semibold text-slate-900 flex items-center gap-1.5">
-                    <span>Học sinh VẪN ĂN bữa trưa ngày này (ngừng ăn từ ngày hôm sau)</span>
-                    {isPastCutoffToday && cancelStopDate <= getTodayString() && (
-                      <Badge variant="outline" className="text-[10px] py-0 px-1.5 bg-amber-100 text-amber-800 border-amber-300">
-                        Bắt buộc tính tiền do đã chốt bếp
-                      </Badge>
-                    )}
+                  <span className="font-semibold text-slate-900 block">
+                    Học sinh VẪN ĂN bữa trưa ngày này (ngừng ăn từ ngày hôm sau)
                   </span>
                   <span className="text-slate-500 text-[11px]">
-                    {isPastCutoffToday && cancelStopDate <= getTodayString()
-                      ? `(Đã quá ${cutoffTime}: Bắt buộc tính tiền suất ăn trưa hôm nay)`
-                      : `(Mặc định bỏ chọn: Học sinh không ăn trưa ngày ${cancelStopDate}, tính ngày ăn đến hết ngày hôm trước)`}
+                    (Mặc định bỏ chọn: Học sinh không ăn trưa ngày {cancelStopDate}, tính ngày ăn đến hết ngày hôm trước)
                   </span>
                 </label>
               </div>
