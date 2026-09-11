@@ -27,6 +27,7 @@ import { DailySummaryTable } from "@/components/admin/central-kitchen/daily-summ
 import { BranchManager } from "@/components/admin/central-kitchen/branch-manager";
 import { IngredientManager } from "@/components/admin/central-kitchen/ingredient-manager";
 import { PasskeyManager } from "@/components/admin/central-kitchen/passkey-manager";
+import { HolidayManager } from "@/components/admin/central-kitchen/holiday-manager";
 import { toast } from "@/lib/toast";
 
 function getTodayString(): string {
@@ -44,6 +45,15 @@ function getServingDate(transitionTime: string = "14:00"): string {
   const nowM = now.getMinutes();
 
   if (nowH > transH || (nowH === transH && nowM >= transM)) {
+    now.setDate(now.getDate() + 1);
+  }
+
+  // Học sinh tiểu học chỉ ăn T2 - T6:
+  // Thứ Bảy (6) -> tự động chuyển sang Thứ Hai (+2)
+  // Chủ Nhật (0) -> tự động chuyển sang Thứ Hai (+1)
+  if (now.getDay() === 6) {
+    now.setDate(now.getDate() + 2);
+  } else if (now.getDay() === 0) {
     now.setDate(now.getDate() + 1);
   }
 
@@ -405,6 +415,11 @@ export default function CentralKitchenPage() {
         {/* TAB 4: SETTINGS (ADMIN & MANAGER) */}
         {isSettingsAllowed && (
           <TabsContent value="settings" className="mt-4 space-y-6 outline-none">
+            <HolidayManager
+              branches={allBranches}
+              userRole={userRole}
+              onRefresh={fetchData}
+            />
             <PasskeyManager
               initialPasskey={currentPasskey}
               onPasskeyUpdated={(newKey) => {

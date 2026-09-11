@@ -490,6 +490,7 @@ model CentralKitchenBranch {
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   dailyEntries CentralKitchenDailyEntry[]
+  holidays     CentralKitchenHoliday[]
 
   @@index([isActive])
   @@map("central_kitchen_branches")
@@ -554,5 +555,22 @@ model CentralKitchenDailyEntry {
   @@index([date])
   @@index([branchId])
   @@map("central_kitchen_daily_entries")
+}
+
+// 4. Lịch nghỉ lễ và sự kiện riêng của từng chi nhánh hoặc toàn trường
+model CentralKitchenHoliday {
+  id        String   @id @default(cuid())
+  date      DateTime @db.Date                    // Ngày nghỉ
+  branchId  String?  @map("branch_id")            // null: Tất cả chi nhánh nghỉ; có ID: Chi nhánh đó nghỉ
+  reason    String   @default("")                 // Lý do: "Nghỉ lễ 2/9", "Tham quan dã ngoại", "Hội thao"...
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  branch    CentralKitchenBranch? @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([date, branchId])
+  @@index([date])
+  @@index([branchId])
+  @@map("central_kitchen_holidays")
 }
 

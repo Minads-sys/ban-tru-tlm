@@ -42,6 +42,14 @@ export function formatDate(date: Date | string | null | undefined): string {
 }
 
 /**
+ * Chuyển đổi chuỗi YYYY-MM-DD thành Date UTC 00:00:00
+ */
+export function parseDateToUTC(dateStr: string): Date {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0));
+}
+
+/**
  * Lấy số tuần trong năm từ ngày
  */
 export function getWeekNumber(date: Date): number {

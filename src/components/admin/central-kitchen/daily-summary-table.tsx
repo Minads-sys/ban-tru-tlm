@@ -24,6 +24,8 @@ interface BranchCardData {
   fruitPortionG: number;
   lockStatus: "UNLOCKED" | "LOCKED_MARKET" | "LOCKED_COOK";
   note?: string;
+  isHoliday?: boolean;
+  holidayReason?: string;
   hasEntry: boolean;
   materials: {
     riceKg: number;
@@ -143,7 +145,11 @@ export function DailySummaryTable({
                     </div>
                   </td>
                   <td className="py-3.5 px-4">
-                    {isLockedCook ? (
+                    {b.isHoliday ? (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300">
+                        🏖️ Nghỉ theo lịch
+                      </span>
+                    ) : isLockedCook ? (
                       <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300">
                         <Utensils className="w-3 h-3" /> 🍽️ Chốt số ăn
                       </span>
@@ -158,7 +164,11 @@ export function DailySummaryTable({
                     )}
                   </td>
                   <td className="py-3.5 px-4 font-medium">
-                    {b.manMealType === "NUOC" ? (
+                    {b.isHoliday ? (
+                      <span className="text-purple-600 dark:text-purple-400 font-semibold italic text-xs">
+                        🏖️ {b.holidayReason || "Nghỉ theo lịch"}
+                      </span>
+                    ) : b.manMealType === "NUOC" ? (
                       <span className="text-blue-600 dark:text-blue-400 font-bold">
                         🍜 {b.noodleName || "Món Nước"}
                       </span>
@@ -190,35 +200,41 @@ export function DailySummaryTable({
                     {b.materials.fruitKg.toFixed(1)}
                   </td>
                   <td className="py-3.5 px-4 text-center">
-                    <div className="inline-flex items-center gap-1">
-                      {b.lockStatus === "UNLOCKED" && (
-                        <button
-                          onClick={() => handleQuickStatusChange(b.branchId, "LOCKED_MARKET")}
-                          className="px-2 py-1 rounded bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 font-bold text-xs hover:bg-blue-100"
-                          title="Chốt đi chợ"
-                        >
-                          Chốt đi chợ
-                        </button>
-                      )}
-                      {b.lockStatus === "LOCKED_MARKET" && (
-                        <button
-                          onClick={() => handleQuickStatusChange(b.branchId, "LOCKED_COOK")}
-                          className="px-2 py-1 rounded bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 font-bold text-xs hover:bg-emerald-100"
-                          title="Chốt số ăn"
-                        >
-                          Chốt số ăn
-                        </button>
-                      )}
-                      {(b.lockStatus === "LOCKED_COOK" || b.lockStatus === "LOCKED_MARKET") && (
-                        <button
-                          onClick={() => handleQuickStatusChange(b.branchId, "UNLOCKED")}
-                          className="px-2 py-1 rounded bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 font-semibold text-xs hover:bg-slate-200"
-                          title="Mở khóa"
-                        >
-                          Mở khóa
-                        </button>
-                      )}
-                    </div>
+                    {b.isHoliday ? (
+                      <span className="text-xs text-slate-400 font-medium italic">
+                        Lịch nghỉ
+                      </span>
+                    ) : (
+                      <div className="inline-flex items-center gap-1">
+                        {b.lockStatus === "UNLOCKED" && (
+                          <button
+                            onClick={() => handleQuickStatusChange(b.branchId, "LOCKED_MARKET")}
+                            className="px-2 py-1 rounded bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 font-bold text-xs hover:bg-blue-100"
+                            title="Chốt đi chợ"
+                          >
+                            Chốt đi chợ
+                          </button>
+                        )}
+                        {b.lockStatus === "LOCKED_MARKET" && (
+                          <button
+                            onClick={() => handleQuickStatusChange(b.branchId, "LOCKED_COOK")}
+                            className="px-2 py-1 rounded bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 font-bold text-xs hover:bg-emerald-100"
+                            title="Chốt số ăn"
+                          >
+                            Chốt số ăn
+                          </button>
+                        )}
+                        {(b.lockStatus === "LOCKED_COOK" || b.lockStatus === "LOCKED_MARKET") && (
+                          <button
+                            onClick={() => handleQuickStatusChange(b.branchId, "UNLOCKED")}
+                            className="px-2 py-1 rounded bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 font-semibold text-xs hover:bg-slate-200"
+                            title="Mở khóa"
+                          >
+                            Mở khóa
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </td>
                 </tr>
               );

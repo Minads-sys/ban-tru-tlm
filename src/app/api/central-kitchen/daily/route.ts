@@ -60,16 +60,81 @@ export async function GET(request: NextRequest) {
       const [transH, transM] = (dayTransitionTime || "14:00").split(":").map(Number);
       const nowH = now.getHours();
       const nowM = now.getMinutes();
-      if (nowH > transH || (nowH === transH && nowM >= transM)) {
-        now.setDate(now.getDate() + 1);
+      const isPastTransition = nowH > transH || (nowH === transH && nowM >= transM);
+
+      const candidate = new Date();
+      if (isPastTransition) {
+        candidate.setDate(candidate.getDate() + 1);
       }
-      dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+
+      // Lấy danh sách ngày nghỉ từ candidate trở đi để dò ngày đi học gần nhất
+      const candidateUTC = parseDateToUTC(
+        `${candidate.getFullYear()}-${String(candidate.getMonth() + 1).padStart(2, "0")}-${String(candidate.getDate()).padStart(2, "0")}`
+      );
+      const [activeBranchesCount, upcomingHolidays] = await Promise.all([
+        prisma.centralKitchenBranch.count({ where: { isActive: true } }),
+        prisma.centralKitchenHoliday.findMany({
+          where: { date: { gte: candidateUTC } },
+        }),
+      ]);
+
+      const holidaysMap = new Map<string, { all: boolean; branchIds: Set<string> }>();
+      for (const h of upcomingHolidays) {
+        const d = new Date(h.date);
+        const y = d.getUTCFullYear();
+        const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+        const day = String(d.getUTCDate()).padStart(2, "0");
+        const k = `${y}-${m}-${day}`;
+        if (!holidaysMap.has(k)) {
+          holidaysMap.set(k, { all: false, branchIds: new Set() });
+        }
+        const item = holidaysMap.get(k)!;
+        if (h.branchId === null) {
+          item.all = true;
+        } else {
+          item.branchIds.add(h.branchId);
+        }
+      }
+
+      // Tìm ngày gần nhất không phải cuối tuần và không phải tất cả chi nhánh đều nghỉ
+      for (let i = 0; i < 30; i++) {
+        const dayOfWeek = candidate.getDay();
+        // 0: Chủ Nhật, 6: Thứ Bảy -> Bỏ qua
+        if (dayOfWeek === 0 || dayOfWeek === 6) {
+          candidate.setDate(candidate.getDate() + 1);
+          continue;
+        }
+
+        const y = candidate.getFullYear();
+        const m = String(candidate.getMonth() + 1).padStart(2, "0");
+        const d = String(candidate.getDate()).padStart(2, "0");
+        const candidateStr = `${y}-${m}-${d}`;
+
+        const holidayInfo = holidaysMap.get(candidateStr);
+        const isAllHoliday =
+          holidayInfo?.all ||
+          (holidayInfo && holidayInfo.branchIds.size >= activeBranchesCount);
+
+        if (!isAllHoliday) {
+          dateStr = candidateStr;
+          break;
+        }
+
+        candidate.setDate(candidate.getDate() + 1);
+      }
+
+      if (!dateStr) {
+        const y = candidate.getFullYear();
+        const m = String(candidate.getMonth() + 1).padStart(2, "0");
+        const d = String(candidate.getDate()).padStart(2, "0");
+        dateStr = `${y}-${m}-${d}`;
+      }
     }
 
     const targetDate = parseDateToUTC(dateStr);
 
-    // Fetch active branches and ingredients
-    const [branches, ingredients, entries] = await Promise.all([
+    // Fetch active branches, ingredients, entries, and holidays on targetDate
+    const [branches, ingredients, entries, holidaysOnDate] = await Promise.all([
       prisma.centralKitchenBranch.findMany({
         where: { isActive: true },
         orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
@@ -82,6 +147,9 @@ export async function GET(request: NextRequest) {
         where: { date: targetDate },
         include: { branch: true },
         orderBy: [{ branch: { sortOrder: "asc" } }],
+      }),
+      prisma.centralKitchenHoliday.findMany({
+        where: { date: targetDate },
       }),
     ]);
 
@@ -107,12 +175,20 @@ export async function GET(request: NextRequest) {
 
     const branchCards = branches.map((branch) => {
       const entry = entryMap.get(branch.id);
-      const servingsMan = entry?.servingsMan || 0;
-      const servingsChao = entry?.servingsChao || 0;
-      const servingsChay = entry?.servingsChay || 0;
-      const totalServings = servingsMan + servingsChao + servingsChay;
+      const branchHoliday = holidaysOnDate.find(
+        (h) => h.branchId === null || h.branchId === branch.id
+      );
+      const isHoliday = !!branchHoliday;
+      const holidayReason = branchHoliday?.reason || "";
+
+      let servingsMan = isHoliday ? 0 : (entry?.servingsMan || 0);
+      let servingsChao = isHoliday ? 0 : (entry?.servingsChao || 0);
+      let servingsChay = isHoliday ? 0 : (entry?.servingsChay || 0);
+      let totalServings = servingsMan + servingsChao + servingsChay;
       const manMealType = (entry?.manMealType || "COM") as "COM" | "NUOC";
-      const lockStatus = entry?.lockStatus || KitchenLockStatus.UNLOCKED;
+      const lockStatus = isHoliday
+        ? KitchenLockStatus.LOCKED_COOK
+        : (entry?.lockStatus || KitchenLockStatus.UNLOCKED);
 
       // Noodle portion
       const selectedNoodle = entry?.noodleId ? ingredients.find((i) => i.id === entry.noodleId) : null;
@@ -127,59 +203,62 @@ export async function GET(request: NextRequest) {
       // Calculate materials for this branch
       let branchRiceKg = 0;
       let branchNoodleKg = 0;
+      let branchFruitKg = 0;
 
-      if (manMealType === "COM") {
-        // Gạo = (Mặn + Chay) * định lượng gạo / 1000
-        branchRiceKg = ((servingsMan + servingsChay) * ricePortionG) / 1000;
-      } else {
-        // Mặn Nước:
-        // Gạo cấp cho Chay = Chay * định lượng gạo / 1000
-        branchRiceKg = (servingsChay * ricePortionG) / 1000;
-        // Bún / Phở = Mặn * định lượng món nước / 1000
-        branchNoodleKg = (servingsMan * noodlePortionG) / 1000;
-      }
-
-      // Trái cây = Tổng suất * định lượng trái cây / 1000
-      const branchFruitKg = (totalServings * fruitPortionG) / 1000;
-
-      // Aggregates
-      grandTotalServings += totalServings;
-      grandTotalMan += servingsMan;
-      grandTotalChao += servingsChao;
-      grandTotalChay += servingsChay;
-      grandTotalRiceKg += branchRiceKg;
-
-      if (manMealType === "NUOC" && servingsMan > 0) {
-        if (!noodleTotals[noodleName]) {
-          noodleTotals[noodleName] = {
-            noodleId: entry?.noodleId,
-            noodleName,
-            totalKg: 0,
-            servingsMan: 0,
-          };
+      if (!isHoliday) {
+        if (manMealType === "COM") {
+          // Gạo = (Mặn + Chay) * định lượng gạo / 1000
+          branchRiceKg = ((servingsMan + servingsChay) * ricePortionG) / 1000;
+        } else {
+          // Mặn Nước:
+          // Gạo cấp cho Chay = Chay * định lượng gạo / 1000
+          branchRiceKg = (servingsChay * ricePortionG) / 1000;
+          // Bún / Phở = Mặn * định lượng món nước / 1000
+          branchNoodleKg = (servingsMan * noodlePortionG) / 1000;
         }
-        noodleTotals[noodleName].totalKg += branchNoodleKg;
-        noodleTotals[noodleName].servingsMan += servingsMan;
-      }
 
-      if (totalServings > 0 && entry?.fruitId) {
-        if (!fruitTotals[fruitName]) {
-          fruitTotals[fruitName] = {
-            fruitId: entry.fruitId,
-            fruitName,
-            totalKg: 0,
-            totalServings: 0,
-          };
+        // Trái cây = Tổng suất * định lượng trái cây / 1000
+        branchFruitKg = (totalServings * fruitPortionG) / 1000;
+
+        // Aggregates
+        grandTotalServings += totalServings;
+        grandTotalMan += servingsMan;
+        grandTotalChao += servingsChao;
+        grandTotalChay += servingsChay;
+        grandTotalRiceKg += branchRiceKg;
+
+        if (manMealType === "NUOC" && servingsMan > 0) {
+          if (!noodleTotals[noodleName]) {
+            noodleTotals[noodleName] = {
+              noodleId: entry?.noodleId,
+              noodleName,
+              totalKg: 0,
+              servingsMan: 0,
+            };
+          }
+          noodleTotals[noodleName].totalKg += branchNoodleKg;
+          noodleTotals[noodleName].servingsMan += servingsMan;
         }
-        fruitTotals[fruitName].totalKg += branchFruitKg;
-        fruitTotals[fruitName].totalServings += totalServings;
+
+        if (totalServings > 0 && entry?.fruitId) {
+          if (!fruitTotals[fruitName]) {
+            fruitTotals[fruitName] = {
+              fruitId: entry.fruitId,
+              fruitName,
+              totalKg: 0,
+              totalServings: 0,
+            };
+          }
+          fruitTotals[fruitName].totalKg += branchFruitKg;
+          fruitTotals[fruitName].totalServings += totalServings;
+        }
       }
 
       // Số đi chợ đã chốt hoặc fallback về số hiện tại nếu chưa chốt riêng
-      const marketTotal = entry?.marketTotalServings ?? totalServings;
-      const marketMan = entry?.marketServingsMan ?? servingsMan;
-      const marketChao = entry?.marketServingsChao ?? servingsChao;
-      const marketChay = entry?.marketServingsChay ?? servingsChay;
+      const marketTotal = isHoliday ? 0 : (entry?.marketTotalServings ?? totalServings);
+      const marketMan = isHoliday ? 0 : (entry?.marketServingsMan ?? servingsMan);
+      const marketChao = isHoliday ? 0 : (entry?.marketServingsChao ?? servingsChao);
+      const marketChay = isHoliday ? 0 : (entry?.marketServingsChay ?? servingsChay);
       const diffServings = totalServings - marketTotal;
 
       return {
@@ -189,6 +268,8 @@ export async function GET(request: NextRequest) {
         branchColor: branch.color,
         sortOrder: branch.sortOrder,
         entryId: entry?.id || null,
+        isHoliday,
+        holidayReason,
         totalServings,
         servingsMan,
         servingsChao,
@@ -220,8 +301,10 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // Check missing branches (active branches without entry or with 0 servings)
-    const missingBranches = branchCards.filter((b) => !b.hasEntry || b.totalServings === 0);
+    // Check missing branches (active branches without entry or with 0 servings, excluding branches on holiday)
+    const missingBranches = branchCards.filter(
+      (b) => !b.isHoliday && (!b.hasEntry || b.totalServings === 0)
+    );
 
     return NextResponse.json({
       date: dateStr,

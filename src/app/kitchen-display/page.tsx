@@ -25,8 +25,17 @@ function getServingDate(transitionTime: string = "14:00"): string {
   const nowH = now.getHours();
   const nowM = now.getMinutes();
 
-  // Từ 14:00 trở đi, tự động chuyển sang ngày phục vụ tiếp theo (ngày mai)
+  // Từ transition cutoff (mặc định 14:00) trở đi, tự động chuyển sang ngày phục vụ tiếp theo
   if (nowH > transH || (nowH === transH && nowM >= transM)) {
+    now.setDate(now.getDate() + 1);
+  }
+
+  // Học sinh tiểu học chỉ ăn T2 - T6:
+  // Nếu rơi vào Thứ Bảy (6) -> tự động chuyển sang Thứ Hai (+2)
+  // Nếu rơi vào Chủ Nhật (0) -> tự động chuyển sang Thứ Hai (+1)
+  if (now.getDay() === 6) {
+    now.setDate(now.getDate() + 2);
+  } else if (now.getDay() === 0) {
     now.setDate(now.getDate() + 1);
   }
 

@@ -45,6 +45,8 @@ interface BranchCardData {
   marketLockedAt?: string | null;
   mealLockedAt?: string | null;
   note?: string;
+  isHoliday?: boolean;
+  holidayReason?: string;
   hasEntry: boolean;
   materials: MaterialDetail;
 }
@@ -163,6 +165,8 @@ export function ProductionDisplay({
     > = {};
 
     branches.forEach((b) => {
+      if (b.isHoliday) return; // Bỏ qua chi nhánh nghỉ theo lịch
+
       const isMealLocked = b.lockStatus === "LOCKED_COOK";
       const showMealLock = isMealLocked && isAfterMealCutoff;
 
@@ -531,7 +535,18 @@ export function ProductionDisplay({
                   </div>
 
                   {/* Trạng thái chốt đặt cạnh tên chi nhánh */}
-                  {showMealLock ? (
+                  {branch.isHoliday ? (
+                    <div className="flex flex-col items-start">
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs sm:text-sm font-extrabold uppercase tracking-wide bg-purple-500/30 text-purple-200 border border-purple-400/50">
+                        <span>🏖️</span> NGHỈ THEO LỊCH
+                      </div>
+                      {branch.holidayReason && (
+                        <span className="text-[10px] sm:text-xs text-purple-200 font-semibold pl-1 mt-0.5 max-w-[180px] sm:max-w-[240px] truncate">
+                          {branch.holidayReason}
+                        </span>
+                      )}
+                    </div>
+                  ) : showMealLock ? (
                     <div className="flex flex-col items-start">
                       <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs sm:text-sm font-extrabold uppercase tracking-wide bg-emerald-500/25 text-emerald-300 border border-emerald-500/50">
                         <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
@@ -575,11 +590,11 @@ export function ProductionDisplay({
                   <span
                     className="font-black leading-none text-4xl sm:text-5xl lg:text-[68px]"
                     style={{
-                      color: config.totalColor,
+                      color: branch.isHoliday ? "#cbd5e1" : config.totalColor,
                       letterSpacing: "-2px",
                     }}
                   >
-                    {displayedTotal.toLocaleString("vi-VN")}
+                    {branch.isHoliday ? "0" : displayedTotal.toLocaleString("vi-VN")}
                   </span>
                   <span className="text-xs sm:text-base font-bold opacity-80 text-slate-200">
                     suất
@@ -587,151 +602,163 @@ export function ProductionDisplay({
                 </div>
               </div>
 
-              {/* BRANCH BODY: 2 Columns */}
-              <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-0 min-h-0">
-                {/* Left: Meals List (Mặn, Chay, Cháo) */}
-                <div className="px-4 py-2 flex flex-col justify-center gap-1.5 sm:gap-2">
-                  {/* Row 1: Mặn Cơm hoặc Mặn Nước */}
-                  <div className="flex items-center justify-between py-1">
-                    <span className="font-extrabold opacity-95 text-xl sm:text-2xl lg:text-[32px] leading-tight">
-                      {branch.manMealType === "NUOC" ? (
-                        <>🍜 {branch.noodleName || "Món Nước"}</>
-                      ) : (
-                        <>🍚 Mặn Cơm</>
-                      )}
-                    </span>
-                    <span
-                      className="font-black leading-none text-3xl sm:text-4xl lg:text-[63px]"
-                      style={{ color: "#fbbf24", letterSpacing: "-1.5px" }}
-                    >
-                      {displayedMan.toLocaleString("vi-VN")}
-                    </span>
+              {/* BRANCH BODY */}
+              {branch.isHoliday ? (
+                <div className="flex-1 flex flex-col items-center justify-center p-6 text-center bg-black/25 min-h-[140px]">
+                  <div className="text-4xl sm:text-5xl mb-2">🏖️</div>
+                  <div className="text-lg sm:text-2xl font-black text-white">
+                    Chi nhánh nghỉ hoạt động theo lịch
                   </div>
-
-                  {/* Row 2: Chay */}
-                  <div className="flex items-center justify-between py-1">
-                    <span className="font-extrabold opacity-95 text-xl sm:text-2xl lg:text-[32px] leading-tight">
-                      🥬 Chay
-                    </span>
-                    <span
-                      className="font-black leading-none text-3xl sm:text-4xl lg:text-[63px]"
-                      style={{ color: "#4ade80", letterSpacing: "-1.5px" }}
-                    >
-                      {displayedChay.toLocaleString("vi-VN")}
-                    </span>
-                  </div>
-
-                  {/* Row 3: Cháo */}
-                  <div className="flex items-center justify-between py-1">
-                    <span className="font-extrabold opacity-95 text-xl sm:text-2xl lg:text-[32px] leading-tight">
-                      🍲 Cháo
-                    </span>
-                    <span
-                      className="font-black leading-none text-3xl sm:text-4xl lg:text-[63px]"
-                      style={{ color: "#67e8f9", letterSpacing: "-1.5px" }}
-                    >
-                      {displayedChao.toLocaleString("vi-VN")}
-                    </span>
+                  {branch.holidayReason && (
+                    <div className="mt-2 px-4 py-1.5 bg-white/10 rounded-full text-xs sm:text-sm text-purple-200 font-bold max-w-md border border-purple-400/20 shadow-sm">
+                      📢 {branch.holidayReason}
+                    </div>
+                  )}
+                  <div className="mt-2 text-xs text-slate-300">
+                    Không phục vụ suất ăn trong ngày này
                   </div>
                 </div>
+              ) : (
+                <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-0 min-h-0">
+                  {/* Left: Meals List (Mặn, Chay, Cháo) */}
+                  <div className="px-4 py-2 flex flex-col justify-center gap-1.5 sm:gap-2">
+                    {/* Row 1: Mặn Cơm hoặc Mặn Nước */}
+                    <div className="flex items-center justify-between py-1">
+                      <span className="font-extrabold opacity-95 text-xl sm:text-2xl lg:text-[32px] leading-tight">
+                        {branch.manMealType === "NUOC" ? (
+                          <>🍜 {branch.noodleName || "Món Nước"}</>
+                        ) : (
+                          <>🍚 Mặn Cơm</>
+                        )}
+                      </span>
+                      <span
+                        className="font-black leading-none text-3xl sm:text-4xl lg:text-[63px]"
+                        style={{ color: "#fbbf24", letterSpacing: "-1.5px" }}
+                      >
+                        {displayedMan.toLocaleString("vi-VN")}
+                      </span>
+                    </div>
 
-                {/* Right: Export Ingredients */}
-                <div className="px-3 sm:px-4 py-2 flex flex-col justify-center gap-2 border-t sm:border-t-0 sm:border-l-2 border-white/15 bg-black/10">
-                  <div className="text-[11px] sm:text-xs font-extrabold uppercase tracking-widest opacity-70">
-                    📦 Xuất Kho Nguyên Liệu
+                    {/* Row 2: Chay */}
+                    <div className="flex items-center justify-between py-1">
+                      <span className="font-extrabold opacity-95 text-xl sm:text-2xl lg:text-[32px] leading-tight">
+                        🥬 Chay
+                      </span>
+                      <span
+                        className="font-black leading-none text-3xl sm:text-4xl lg:text-[63px]"
+                        style={{ color: "#4ade80", letterSpacing: "-1.5px" }}
+                      >
+                        {displayedChay.toLocaleString("vi-VN")}
+                      </span>
+                    </div>
+
+                    {/* Row 3: Cháo */}
+                    <div className="flex items-center justify-between py-1">
+                      <span className="font-extrabold opacity-95 text-xl sm:text-2xl lg:text-[32px] leading-tight">
+                        🥣 Cháo
+                      </span>
+                      <span
+                        className="font-black leading-none text-3xl sm:text-4xl lg:text-[63px]"
+                        style={{ color: "#67e8f9", letterSpacing: "-1.5px" }}
+                      >
+                        {displayedChao.toLocaleString("vi-VN")}
+                      </span>
+                    </div>
                   </div>
 
-                  {/* If Mặn Cơm: 1 Gạo box */}
-                  {branch.manMealType === "COM" ? (
-                    <div className="bg-black/25 rounded-xl p-2 sm:p-2.5 border-l-4 border-amber-400">
-                      <div className="flex items-baseline gap-2 flex-wrap mb-0.5">
-                        <span className="font-black text-white text-base sm:text-xl lg:text-[24px]">
-                          🌾 Gạo
-                        </span>
-                        <span className="text-[11px] sm:text-[13px] font-semibold text-slate-300">
-                          ({ricePortionG}g ×{" "}
-                          {displayedRiceServings.toLocaleString("vi-VN")}{" "}
-                          suất cơm)
-                        </span>
-                      </div>
-                      <div className="flex items-baseline gap-1">
-                        <span className="font-black text-amber-200 leading-none text-2xl sm:text-3xl lg:text-[40px] tracking-tight">
-                          {displayedRiceKg.toFixed(1)}
-                        </span>
-                        <span className="text-sm sm:text-lg font-bold text-amber-300">
-                          kg
-                        </span>
-                      </div>
-                    </div>
-                  ) : (
-                    /* If Mặn Nước: Noodle box + Chay rice box */
-                    <>
+                  {/* Right: Calculated Materials (Gạo, Món Nước, Trái cây) */}
+                  <div className="px-4 py-2 flex flex-col justify-center gap-1.5 sm:gap-2 border-t sm:border-t-0 sm:border-l border-white/10 bg-black/15">
+                    {/* If Mặn Cơm: Single Gạo box */}
+                    {branch.manMealType === "COM" ? (
                       <div className="bg-black/25 rounded-xl p-2 sm:p-2.5 border-l-4 border-amber-400">
                         <div className="flex items-baseline gap-2 flex-wrap mb-0.5">
                           <span className="font-black text-white text-base sm:text-xl lg:text-[24px]">
-                            🍜 {branch.noodleName || "Món Nước"}
+                            🌾 Gạo
                           </span>
                           <span className="text-[11px] sm:text-[13px] font-semibold text-slate-300">
-                            ({branch.noodlePortionG || 200}g ×{" "}
-                            {displayedMan.toLocaleString("vi-VN")} suất mặn)
+                            ({ricePortionG}g ×{" "}
+                            {displayedRiceServings.toLocaleString("vi-VN")}{" "}
+                            suất cơm)
                           </span>
                         </div>
                         <div className="flex items-baseline gap-1">
                           <span className="font-black text-amber-200 leading-none text-2xl sm:text-3xl lg:text-[40px] tracking-tight">
-                            {displayedNoodleKg.toFixed(1)}
+                            {displayedRiceKg.toFixed(1)}
                           </span>
                           <span className="text-sm sm:text-lg font-bold text-amber-300">
                             kg
                           </span>
                         </div>
                       </div>
-
-                      {displayedChay > 0 && (
-                        <div className="bg-black/25 rounded-xl p-1.5 sm:p-2 border-l-4 border-emerald-400">
+                    ) : (
+                      /* If Mặn Nước: Noodle box + Chay rice box */
+                      <>
+                        <div className="bg-black/25 rounded-xl p-2 sm:p-2.5 border-l-4 border-amber-400">
                           <div className="flex items-baseline gap-2 flex-wrap mb-0.5">
-                            <span className="font-black text-white text-sm sm:text-lg lg:text-[20px]">
-                              🌾 Gạo (Chay)
+                            <span className="font-black text-white text-base sm:text-xl lg:text-[24px]">
+                              🍜 {branch.noodleName || "Món Nước"}
                             </span>
-                            <span className="text-[10px] sm:text-[12px] font-semibold text-slate-300">
-                              ({ricePortionG}g ×{" "}
-                              {displayedChay.toLocaleString("vi-VN")} suất chay)
+                            <span className="text-[11px] sm:text-[13px] font-semibold text-slate-300">
+                              ({branch.noodlePortionG || 200}g ×{" "}
+                              {displayedMan.toLocaleString("vi-VN")} suất mặn)
                             </span>
                           </div>
                           <div className="flex items-baseline gap-1">
-                            <span className="font-black text-emerald-200 leading-none text-xl sm:text-2xl lg:text-[30px]">
-                              {((displayedChay * ricePortionG) / 1000).toFixed(1)}
+                            <span className="font-black text-amber-200 leading-none text-2xl sm:text-3xl lg:text-[40px] tracking-tight">
+                              {displayedNoodleKg.toFixed(1)}
                             </span>
-                            <span className="text-xs sm:text-sm font-bold text-emerald-300">
+                            <span className="text-sm sm:text-lg font-bold text-amber-300">
                               kg
                             </span>
                           </div>
                         </div>
-                      )}
-                    </>
-                  )}
 
-                  {/* Trái cây box */}
-                  <div className="bg-black/25 rounded-xl p-2 sm:p-2.5 border-l-4 border-yellow-400">
-                    <div className="flex items-baseline gap-2 flex-wrap mb-0.5">
-                      <span className="font-black text-white text-base sm:text-xl lg:text-[24px]">
-                        🍌 {branch.fruitName || "Trái cây"}
-                      </span>
-                      <span className="text-[11px] sm:text-[13px] font-semibold text-slate-300">
-                        ({branch.fruitPortionG || 150}g ×{" "}
-                        {displayedTotal.toLocaleString("vi-VN")} suất)
-                      </span>
-                    </div>
-                    <div className="flex items-baseline gap-1">
-                      <span className="font-black text-yellow-200 leading-none text-2xl sm:text-3xl lg:text-[40px] tracking-tight">
-                        {displayedFruitKg.toFixed(1)}
-                      </span>
-                      <span className="text-sm sm:text-lg font-bold text-yellow-300">
-                        kg
-                      </span>
+                        {displayedChay > 0 && (
+                          <div className="bg-black/25 rounded-xl p-2 sm:p-2.5 border-l-4 border-emerald-400">
+                            <div className="flex items-baseline gap-2 flex-wrap mb-0.5">
+                              <span className="font-black text-white text-base sm:text-xl lg:text-[24px]">
+                                🌾 Gạo cấp Chay
+                              </span>
+                              <span className="text-[11px] sm:text-[13px] font-semibold text-slate-300">
+                                ({ricePortionG}g × {displayedChay} suất chay)
+                              </span>
+                            </div>
+                            <div className="flex items-baseline gap-1">
+                              <span className="font-black text-emerald-200 leading-none text-xl sm:text-2xl lg:text-[30px]">
+                                {((displayedChay * ricePortionG) / 1000).toFixed(1)}
+                              </span>
+                              <span className="text-xs sm:text-sm font-bold text-emerald-300">
+                                kg
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                    {/* Trái cây box */}
+                    <div className="bg-black/25 rounded-xl p-2 sm:p-2.5 border-l-4 border-yellow-400">
+                      <div className="flex items-baseline gap-2 flex-wrap mb-0.5">
+                        <span className="font-black text-white text-base sm:text-xl lg:text-[24px]">
+                          🍌 {branch.fruitName || "Trái cây"}
+                        </span>
+                        <span className="text-[11px] sm:text-[13px] font-semibold text-slate-300">
+                          ({branch.fruitPortionG || 150}g ×{" "}
+                          {displayedTotal.toLocaleString("vi-VN")} suất)
+                        </span>
+                      </div>
+                      <div className="flex items-baseline gap-1">
+                        <span className="font-black text-yellow-200 leading-none text-2xl sm:text-3xl lg:text-[40px] tracking-tight">
+                          {displayedFruitKg.toFixed(1)}
+                        </span>
+                        <span className="text-sm sm:text-lg font-bold text-yellow-300">
+                          kg
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           );
         })}
