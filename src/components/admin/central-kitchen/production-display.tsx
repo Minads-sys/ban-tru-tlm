@@ -316,40 +316,67 @@ export function ProductionDisplay({
       }}
     >
       {/* TOP BAR */}
-      <div className="flex flex-wrap items-center justify-between px-4 sm:px-6 py-2.5 bg-slate-900/90 border-b border-slate-800 shrink-0 gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between px-3 sm:px-6 py-2 bg-slate-900/90 border-b border-slate-800 shrink-0 gap-2 sm:gap-3">
         {/* Left: Title & Controls */}
-        <div className="flex items-center gap-3 sm:gap-4">
-          <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/30">
-            <svg
-              width="22"
-              height="22"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="white"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M6 13.87A4 4 0 0 1 7.41 6a5.11 5.11 0 0 1 1.05-1.54 5 5 0 0 1 7.08 0A5.11 5.11 0 0 1 16.59 6 4 4 0 0 1 18 13.87V21H6Z" />
-              <line x1="6" y1="17" x2="18" y2="17" />
-            </svg>
+        <div className="flex items-center justify-between w-full sm:w-auto gap-3">
+          <div className="flex items-center gap-2.5 sm:gap-4">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/30 shrink-0">
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="white"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="sm:w-[22px] sm:h-[22px]"
+              >
+                <path d="M6 13.87A4 4 0 0 1 7.41 6a5.11 5.11 0 0 1 1.05-1.54 5 5 0 0 1 7.08 0A5.11 5.11 0 0 1 16.59 6 4 4 0 0 1 18 13.87V21H6Z" />
+                <line x1="6" y1="17" x2="18" y2="17" />
+              </svg>
+            </div>
+            <div>
+              <div className="text-base sm:text-2xl font-black tracking-tight text-white flex items-center gap-1.5 sm:gap-2">
+                BẾP TRUNG TÂM
+                <span className="hidden sm:inline-block text-xs font-bold px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30 uppercase tracking-widest">
+                  Màn hình TV 16:9
+                </span>
+              </div>
+              <div className="text-[10px] sm:text-xs text-slate-400 font-bold uppercase tracking-wider">
+                CHẾ ĐỘ SẢN XUẤT • {branches.length} CHI NHÁNH
+              </div>
+            </div>
           </div>
-          <div>
-            <div className="text-xl sm:text-2xl font-black tracking-tight text-white flex items-center gap-2">
-              BẾP TRUNG TÂM
-              <span className="hidden sm:inline-block text-xs font-bold px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30 uppercase tracking-widest">
-                Màn hình TV 16:9
-              </span>
-            </div>
-            <div className="text-[11px] sm:text-xs text-slate-400 font-bold uppercase tracking-wider">
-              CHẾ ĐỘ SẢN XUẤT • {branches.length} CHI NHÁNH
-            </div>
+
+          {/* Controls on mobile: Refresh & Fullscreen */}
+          <div className="flex sm:hidden items-center gap-1">
+            <button
+              onClick={handleManualRefresh}
+              className={`p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition ${
+                isRefreshing ? "animate-spin text-blue-400" : ""
+              }`}
+              title="Làm mới dữ liệu"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={toggleFullscreen}
+              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition"
+              title={isFullscreen ? "Thoát toàn màn hình" : "Toàn màn hình TV"}
+            >
+              {isFullscreen ? (
+                <Minimize2 className="w-3.5 h-3.5" />
+              ) : (
+                <Maximize2 className="w-3.5 h-3.5" />
+              )}
+            </button>
           </div>
         </div>
 
         {/* Center: Date picker navigator (Ẩn khi hideDateControls = true trên màn hình TV) */}
         {!hideDateControls && (
-          <div className="flex items-center gap-1.5 bg-slate-800/80 px-2 py-1 rounded-xl border border-slate-700">
+          <div className="flex items-center gap-1.5 bg-slate-800/80 px-2 py-1 rounded-xl border border-slate-700 self-center sm:self-auto">
             <button
               onClick={() => changeDateByDays(-1)}
               className="p-1 rounded hover:bg-slate-700 text-slate-300 hover:text-white transition"
@@ -377,14 +404,14 @@ export function ProductionDisplay({
         )}
 
         {/* Right: Date 40px, Clock 25px, Action Buttons */}
-        <div className="flex items-center gap-3 sm:gap-4">
-          {/* KHỐI 1: TIÊU ĐỀ NGÀY ĂN PHỤC VỤ (Font lớn 40px, không gắn chữ đi chợ) */}
-          <div className="flex items-center gap-2 bg-white/10 px-3.5 sm:px-4 py-1.5 rounded-xl border border-white/20 shadow-inner">
-            <span className="text-xs sm:text-sm font-black text-amber-300 uppercase tracking-wider shrink-0">
+        <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-4 w-full sm:w-auto">
+          {/* KHỐI 1: TIÊU ĐỀ NGÀY ĂN PHỤC VỤ (Font lớn trên TV, gọn gàng trên mobile không bị tràn) */}
+          <div className="flex-1 sm:flex-initial flex items-center gap-1.5 sm:gap-2 bg-white/10 px-2.5 sm:px-4 py-1.5 rounded-xl border border-white/20 shadow-inner min-w-0">
+            <span className="text-[10px] sm:text-sm font-black text-amber-300 uppercase tracking-wider shrink-0">
               📅 NGÀY ĂN:
             </span>
             <span
-              className="font-black text-white tracking-tight leading-none text-xl sm:text-[32px] lg:text-[38px]"
+              className="font-black text-white tracking-tight leading-none text-xs sm:text-[28px] lg:text-[38px] whitespace-nowrap overflow-hidden text-ellipsis"
               style={{ letterSpacing: "-0.5px" }}
             >
               {servingDateFormatted}
@@ -392,20 +419,20 @@ export function ProductionDisplay({
           </div>
 
           {/* KHỐI 2: ĐỒNG HỒ THỜI GIAN THỰC TẾ HIỆN TẠI */}
-          <div className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-xl border border-white/10 shadow-inner">
-            <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shadow-sm shadow-emerald-400 shrink-0" />
+          <div className="flex items-center gap-1.5 sm:gap-2 bg-white/5 px-2 sm:px-3 py-1.5 rounded-xl border border-white/10 shadow-inner shrink-0">
+            <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-emerald-400 animate-pulse shadow-sm shadow-emerald-400 shrink-0" />
             <div className="flex flex-col text-left">
-              <span className="font-extrabold text-emerald-400 tabular-nums leading-none text-base sm:text-[20px]">
+              <span className="font-extrabold text-emerald-400 tabular-nums leading-none text-xs sm:text-[20px]">
                 {realtimeClock}
               </span>
-              <span className="text-[10px] text-slate-400 font-bold tracking-wider uppercase leading-none mt-1">
+              <span className="text-[8px] sm:text-[10px] text-slate-400 font-bold tracking-wider uppercase leading-none mt-0.5 sm:mt-1 whitespace-nowrap">
                 Hiện tại ({realtimeDate})
               </span>
             </div>
           </div>
 
-          {/* Controls: Refresh & Fullscreen */}
-          <div className="flex items-center gap-1.5">
+          {/* Controls: Refresh & Fullscreen on Desktop / TV */}
+          <div className="hidden sm:flex items-center gap-1.5 shrink-0">
             <button
               onClick={handleManualRefresh}
               className={`p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition ${

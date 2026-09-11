@@ -37,11 +37,27 @@ function getTodayString(): string {
   return `${y}-${m}-${d}`;
 }
 
+function getServingDate(transitionTime: string = "14:00"): string {
+  const now = new Date();
+  const [transH, transM] = (transitionTime || "14:00").split(":").map(Number);
+  const nowH = now.getHours();
+  const nowM = now.getMinutes();
+
+  if (nowH > transH || (nowH === transH && nowM >= transM)) {
+    now.setDate(now.getDate() + 1);
+  }
+
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
 export default function CentralKitchenPage() {
   const { data: session } = useSession();
   const userRole = session?.user?.role;
 
-  const [date, setDate] = useState<string>(getTodayString());
+  const [date, setDate] = useState<string>(() => getServingDate("14:00"));
   const [activeTab, setActiveTab] = useState<string>("entry");
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -126,6 +142,12 @@ export default function CentralKitchenPage() {
       setDailyData(dailyJson);
       if (dailyJson.passkey) {
         setCurrentPasskey(dailyJson.passkey);
+      }
+      if (dailyJson.config?.dayTransitionTime) {
+        const expectedDate = getServingDate(dailyJson.config.dayTransitionTime);
+        if (date === getTodayString() && date !== expectedDate) {
+          setDate(expectedDate);
+        }
       }
 
       if (branchesRes.ok) {
