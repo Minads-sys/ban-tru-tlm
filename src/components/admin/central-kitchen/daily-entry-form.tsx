@@ -78,9 +78,9 @@ export function DailyEntryForm({
     Record<
       string,
       {
-        servingsMan: number;
-        servingsChao: number;
-        servingsChay: number;
+        servingsMan: number | string;
+        servingsChao: number | string;
+        servingsChay: number | string;
         manMealType: "COM" | "NUOC";
         noodleId: string;
         noodleName: string;
@@ -176,7 +176,7 @@ export function DailyEntryForm({
     field: "servingsMan" | "servingsChao" | "servingsChay",
     delta: number
   ) => {
-    const currentVal = formValues[branchId]?.[field] || 0;
+    const currentVal = Number(formValues[branchId]?.[field]) || 0;
     const newVal = Math.max(0, currentVal + delta);
     updateField(branchId, field, newVal);
   };
@@ -195,6 +195,9 @@ export function DailyEntryForm({
           date,
           branchId,
           ...data,
+          servingsMan: Number(data.servingsMan) || 0,
+          servingsChao: Number(data.servingsChao) || 0,
+          servingsChay: Number(data.servingsChay) || 0,
         }),
       });
 
@@ -230,6 +233,9 @@ export function DailyEntryForm({
             date,
             branchId: b.branchId,
             ...data,
+            servingsMan: Number(data.servingsMan) || 0,
+            servingsChao: Number(data.servingsChao) || 0,
+            servingsChay: Number(data.servingsChay) || 0,
           }),
         });
 
@@ -263,6 +269,9 @@ export function DailyEntryForm({
           date,
           branchId,
           ...data,
+          servingsMan: Number(data.servingsMan) || 0,
+          servingsChao: Number(data.servingsChao) || 0,
+          servingsChay: Number(data.servingsChay) || 0,
           lockStatus: newStatus,
         }),
       });
@@ -321,7 +330,10 @@ export function DailyEntryForm({
   // Find missing branches
   const missingBranches = branches.filter((b) => {
     const val = formValues[b.branchId];
-    const total = (val?.servingsMan || 0) + (val?.servingsChao || 0) + (val?.servingsChay || 0);
+    const total =
+      (Number(val?.servingsMan) || 0) +
+      (Number(val?.servingsChao) || 0) +
+      (Number(val?.servingsChay) || 0);
     return !b.hasEntry || total === 0 || val?.lockStatus === "UNLOCKED";
   });
 
@@ -383,9 +395,9 @@ export function DailyEntryForm({
           {branches.map((b) => {
             const val = formValues[b.branchId];
             const total =
-              (val?.servingsMan || 0) +
-              (val?.servingsChao || 0) +
-              (val?.servingsChay || 0);
+              (Number(val?.servingsMan) || 0) +
+              (Number(val?.servingsChao) || 0) +
+              (Number(val?.servingsChay) || 0);
 
             return (
               <button
@@ -473,8 +485,10 @@ export function DailyEntryForm({
             lockStatus: "UNLOCKED",
           };
 
-          const totalServings =
-            val.servingsMan + val.servingsChao + val.servingsChay;
+          const manServings = Number(val.servingsMan) || 0;
+          const chaoServings = Number(val.servingsChao) || 0;
+          const chayServings = Number(val.servingsChay) || 0;
+          const totalServings = manServings + chaoServings + chayServings;
 
           // Material calculations
           const ricePortion = ingredients.ricePortionG || 150;
@@ -490,10 +504,10 @@ export function DailyEntryForm({
           let riceKg = 0;
           let noodleKg = 0;
           if (val.manMealType === "COM") {
-            riceKg = ((val.servingsMan + val.servingsChay) * ricePortion) / 1000;
+            riceKg = ((manServings + chayServings) * ricePortion) / 1000;
           } else {
-            riceKg = (val.servingsChay * ricePortion) / 1000;
-            noodleKg = (val.servingsMan * noodlePortion) / 1000;
+            riceKg = (chayServings * ricePortion) / 1000;
+            noodleKg = (manServings * noodlePortion) / 1000;
           }
           const fruitKg = (totalServings * fruitPortion) / 1000;
 
@@ -586,10 +600,10 @@ export function DailyEntryForm({
                 {/* 1. Meal Type Selection: Mặn Cơm vs Mặn Nước */}
                 <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
                   <div className="flex items-center justify-between gap-2 mb-2">
-                    <label className="text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide">
+                    <label className="text-sm sm:text-base font-black text-slate-800 dark:text-slate-200 uppercase tracking-wide">
                       Món Mặn Chính:
                     </label>
-                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                    <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
                       (Có thể chọn Cơm hoặc Món Nước độc lập cho từng chi nhánh)
                     </span>
                   </div>
@@ -599,7 +613,7 @@ export function DailyEntryForm({
                       type="button"
                       disabled={isLocked}
                       onClick={() => updateField(branch.branchId, "manMealType", "COM")}
-                      className={`flex items-center justify-center gap-2 py-2 px-3 rounded-xl font-bold text-xs sm:text-sm transition ${
+                      className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl font-black text-sm sm:text-base transition cursor-pointer ${
                         val.manMealType === "COM"
                           ? "bg-amber-500 text-white shadow-md shadow-amber-500/30"
                           : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-600 hover:bg-slate-100"
@@ -671,18 +685,19 @@ export function DailyEntryForm({
                 {/* 2. Stepper Inputs: Mặn, Chay, Cháo */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {/* MẶN */}
-                  <div className="bg-amber-500/5 p-3 rounded-xl border border-amber-500/20">
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-xs font-black text-amber-700 dark:text-amber-300 uppercase">
+                  <div className="bg-amber-500/5 p-3.5 sm:p-4 rounded-2xl border-2 border-amber-500/30 flex flex-col justify-between">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-base sm:text-xl font-black text-amber-700 dark:text-amber-300 uppercase tracking-wide">
                         {val.manMealType === "NUOC" ? "🍜 Mặn Nước" : "🍚 Suất Mặn"}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between gap-1">
+                    <div className="flex items-center justify-center gap-1.5 sm:gap-2">
                       <button
                         type="button"
                         disabled={isLocked}
                         onClick={() => adjustNumber(branch.branchId, "servingsMan", -10)}
-                        className="w-8 h-8 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-800 dark:text-amber-200 font-bold text-xs flex items-center justify-center transition"
+                        className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 active:scale-95 text-amber-800 dark:text-amber-200 font-black text-xs sm:text-sm flex items-center justify-center transition cursor-pointer shrink-0 disabled:opacity-40"
+                        title="Giảm 10 suất"
                       >
                         -10
                       </button>
@@ -690,37 +705,65 @@ export function DailyEntryForm({
                         type="button"
                         disabled={isLocked}
                         onClick={() => adjustNumber(branch.branchId, "servingsMan", -1)}
-                        className="w-8 h-8 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-800 dark:text-amber-200 font-bold text-xs flex items-center justify-center transition"
+                        className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 active:scale-95 text-amber-800 dark:text-amber-200 font-black text-xs sm:text-sm flex items-center justify-center transition cursor-pointer shrink-0 disabled:opacity-40"
+                        title="Giảm 1 suất"
                       >
-                        <Minus className="w-3.5 h-3.5" />
+                        <Minus className="w-4 h-4 sm:w-5 sm:h-5" />
                       </button>
                       <input
                         type="number"
                         min="0"
                         disabled={isLocked}
-                        value={val.servingsMan}
-                        onChange={(e) =>
-                          updateField(
-                            branch.branchId,
-                            "servingsMan",
-                            Math.max(0, parseInt(e.target.value, 10) || 0)
-                          )
-                        }
-                        className="w-16 sm:w-20 text-center font-black text-lg py-1 rounded-lg border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-800 text-amber-600 dark:text-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                        value={val.servingsMan === "" ? "" : val.servingsMan}
+                        placeholder="0"
+                        onFocus={(e) => {
+                          if (val.servingsMan === 0 || val.servingsMan === "0") {
+                            updateField(branch.branchId, "servingsMan", "");
+                          } else {
+                            e.target.select();
+                          }
+                        }}
+                        onBlur={(e) => {
+                          if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                            updateField(branch.branchId, "servingsMan", 0);
+                          } else {
+                            updateField(
+                              branch.branchId,
+                              "servingsMan",
+                              Math.max(0, parseInt(e.target.value, 10) || 0)
+                            );
+                          }
+                        }}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          if (raw === "") {
+                            updateField(branch.branchId, "servingsMan", "");
+                          } else {
+                            const num = parseInt(raw, 10);
+                            updateField(
+                              branch.branchId,
+                              "servingsMan",
+                              isNaN(num) ? "" : Math.max(0, num)
+                            );
+                          }
+                        }}
+                        className="w-24 sm:w-36 text-center font-black text-3xl sm:text-4xl py-2 sm:py-2.5 rounded-xl border-2 border-amber-400 dark:border-amber-600 bg-white dark:bg-slate-800 text-amber-600 dark:text-amber-400 focus:outline-none focus:ring-4 focus:ring-amber-500/30 transition shadow-inner"
                       />
                       <button
                         type="button"
                         disabled={isLocked}
                         onClick={() => adjustNumber(branch.branchId, "servingsMan", 1)}
-                        className="w-8 h-8 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-800 dark:text-amber-200 font-bold text-xs flex items-center justify-center transition"
+                        className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 active:scale-95 text-amber-800 dark:text-amber-200 font-black text-xs sm:text-sm flex items-center justify-center transition cursor-pointer shrink-0 disabled:opacity-40"
+                        title="Tăng 1 suất"
                       >
-                        <Plus className="w-3.5 h-3.5" />
+                        <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
                       </button>
                       <button
                         type="button"
                         disabled={isLocked}
                         onClick={() => adjustNumber(branch.branchId, "servingsMan", 10)}
-                        className="w-8 h-8 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-800 dark:text-amber-200 font-bold text-xs flex items-center justify-center transition"
+                        className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 active:scale-95 text-amber-800 dark:text-amber-200 font-black text-xs sm:text-sm flex items-center justify-center transition cursor-pointer shrink-0 disabled:opacity-40"
+                        title="Tăng 10 suất"
                       >
                         +10
                       </button>
@@ -728,18 +771,19 @@ export function DailyEntryForm({
                   </div>
 
                   {/* CHAY */}
-                  <div className="bg-emerald-500/5 p-3 rounded-xl border border-emerald-500/20">
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-xs font-black text-emerald-700 dark:text-emerald-300 uppercase">
+                  <div className="bg-emerald-500/5 p-3.5 sm:p-4 rounded-2xl border-2 border-emerald-500/30 flex flex-col justify-between">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-base sm:text-xl font-black text-emerald-700 dark:text-emerald-300 uppercase tracking-wide">
                         🥬 Suất Chay
                       </span>
                     </div>
-                    <div className="flex items-center justify-between gap-1">
+                    <div className="flex items-center justify-center gap-1.5 sm:gap-2">
                       <button
                         type="button"
                         disabled={isLocked}
                         onClick={() => adjustNumber(branch.branchId, "servingsChay", -10)}
-                        className="w-8 h-8 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-800 dark:text-emerald-200 font-bold text-xs flex items-center justify-center transition"
+                        className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 active:scale-95 text-emerald-800 dark:text-emerald-200 font-black text-xs sm:text-sm flex items-center justify-center transition cursor-pointer shrink-0 disabled:opacity-40"
+                        title="Giảm 10 suất"
                       >
                         -10
                       </button>
@@ -747,37 +791,65 @@ export function DailyEntryForm({
                         type="button"
                         disabled={isLocked}
                         onClick={() => adjustNumber(branch.branchId, "servingsChay", -1)}
-                        className="w-8 h-8 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-800 dark:text-emerald-200 font-bold text-xs flex items-center justify-center transition"
+                        className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 active:scale-95 text-emerald-800 dark:text-emerald-200 font-black text-xs sm:text-sm flex items-center justify-center transition cursor-pointer shrink-0 disabled:opacity-40"
+                        title="Giảm 1 suất"
                       >
-                        <Minus className="w-3.5 h-3.5" />
+                        <Minus className="w-4 h-4 sm:w-5 sm:h-5" />
                       </button>
                       <input
                         type="number"
                         min="0"
                         disabled={isLocked}
-                        value={val.servingsChay}
-                        onChange={(e) =>
-                          updateField(
-                            branch.branchId,
-                            "servingsChay",
-                            Math.max(0, parseInt(e.target.value, 10) || 0)
-                          )
-                        }
-                        className="w-16 sm:w-20 text-center font-black text-lg py-1 rounded-lg border border-emerald-300 dark:border-emerald-700 bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        value={val.servingsChay === "" ? "" : val.servingsChay}
+                        placeholder="0"
+                        onFocus={(e) => {
+                          if (val.servingsChay === 0 || val.servingsChay === "0") {
+                            updateField(branch.branchId, "servingsChay", "");
+                          } else {
+                            e.target.select();
+                          }
+                        }}
+                        onBlur={(e) => {
+                          if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                            updateField(branch.branchId, "servingsChay", 0);
+                          } else {
+                            updateField(
+                              branch.branchId,
+                              "servingsChay",
+                              Math.max(0, parseInt(e.target.value, 10) || 0)
+                            );
+                          }
+                        }}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          if (raw === "") {
+                            updateField(branch.branchId, "servingsChay", "");
+                          } else {
+                            const num = parseInt(raw, 10);
+                            updateField(
+                              branch.branchId,
+                              "servingsChay",
+                              isNaN(num) ? "" : Math.max(0, num)
+                            );
+                          }
+                        }}
+                        className="w-24 sm:w-36 text-center font-black text-3xl sm:text-4xl py-2 sm:py-2.5 rounded-xl border-2 border-emerald-400 dark:border-emerald-600 bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 focus:outline-none focus:ring-4 focus:ring-emerald-500/30 transition shadow-inner"
                       />
                       <button
                         type="button"
                         disabled={isLocked}
                         onClick={() => adjustNumber(branch.branchId, "servingsChay", 1)}
-                        className="w-8 h-8 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-800 dark:text-emerald-200 font-bold text-xs flex items-center justify-center transition"
+                        className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 active:scale-95 text-emerald-800 dark:text-emerald-200 font-black text-xs sm:text-sm flex items-center justify-center transition cursor-pointer shrink-0 disabled:opacity-40"
+                        title="Tăng 1 suất"
                       >
-                        <Plus className="w-3.5 h-3.5" />
+                        <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
                       </button>
                       <button
                         type="button"
                         disabled={isLocked}
                         onClick={() => adjustNumber(branch.branchId, "servingsChay", 10)}
-                        className="w-8 h-8 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-800 dark:text-emerald-200 font-bold text-xs flex items-center justify-center transition"
+                        className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 active:scale-95 text-emerald-800 dark:text-emerald-200 font-black text-xs sm:text-sm flex items-center justify-center transition cursor-pointer shrink-0 disabled:opacity-40"
+                        title="Tăng 10 suất"
                       >
                         +10
                       </button>
@@ -785,18 +857,19 @@ export function DailyEntryForm({
                   </div>
 
                   {/* CHÁO */}
-                  <div className="bg-cyan-500/5 p-3 rounded-xl border border-cyan-500/20">
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-xs font-black text-cyan-700 dark:text-cyan-300 uppercase">
+                  <div className="bg-cyan-500/5 p-3.5 sm:p-4 rounded-2xl border-2 border-cyan-500/30 flex flex-col justify-between">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-base sm:text-xl font-black text-cyan-700 dark:text-cyan-300 uppercase tracking-wide">
                         🍲 Suất Cháo
                       </span>
                     </div>
-                    <div className="flex items-center justify-between gap-1">
+                    <div className="flex items-center justify-center gap-1.5 sm:gap-2">
                       <button
                         type="button"
                         disabled={isLocked}
                         onClick={() => adjustNumber(branch.branchId, "servingsChao", -10)}
-                        className="w-8 h-8 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-800 dark:text-cyan-200 font-bold text-xs flex items-center justify-center transition"
+                        className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 active:scale-95 text-cyan-800 dark:text-cyan-200 font-black text-xs sm:text-sm flex items-center justify-center transition cursor-pointer shrink-0 disabled:opacity-40"
+                        title="Giảm 10 suất"
                       >
                         -10
                       </button>
@@ -804,37 +877,65 @@ export function DailyEntryForm({
                         type="button"
                         disabled={isLocked}
                         onClick={() => adjustNumber(branch.branchId, "servingsChao", -1)}
-                        className="w-8 h-8 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-800 dark:text-cyan-200 font-bold text-xs flex items-center justify-center transition"
+                        className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 active:scale-95 text-cyan-800 dark:text-cyan-200 font-black text-xs sm:text-sm flex items-center justify-center transition cursor-pointer shrink-0 disabled:opacity-40"
+                        title="Giảm 1 suất"
                       >
-                        <Minus className="w-3.5 h-3.5" />
+                        <Minus className="w-4 h-4 sm:w-5 sm:h-5" />
                       </button>
                       <input
                         type="number"
                         min="0"
                         disabled={isLocked}
-                        value={val.servingsChao}
-                        onChange={(e) =>
-                          updateField(
-                            branch.branchId,
-                            "servingsChao",
-                            Math.max(0, parseInt(e.target.value, 10) || 0)
-                          )
-                        }
-                        className="w-16 sm:w-20 text-center font-black text-lg py-1 rounded-lg border border-cyan-300 dark:border-cyan-700 bg-white dark:bg-slate-800 text-cyan-600 dark:text-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                        value={val.servingsChao === "" ? "" : val.servingsChao}
+                        placeholder="0"
+                        onFocus={(e) => {
+                          if (val.servingsChao === 0 || val.servingsChao === "0") {
+                            updateField(branch.branchId, "servingsChao", "");
+                          } else {
+                            e.target.select();
+                          }
+                        }}
+                        onBlur={(e) => {
+                          if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                            updateField(branch.branchId, "servingsChao", 0);
+                          } else {
+                            updateField(
+                              branch.branchId,
+                              "servingsChao",
+                              Math.max(0, parseInt(e.target.value, 10) || 0)
+                            );
+                          }
+                        }}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          if (raw === "") {
+                            updateField(branch.branchId, "servingsChao", "");
+                          } else {
+                            const num = parseInt(raw, 10);
+                            updateField(
+                              branch.branchId,
+                              "servingsChao",
+                              isNaN(num) ? "" : Math.max(0, num)
+                            );
+                          }
+                        }}
+                        className="w-24 sm:w-36 text-center font-black text-3xl sm:text-4xl py-2 sm:py-2.5 rounded-xl border-2 border-cyan-400 dark:border-cyan-600 bg-white dark:bg-slate-800 text-cyan-600 dark:text-cyan-400 focus:outline-none focus:ring-4 focus:ring-cyan-500/30 transition shadow-inner"
                       />
                       <button
                         type="button"
                         disabled={isLocked}
                         onClick={() => adjustNumber(branch.branchId, "servingsChao", 1)}
-                        className="w-8 h-8 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-800 dark:text-cyan-200 font-bold text-xs flex items-center justify-center transition"
+                        className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 active:scale-95 text-cyan-800 dark:text-cyan-200 font-black text-xs sm:text-sm flex items-center justify-center transition cursor-pointer shrink-0 disabled:opacity-40"
+                        title="Tăng 1 suất"
                       >
-                        <Plus className="w-3.5 h-3.5" />
+                        <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
                       </button>
                       <button
                         type="button"
                         disabled={isLocked}
                         onClick={() => adjustNumber(branch.branchId, "servingsChao", 10)}
-                        className="w-8 h-8 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-800 dark:text-cyan-200 font-bold text-xs flex items-center justify-center transition"
+                        className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 active:scale-95 text-cyan-800 dark:text-cyan-200 font-black text-xs sm:text-sm flex items-center justify-center transition cursor-pointer shrink-0 disabled:opacity-40"
+                        title="Tăng 10 suất"
                       >
                         +10
                       </button>
@@ -845,7 +946,7 @@ export function DailyEntryForm({
                 {/* 3. Fruit selector & Notes */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                    <label className="block text-sm sm:text-base font-black text-slate-800 dark:text-slate-200 mb-1.5">
                       Trái cây tráng miệng:
                     </label>
                     <select
@@ -854,7 +955,7 @@ export function DailyEntryForm({
                       onChange={(e) =>
                         updateField(branch.branchId, "fruitId", e.target.value)
                       }
-                      className="w-full text-xs sm:text-sm font-semibold p-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full text-xs sm:text-sm font-semibold p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
                     >
                       {ingredients.fruits.map((fruit) => (
                         <option key={fruit.id} value={fruit.id}>
@@ -865,7 +966,7 @@ export function DailyEntryForm({
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                    <label className="block text-sm sm:text-base font-black text-slate-800 dark:text-slate-200 mb-1.5">
                       Ghi chú / Lưu ý nấu:
                     </label>
                     <input
@@ -874,7 +975,7 @@ export function DailyEntryForm({
                       placeholder="Ghi chú thêm cho bếp..."
                       value={val.note}
                       onChange={(e) => updateField(branch.branchId, "note", e.target.value)}
-                      className="w-full text-xs sm:text-sm p-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none"
+                      className="w-full text-xs sm:text-sm p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                 </div>
