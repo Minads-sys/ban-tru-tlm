@@ -170,7 +170,7 @@ export function DailySummaryTable({
                       </span>
                     ) : b.manMealType === "NUOC" ? (
                       <span className="text-blue-600 dark:text-blue-400 font-bold">
-                        🍜 {b.noodleName || "Món Nước"}
+                        🍜 {b.noodleName && b.noodleName !== "Món nước" && b.noodleName !== "Món Nước" ? b.noodleName : "Bánh phở"}
                       </span>
                     ) : (
                       <span className="text-amber-700 dark:text-amber-400 font-semibold">

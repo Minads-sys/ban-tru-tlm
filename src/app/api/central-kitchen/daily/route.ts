@@ -191,9 +191,13 @@ export async function GET(request: NextRequest) {
         : (entry?.lockStatus || KitchenLockStatus.UNLOCKED);
 
       // Noodle portion
-      const selectedNoodle = entry?.noodleId ? ingredients.find((i) => i.id === entry.noodleId) : null;
+      const defaultNoodle = ingredients.find((i) => i.category === "MON_NUOC" && i.isActive) || ingredients.find((i) => i.category === "MON_NUOC");
+      const selectedNoodle = entry?.noodleId
+        ? ingredients.find((i) => i.id === entry.noodleId)
+        : defaultNoodle;
       const noodlePortionG = selectedNoodle ? Number(selectedNoodle.quantityPerServing) : 200;
-      const noodleName = entry?.noodleName || selectedNoodle?.name || "Món nước";
+      // Real ingredient name MUST take priority over generic "Món nước"
+      const noodleName = selectedNoodle?.name || (entry?.noodleName && entry.noodleName !== "Món nước" && entry.noodleName !== "Món Nước" ? entry.noodleName : (defaultNoodle?.name || "Bánh phở"));
 
       // Fruit portion
       const selectedFruit = entry?.fruitId ? ingredients.find((i) => i.id === entry.fruitId) : null;
@@ -427,6 +431,41 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    let finalNoodleId = manMealType === "NUOC" ? (noodleId || null) : null;
+    let finalNoodleName = manMealType === "NUOC" ? (noodleName || null) : null;
+
+    if (manMealType === "NUOC") {
+      if (finalNoodleId) {
+        const noodleIng = await prisma.centralKitchenIngredient.findUnique({
+          where: { id: finalNoodleId },
+        });
+        if (noodleIng) {
+          finalNoodleName = noodleIng.name;
+        }
+      }
+      if (!finalNoodleName || finalNoodleName === "Món nước" || finalNoodleName === "Món Nước") {
+        const firstNoodle = await prisma.centralKitchenIngredient.findFirst({
+          where: { category: "MON_NUOC", isActive: true },
+          orderBy: { sortOrder: "asc" },
+        });
+        if (firstNoodle) {
+          finalNoodleName = firstNoodle.name;
+          if (!finalNoodleId) finalNoodleId = firstNoodle.id;
+        }
+      }
+    }
+
+    let finalFruitId = fruitId || null;
+    let finalFruitName = fruitName || null;
+    if (finalFruitId) {
+      const fruitIng = await prisma.centralKitchenIngredient.findUnique({
+        where: { id: finalFruitId },
+      });
+      if (fruitIng) {
+        finalFruitName = fruitIng.name;
+      }
+    }
+
     const entry = await prisma.centralKitchenDailyEntry.upsert({
       where: {
         date_branchId: {
@@ -446,10 +485,10 @@ export async function POST(request: NextRequest) {
         marketServingsChao: chaoNum,
         marketServingsChay: chayNum,
         manMealType: manMealType === "NUOC" ? "NUOC" : "COM",
-        noodleId: manMealType === "NUOC" ? noodleId || null : null,
-        noodleName: manMealType === "NUOC" ? noodleName || null : null,
-        fruitId: fruitId || null,
-        fruitName: fruitName || null,
+        noodleId: finalNoodleId,
+        noodleName: finalNoodleName,
+        fruitId: finalFruitId,
+        fruitName: finalFruitName,
         note: note || null,
         lockStatus: existing?.lockStatus || KitchenLockStatus.UNLOCKED,
       },
@@ -459,10 +498,10 @@ export async function POST(request: NextRequest) {
         servingsChao: chaoNum,
         servingsChay: chayNum,
         manMealType: manMealType === "NUOC" ? "NUOC" : "COM",
-        noodleId: manMealType === "NUOC" ? noodleId || null : null,
-        noodleName: manMealType === "NUOC" ? noodleName || null : null,
-        fruitId: fruitId || null,
-        fruitName: fruitName || null,
+        noodleId: finalNoodleId,
+        noodleName: finalNoodleName,
+        fruitId: finalFruitId,
+        fruitName: finalFruitName,
         note: note !== undefined ? note : existing?.note,
         ...(existing?.lockStatus !== KitchenLockStatus.LOCKED_COOK
           ? {
@@ -590,6 +629,41 @@ export async function PUT(request: NextRequest) {
           }
         : {};
 
+      let finalNoodleId = manMealType === "NUOC" ? (noodleId || null) : null;
+      let finalNoodleName = manMealType === "NUOC" ? (noodleName || null) : null;
+
+      if (manMealType === "NUOC") {
+        if (finalNoodleId) {
+          const noodleIng = await prisma.centralKitchenIngredient.findUnique({
+            where: { id: finalNoodleId },
+          });
+          if (noodleIng) {
+            finalNoodleName = noodleIng.name;
+          }
+        }
+        if (!finalNoodleName || finalNoodleName === "Món nước" || finalNoodleName === "Món Nước") {
+          const firstNoodle = await prisma.centralKitchenIngredient.findFirst({
+            where: { category: "MON_NUOC", isActive: true },
+            orderBy: { sortOrder: "asc" },
+          });
+          if (firstNoodle) {
+            finalNoodleName = firstNoodle.name;
+            if (!finalNoodleId) finalNoodleId = firstNoodle.id;
+          }
+        }
+      }
+
+      let finalFruitId = fruitId || null;
+      let finalFruitName = fruitName || null;
+      if (finalFruitId) {
+        const fruitIng = await prisma.centralKitchenIngredient.findUnique({
+          where: { id: finalFruitId },
+        });
+        if (fruitIng) {
+          finalFruitName = fruitIng.name;
+        }
+      }
+
       const entry = await prisma.centralKitchenDailyEntry.upsert({
         where: {
           date_branchId: {
@@ -606,10 +680,10 @@ export async function PUT(request: NextRequest) {
           servingsChao: chaoNum || 0,
           servingsChay: chayNum || 0,
           manMealType: manMealType === "NUOC" ? "NUOC" : "COM",
-          noodleId: manMealType === "NUOC" ? noodleId || null : null,
-          noodleName: manMealType === "NUOC" ? noodleName || null : null,
-          fruitId: fruitId || null,
-          fruitName: fruitName || null,
+          noodleId: finalNoodleId,
+          noodleName: finalNoodleName,
+          fruitId: finalFruitId,
+          fruitName: finalFruitName,
           note: note || null,
           ...marketSnapshotData,
           ...cookSnapshotData,
@@ -626,13 +700,13 @@ export async function PUT(request: NextRequest) {
             ? { manMealType: manMealType === "NUOC" ? "NUOC" : "COM" }
             : {}),
           ...(noodleId !== undefined
-            ? { noodleId: manMealType === "NUOC" ? noodleId || null : null }
+            ? { noodleId: finalNoodleId }
             : {}),
           ...(noodleName !== undefined
-            ? { noodleName: manMealType === "NUOC" ? noodleName || null : null }
+            ? { noodleName: finalNoodleName }
             : {}),
-          ...(fruitId !== undefined ? { fruitId: fruitId || null } : {}),
-          ...(fruitName !== undefined ? { fruitName: fruitName || null } : {}),
+          ...(fruitId !== undefined ? { fruitId: finalFruitId } : {}),
+          ...(fruitName !== undefined ? { fruitName: finalFruitName } : {}),
           ...(note !== undefined ? { note: note || null } : {}),
         },
       });

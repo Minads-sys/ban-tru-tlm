@@ -208,7 +208,12 @@ export function ProductionDisplay({
 
       // Món Nước
       if (b.manMealType === "NUOC" && dMan > 0) {
-        const nName = b.noodleName || "Món Nước";
+        const nName =
+          b.noodleName &&
+          b.noodleName !== "Món nước" &&
+          b.noodleName !== "Món Nước"
+            ? b.noodleName
+            : "Bánh phở";
         const nPortion = b.noodlePortionG || 200;
         const nKg = (dMan * nPortion) / 1000;
         if (!noodleTotalsMap[nName]) {
@@ -652,7 +657,7 @@ export function ProductionDisplay({
                     <div className="flex items-center justify-between py-1">
                       <span className="font-extrabold opacity-95 text-xl sm:text-2xl lg:text-[32px] leading-tight">
                         {branch.manMealType === "NUOC" ? (
-                          <>🍜 {branch.noodleName || "Món Nước"}</>
+                          <>🍜 Món Nước</>
                         ) : (
                           <>🍚 Mặn Cơm</>
                         )}
@@ -722,7 +727,7 @@ export function ProductionDisplay({
                         <div className="bg-black/25 rounded-xl p-2 sm:p-2.5 border-l-4 border-amber-400">
                           <div className="flex items-baseline gap-2 flex-wrap mb-0.5">
                             <span className="font-black text-white text-base sm:text-xl lg:text-[24px]">
-                              🍜 {branch.noodleName || "Món Nước"}
+                              🍜 {branch.noodleName && branch.noodleName !== "Món nước" && branch.noodleName !== "Món Nước" ? branch.noodleName : "Bánh phở"}
                             </span>
                             <span className="text-[11px] sm:text-[13px] font-semibold text-slate-300">
                               ({branch.noodlePortionG || 200}g ×{" "}
