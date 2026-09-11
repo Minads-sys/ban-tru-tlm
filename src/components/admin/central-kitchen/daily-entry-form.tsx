@@ -231,6 +231,7 @@ export function DailyEntryForm({
     branchId: string,
     newStatus: "UNLOCKED" | "LOCKED_MARKET" | "LOCKED_COOK"
   ) => {
+    const data = formValues[branchId];
     try {
       const res = await fetch("/api/central-kitchen/daily", {
         method: "PUT",
@@ -238,6 +239,7 @@ export function DailyEntryForm({
         body: JSON.stringify({
           date,
           branchId,
+          ...data,
           lockStatus: newStatus,
         }),
       });

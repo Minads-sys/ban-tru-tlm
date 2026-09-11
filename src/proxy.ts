@@ -7,8 +7,14 @@ export default auth((req) => {
   const userRole = req.auth?.user?.role;
   const pathname = nextUrl.pathname;
 
-  // Allow public routes and API routes without auth
-  if (pathname.startsWith('/api') || pathname === '/login' || pathname === '/student-login') {
+  // Allow public routes, API routes, and standalone kitchen TV display
+  if (
+    pathname.startsWith('/api') ||
+    pathname === '/login' ||
+    pathname === '/student-login' ||
+    pathname === '/kitchen-display' ||
+    pathname.startsWith('/kitchen-display/')
+  ) {
     return NextResponse.next();
   }
 

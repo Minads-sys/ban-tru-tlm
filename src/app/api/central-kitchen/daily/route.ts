@@ -13,11 +13,34 @@ function parseDateToUTC(dateStr: string): Date {
 export async function GET(request: NextRequest) {
   try {
     const session = await auth();
-    if (!session?.user) {
-      return NextResponse.json({ error: "Chưa đăng nhập" }, { status: 401 });
+    const { searchParams } = new URL(request.url);
+    const providedKey = searchParams.get("key") || request.headers.get("x-kitchen-key");
+
+    // Lấy mã khóa màn hình bếp từ bảng cài đặt
+    const setting = await prisma.systemSetting.findUnique({
+      where: { key: "KITCHEN_DISPLAY_PASSKEY" },
+    });
+    const currentPasskey = setting?.value || "123456";
+
+    // Kiểm tra: nếu không phải nhân viên đăng nhập, bắt buộc phải có Passkey hợp lệ
+    const isStaff =
+      session?.user &&
+      ["ADMIN", "BOARDING_MANAGER", "BOARDING_STAFF", "KITCHEN_SECRETARY"].includes(
+        session.user.role
+      );
+
+    if (!isStaff) {
+      if (!providedKey || providedKey.trim() !== currentPasskey.trim()) {
+        return NextResponse.json(
+          {
+            error: "Mã khóa bảo vệ (Passkey) không chính xác hoặc đã hết hạn",
+            requirePasskey: true,
+          },
+          { status: 401 }
+        );
+      }
     }
 
-    const { searchParams } = new URL(request.url);
     let dateStr = searchParams.get("date");
     if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
       const now = new Date();
@@ -195,6 +218,7 @@ export async function GET(request: NextRequest) {
           totalKg: Number(f.totalKg.toFixed(1)),
         })),
       },
+      passkey: isStaff ? currentPasskey : undefined,
     });
   } catch (error: any) {
     console.error("Error fetching daily entries:", error);
@@ -303,7 +327,22 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { id, date, branchId, lockStatus, allBranches } = body;
+    const {
+      id,
+      date,
+      branchId,
+      lockStatus,
+      allBranches,
+      servingsMan,
+      servingsChao,
+      servingsChay,
+      manMealType,
+      noodleId,
+      noodleName,
+      fruitId,
+      fruitName,
+      note,
+    } = body;
 
     if (!lockStatus || !Object.values(KitchenLockStatus).includes(lockStatus)) {
       return NextResponse.json({ error: "Trạng thái chốt không hợp lệ" }, { status: 400 });
@@ -312,11 +351,38 @@ export async function PUT(request: NextRequest) {
     if (allBranches && date) {
       // Lock / unlock all entries for that date
       const targetDate = parseDateToUTC(date);
-      await prisma.centralKitchenDailyEntry.updateMany({
-        where: { date: targetDate },
-        data: { lockStatus },
+      const activeBranches = await prisma.centralKitchenBranch.findMany({
+        where: { isActive: true },
       });
-      return NextResponse.json({ success: true, message: `Đã cập nhật trạng thái tất cả chi nhánh sang ${lockStatus}` });
+
+      for (const branch of activeBranches) {
+        await prisma.centralKitchenDailyEntry.upsert({
+          where: {
+            date_branchId: {
+              date: targetDate,
+              branchId: branch.id,
+            },
+          },
+          create: {
+            date: targetDate,
+            branchId: branch.id,
+            lockStatus,
+            totalServings: 0,
+            servingsMan: 0,
+            servingsChao: 0,
+            servingsChay: 0,
+            manMealType: "COM",
+          },
+          update: {
+            lockStatus,
+          },
+        });
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `Đã cập nhật trạng thái tất cả chi nhánh sang ${lockStatus}`,
+      });
     }
 
     if (id) {
@@ -329,14 +395,59 @@ export async function PUT(request: NextRequest) {
 
     if (date && branchId) {
       const targetDate = parseDateToUTC(date);
-      const entry = await prisma.centralKitchenDailyEntry.update({
+
+      const manNum =
+        servingsMan !== undefined ? Math.max(0, parseInt(servingsMan, 10) || 0) : undefined;
+      const chaoNum =
+        servingsChao !== undefined ? Math.max(0, parseInt(servingsChao, 10) || 0) : undefined;
+      const chayNum =
+        servingsChay !== undefined ? Math.max(0, parseInt(servingsChay, 10) || 0) : undefined;
+      const totalNum =
+        manNum !== undefined && chaoNum !== undefined && chayNum !== undefined
+          ? manNum + chaoNum + chayNum
+          : undefined;
+
+      const entry = await prisma.centralKitchenDailyEntry.upsert({
         where: {
           date_branchId: {
             date: targetDate,
             branchId,
           },
         },
-        data: { lockStatus },
+        create: {
+          date: targetDate,
+          branchId,
+          lockStatus,
+          totalServings: totalNum || 0,
+          servingsMan: manNum || 0,
+          servingsChao: chaoNum || 0,
+          servingsChay: chayNum || 0,
+          manMealType: manMealType === "NUOC" ? "NUOC" : "COM",
+          noodleId: manMealType === "NUOC" ? noodleId || null : null,
+          noodleName: manMealType === "NUOC" ? noodleName || null : null,
+          fruitId: fruitId || null,
+          fruitName: fruitName || null,
+          note: note || null,
+        },
+        update: {
+          lockStatus,
+          ...(totalNum !== undefined ? { totalServings: totalNum } : {}),
+          ...(manNum !== undefined ? { servingsMan: manNum } : {}),
+          ...(chaoNum !== undefined ? { servingsChao: chaoNum } : {}),
+          ...(chayNum !== undefined ? { servingsChay: chayNum } : {}),
+          ...(manMealType !== undefined
+            ? { manMealType: manMealType === "NUOC" ? "NUOC" : "COM" }
+            : {}),
+          ...(noodleId !== undefined
+            ? { noodleId: manMealType === "NUOC" ? noodleId || null : null }
+            : {}),
+          ...(noodleName !== undefined
+            ? { noodleName: manMealType === "NUOC" ? noodleName || null : null }
+            : {}),
+          ...(fruitId !== undefined ? { fruitId: fruitId || null } : {}),
+          ...(fruitName !== undefined ? { fruitName: fruitName || null } : {}),
+          ...(note !== undefined ? { note: note || null } : {}),
+        },
       });
       return NextResponse.json({ success: true, entry });
     }

@@ -16,6 +16,7 @@ export async function GET() {
       STUDENT_MAINTENANCE_MESSAGE: '',
       STUDENT_SHOW_DEBT_TAB: 'false',
       STUDENT_SHOW_HISTORY_TAB: 'false',
+      KITCHEN_DISPLAY_PASSKEY: '123456',
     };
 
     settings.forEach((s) => {
@@ -42,6 +43,16 @@ export async function POST(request: Request) {
         { error: 'Dữ liệu không hợp lệ' },
         { status: 400 }
       );
+    }
+
+    if (body.KITCHEN_DISPLAY_PASSKEY !== undefined) {
+      const pin = String(body.KITCHEN_DISPLAY_PASSKEY).trim();
+      if (!/^\d{6}$/.test(pin)) {
+        return NextResponse.json(
+          { error: "Mã khóa màn hình TV (Passkey) phải gồm đúng 6 chữ số (0-9)" },
+          { status: 400 }
+        );
+      }
     }
 
     const updates = Object.entries(body).map(([key, value]) => {
