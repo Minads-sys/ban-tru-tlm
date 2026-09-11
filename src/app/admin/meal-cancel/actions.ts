@@ -98,6 +98,91 @@ export async function rejectCancellation(id: string, reason?: string) {
 }
 
 /**
+ * Hủy duyệt / Khôi phục suất ăn cho học sinh (chuyển đơn APPROVED sang REJECTED)
+ * Dùng khi học sinh đã được duyệt cắt suất nhưng sau đó vẫn đến ăn hoặc xin ăn lại
+ */
+export async function revertApprovalCancellation(id: string, reason?: string) {
+  try {
+    const session = await auth();
+    if (session?.user?.role === 'ACCOUNTANT') {
+      return { success: false, error: 'Tài khoản Kế toán chỉ có quyền xem, không được thao tác' };
+    }
+    const approverId = session?.user?.id;
+
+    // 1. Kiểm tra đơn tồn tại và đang ở trạng thái APPROVED
+    const existing = await prisma.mealCancellation.findUnique({
+      where: { id },
+      include: {
+        student: {
+          include: {
+            user: { select: { fullName: true } },
+            class: { select: { name: true } },
+          },
+        },
+      },
+    });
+
+    if (!existing) {
+      return { success: false, error: 'Không tìm thấy đơn cắt suất cần hủy duyệt' };
+    }
+
+    if (existing.status !== 'APPROVED') {
+      return { success: false, error: 'Đơn này hiện không ở trạng thái Đã duyệt' };
+    }
+
+    const revertReason = reason?.trim() || 'Học sinh vẫn đến ăn tại trường / xin ăn lại (GV hủy duyệt cắt suất)';
+
+    // 2. Chuyển trạng thái sang REJECTED
+    const updated = await prisma.mealCancellation.update({
+      where: { id },
+      data: {
+        status: 'REJECTED',
+        approvalType: 'MANUAL',
+        approvedBy: approverId ?? null,
+        approvedAt: new Date(),
+        note: revertReason,
+      },
+    });
+
+    // 3. Phát sóng Realtime
+    broadcastChange('meal_cancellations', 'UPDATE', updated);
+    broadcastChange('daily_meals', 'UPDATE');
+
+    const studentName = existing.student?.user?.fullName || existing.studentId;
+    const className = existing.student?.class?.name || '';
+    const cancelDateStr = existing.cancelDate.toISOString().split('T')[0];
+
+    // 4. Ghi Audit Log
+    await logAudit({
+      userId: approverId,
+      userName: (session?.user as any)?.name || (session?.user as any)?.username || 'Quản trị viên',
+      userRole: session?.user?.role,
+      action: AUDIT_ACTIONS.UPDATE,
+      module: AUDIT_MODULES.MEALS,
+      description: `Hủy duyệt cắt suất / Khôi phục suất ăn cho học sinh ${studentName} (${className}) ngày ${cancelDateStr}: ${revertReason}`,
+      targetId: id,
+      metadata: {
+        previousStatus: 'APPROVED',
+        newStatus: 'REJECTED',
+        reason: revertReason,
+        cancelDate: cancelDateStr,
+      },
+    });
+
+    revalidatePath('/admin/meal-cancel');
+    revalidatePath('/admin/daily-meals');
+    return {
+      success: true,
+      message: `Đã hủy duyệt cắt suất và khôi phục suất ăn cho học sinh ${studentName} thành công`,
+      data: updated,
+    };
+  } catch (error) {
+    console.error('Lỗi khi hủy duyệt cắt suất:', error);
+    return { success: false, error: 'Không thể hủy duyệt cắt suất' };
+  }
+}
+
+/**
  * Duyệt hàng loạt các đơn cắt suất được chọn bởi giáo viên/admin
  */
 export async function bulkApproveCancellations(ids: string[]) {

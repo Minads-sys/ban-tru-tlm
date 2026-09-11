@@ -30,7 +30,11 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ApprovalActions } from '@/components/admin/approval-actions';
-import { bulkApproveCancellations, autoApproveExpiredCancellations } from '@/app/admin/meal-cancel/actions';
+import {
+  bulkApproveCancellations,
+  autoApproveExpiredCancellations,
+  revertApprovalCancellation,
+} from '@/app/admin/meal-cancel/actions';
 import { BulkMealCancelDialog } from '@/components/admin/bulk-meal-cancel-dialog';
 import { BulkMealOverrideDialog } from '@/components/admin/bulk-meal-override-dialog';
 import Swal from 'sweetalert2';
@@ -99,6 +103,8 @@ export function MealCancelManager({
   const [filterType, setFilterType] = useState<string>('ALL');
   const [historyDateFrom, setHistoryDateFrom] = useState<string>('');
   const [historyDateTo, setHistoryDateTo] = useState<string>('');
+  const [revertingId, setRevertingId] = useState<string | null>(null);
+  const [localHistoryOverrides, setLocalHistoryOverrides] = useState<Record<string, Partial<CancellationItem>>>({});
 
   // Format helpers
   const formatDate = (date: Date | string) => {
@@ -358,9 +364,85 @@ export function MealCancelManager({
     });
   };
 
+  // Handle Revert Approval (Restore Meal)
+  const handleRevertApproval = async (item: CancellationItem) => {
+    const studentName = item.student?.user?.fullName || item.student?.studentCode || 'học sinh';
+    const className = item.student?.class?.name || item.student?.classId || '';
+    const dateStr = formatDate(item.cancelDate);
+
+    const { value: reason, isConfirmed } = await Swal.fire({
+      title: 'Hủy duyệt & Khôi phục suất ăn?',
+      html: `
+        <div class="text-left text-xs space-y-2 mt-2">
+          <div class="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
+            <p><span class="text-slate-500">Học sinh:</span> <strong class="text-slate-900">${studentName}</strong> ${className ? `<span class="text-slate-600 font-medium">(Lớp ${className})</span>` : ''}</p>
+            <p><span class="text-slate-500">Ngày cắt suất:</span> <strong class="text-blue-700">${dateStr}</strong></p>
+          </div>
+          <div class="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-[11px] leading-relaxed">
+            ⚠️ <strong>Hệ thống sẽ:</strong> Chuyển trạng thái đơn sang <strong>"Từ chối"</strong>. Suất ăn của học sinh sẽ được khôi phục cho nhà bếp và <strong>tính tiền ăn bình thường</strong> trên hóa đơn cuối tháng.
+          </div>
+        </div>
+      `,
+      input: 'text',
+      inputLabel: 'Lý do khôi phục suất ăn (lưu vết đối soát):',
+      inputValue: 'Học sinh vẫn đến ăn thực tế tại trường / xin ăn lại',
+      showCancelButton: true,
+      confirmButtonColor: '#d97706',
+      cancelButtonColor: '#64748b',
+      confirmButtonText: 'Xác nhận khôi phục',
+      cancelButtonText: 'Hủy bỏ',
+      inputValidator: (value) => {
+        if (!value || !value.trim()) {
+          return 'Vui lòng nhập lý do khôi phục!';
+        }
+      },
+    });
+
+    if (isConfirmed && reason) {
+      setRevertingId(item.id);
+      try {
+        const res = await revertApprovalCancellation(item.id, reason);
+        if (res.success) {
+          setLocalHistoryOverrides((prev) => ({
+            ...prev,
+            [item.id]: {
+              status: 'REJECTED',
+              note: reason.trim(),
+              approvedAt: new Date(),
+            },
+          }));
+          Swal.fire({
+            icon: 'success',
+            title: 'Đã khôi phục suất ăn',
+            text: res.message || 'Đã hủy duyệt cắt suất thành công. Suất ăn đã được khôi phục.',
+            timer: 2000,
+            showConfirmButton: false,
+          });
+        } else {
+          Swal.fire({
+            icon: 'error',
+            title: 'Không thể khôi phục',
+            text: res.error || 'Có lỗi xảy ra',
+          });
+        }
+      } catch (err) {
+        Swal.fire('Lỗi', 'Lỗi kết nối hoặc xử lý yêu cầu', 'error');
+      } finally {
+        setRevertingId(null);
+      }
+    }
+  };
+
   // Filtered History
   const filteredHistory = useMemo(() => {
-    return initialHistory.filter((item) => {
+    const list = initialHistory.map((item) => {
+      if (localHistoryOverrides[item.id]) {
+        return { ...item, ...localHistoryOverrides[item.id] };
+      }
+      return item;
+    });
+
+    return list.filter((item) => {
       // Search
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
@@ -392,7 +474,7 @@ export function MealCancelManager({
 
       return true;
     });
-  }, [initialHistory, searchQuery, filterClass, filterStatus, filterType, historyDateFrom, historyDateTo]);
+  }, [initialHistory, localHistoryOverrides, searchQuery, filterClass, filterStatus, filterType, historyDateFrom, historyDateTo]);
 
   return (
     <div className="space-y-6">
@@ -506,12 +588,12 @@ export function MealCancelManager({
             <span className="text-slate-300">|</span>
             <span className="flex items-center gap-1 font-medium">
               <span className="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500" />
-              Đã duyệt: <strong className="text-slate-800">{initialHistory.filter((h) => h.status === 'APPROVED').length}</strong>
+              Đã duyệt: <strong className="text-slate-800">{initialHistory.filter((h) => (localHistoryOverrides[h.id]?.status || h.status) === 'APPROVED').length}</strong>
             </span>
             <span className="text-slate-300">|</span>
             <span className="flex items-center gap-1 font-medium">
               <span className="inline-block w-2.5 h-2.5 rounded-full bg-rose-500" />
-              Từ chối: <strong className="text-slate-800">{initialHistory.filter((h) => h.status === 'REJECTED').length}</strong>
+              Từ chối: <strong className="text-slate-800">{initialHistory.filter((h) => (localHistoryOverrides[h.id]?.status || h.status) === 'REJECTED').length}</strong>
             </span>
           </div>
         </div>
@@ -992,6 +1074,9 @@ export function MealCancelManager({
                         <TableHead className="w-48 text-xs font-semibold">Hình thức &amp; Người xử lý</TableHead>
                         <TableHead className="w-36 text-xs font-semibold">Thời gian xử lý</TableHead>
                         <TableHead className="text-xs font-semibold">Ghi chú đối soát</TableHead>
+                        {!isAccountant && (
+                          <TableHead className="w-32 text-center text-xs font-semibold">Thao tác</TableHead>
+                        )}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1059,6 +1144,29 @@ export function MealCancelManager({
                                 {item.note || item.reason}
                               </span>
                             </TableCell>
+                            {!isAccountant && (
+                              <TableCell className="text-center whitespace-nowrap">
+                                {item.status === 'APPROVED' ? (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleRevertApproval(item)}
+                                    disabled={revertingId === item.id}
+                                    className="h-7 px-2.5 text-xs text-amber-700 bg-amber-50/70 hover:bg-amber-100 hover:text-amber-800 border-amber-300 gap-1.5 font-medium cursor-pointer transition-colors shadow-2xs"
+                                    title="Học sinh vẫn đến ăn hoặc xin ăn lại -> Hủy duyệt cắt suất và khôi phục suất ăn"
+                                  >
+                                    {revertingId === item.id ? (
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-600" />
+                                    ) : (
+                                      <RotateCcw className="h-3.5 w-3.5 text-amber-600" />
+                                    )}
+                                    <span>Khôi phục suất</span>
+                                  </Button>
+                                ) : (
+                                  <span className="text-slate-300 text-xs">-</span>
+                                )}
+                              </TableCell>
+                            )}
                           </TableRow>
                         );
                       })}
