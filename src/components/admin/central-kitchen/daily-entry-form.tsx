@@ -15,6 +15,7 @@ import {
   Clock,
   Plus,
   Minus,
+  RotateCcw,
 } from "lucide-react";
 import { toast } from "@/lib/toast";
 
@@ -61,6 +62,7 @@ interface DailyEntryFormProps {
   };
   userRole?: string;
   onRefresh: () => Promise<void>;
+  onResetDay?: () => void;
 }
 
 export function DailyEntryForm({
@@ -69,6 +71,7 @@ export function DailyEntryForm({
   ingredients,
   userRole,
   onRefresh,
+  onResetDay,
 }: DailyEntryFormProps) {
   // Local form state mapped by branchId
   const [formValues, setFormValues] = useState<
@@ -414,11 +417,23 @@ export function DailyEntryForm({
           <button
             onClick={handleSaveAll}
             disabled={isSavingAll}
-            className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs sm:text-sm font-bold shadow-md shadow-blue-600/20 transition disabled:opacity-50"
+            className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs sm:text-sm font-bold shadow-md shadow-blue-600/20 transition disabled:opacity-50 cursor-pointer"
           >
             <Save className="w-4 h-4" />
             {isSavingAll ? "Đang lưu..." : "Lưu tất cả"}
           </button>
+
+          {(userRole === "ADMIN" || userRole === "BOARDING_MANAGER") && onResetDay && (
+            <button
+              onClick={onResetDay}
+              type="button"
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-red-50 hover:bg-red-100 dark:bg-red-950/40 text-red-600 dark:text-red-400 rounded-lg text-xs font-bold border border-red-200 dark:border-red-800/60 transition cursor-pointer"
+              title="Đặt lại toàn bộ số liệu ngày này về 0"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Đặt lại ngày</span>
+            </button>
+          )}
         </div>
       </div>
 

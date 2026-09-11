@@ -645,3 +645,65 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: error.message || "Lỗi cập nhật trạng thái chốt" }, { status: 500 });
   }
 }
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const session = await auth();
+    if (
+      !session?.user ||
+      !["ADMIN", "BOARDING_MANAGER"].includes(session.user.role)
+    ) {
+      return NextResponse.json(
+        { error: "Chỉ Quản trị viên hoặc Quản lý bán trú mới có quyền đặt lại dữ liệu ngày" },
+        { status: 403 }
+      );
+    }
+
+    const { searchParams } = new URL(request.url);
+    const date = searchParams.get("date");
+    const branchId = searchParams.get("branchId");
+
+    if (!date) {
+      return NextResponse.json(
+        { error: "Thiếu thông tin ngày cần đặt lại dữ liệu" },
+        { status: 400 }
+      );
+    }
+
+    const targetDate = parseDateToUTC(date);
+
+    if (branchId) {
+      // Đặt lại cho 1 chi nhánh
+      const deleted = await prisma.centralKitchenDailyEntry.deleteMany({
+        where: {
+          date: targetDate,
+          branchId,
+        },
+      });
+      return NextResponse.json({
+        success: true,
+        message: `Đã đặt lại dữ liệu chi nhánh cho ngày ${date}`,
+        count: deleted.count,
+      });
+    }
+
+    // Đặt lại toàn bộ chi nhánh trong ngày
+    const deleted = await prisma.centralKitchenDailyEntry.deleteMany({
+      where: {
+        date: targetDate,
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: `Đã đặt lại toàn bộ số liệu ngày ${date} thành công`,
+      count: deleted.count,
+    });
+  } catch (error: any) {
+    console.error("Error resetting daily entries:", error);
+    return NextResponse.json(
+      { error: error.message || "Lỗi khi đặt lại số liệu ngày" },
+      { status: 500 }
+    );
+  }
+}
