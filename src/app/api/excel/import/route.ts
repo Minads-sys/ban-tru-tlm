@@ -9,7 +9,7 @@ import {
 } from "@/lib/excel";
 import bcrypt from "bcryptjs";
 import { MealType, BoardingStatus, UserRole } from "@prisma/client";
-import { parseDateValue } from "@/lib/utils";
+import { parseDateValue, getVietnamTodayUTC, isPastCutoffTime } from "@/lib/utils";
 import { auth } from "@/lib/auth";
 import { logAudit, AUDIT_ACTIONS, AUDIT_MODULES } from "@/lib/audit-log";
 
@@ -135,6 +135,19 @@ export async function POST(request: NextRequest) {
       let created = 0;
       let updated = 0;
 
+      // Lấy cấu hình giờ chốt suất ngày (MEAL_LOCK_TIME_2 / CUTOFF_TIME, mặc định 07:00)
+      const lockSettings = await prisma.systemSetting.findMany({
+        where: { key: { in: ["MEAL_LOCK_TIME_2", "CUTOFF_TIME"] } }
+      });
+      const lockTime2 = lockSettings.find(s => s.key === "MEAL_LOCK_TIME_2")?.value 
+                     || lockSettings.find(s => s.key === "CUTOFF_TIME")?.value 
+                     || "07:00";
+      const localToday = getVietnamTodayUTC();
+      const nextDay = new Date(localToday);
+      nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+      // Nếu import sau giờ chốt thì ngày ăn bắt đầu từ ngày mai
+      const defaultMealStart = isPastCutoffTime(lockTime2) ? nextDay : localToday;
+
       for (const row of result.data) {
         const passwordHash = await bcrypt.hash(row.matKhauBanDau, 10);
         
@@ -211,7 +224,7 @@ export async function POST(request: NextRequest) {
               mealType: row.cheDoAn as MealType,
               boardingStatus: row.dangKyBanTru === "CO" ? BoardingStatus.ACTIVE : BoardingStatus.CANCELLED,
               boardingRegisteredAt: row.dangKyBanTru === "CO" ? new Date() : null,
-              mealStartDate: row.dangKyBanTru === "CO" ? new Date() : null,
+              mealStartDate: row.dangKyBanTru === "CO" ? defaultMealStart : null,
               parentPhone: row.soDienThoaiPhuHuynh || null,
               birthDate: birthDateVal
             },

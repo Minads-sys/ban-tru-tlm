@@ -338,7 +338,7 @@ export async function getBulkActionStudentStatus(classId: string, dateStr: strin
     // Giờ chốt chính thức của ngày ăn (ưu tiên MEAL_LOCK_TIME_2 từ cài đặt, fallback CUTOFF_TIME, mặc định 07:30)
     const officialCutoff = settings.find((s) => s.key === 'MEAL_LOCK_TIME_2')?.value 
                         || settings.find((s) => s.key === 'CUTOFF_TIME')?.value 
-                        || '07:30';
+                        || '07:00';
 
     let isOutOfSchoolYear = false;
     if (startSetting && endSetting) {
@@ -553,7 +553,7 @@ export async function bulkCreateAndApproveCancellations(params: {
     const endSetting = settings.find((s) => s.key === 'SCHOOL_YEAR_END')?.value;
     const cutoffTime = settings.find((s) => s.key === 'MEAL_LOCK_TIME_2')?.value 
                     || settings.find((s) => s.key === 'CUTOFF_TIME')?.value 
-                    || '07:30';
+                    || '07:00';
 
     if (startSetting && endSetting) {
       const [syY, syM, syD] = startSetting.split('-').map(Number);
@@ -565,20 +565,19 @@ export async function bulkCreateAndApproveCancellations(params: {
       }
     }
 
-    // 3. Kiểm tra Giờ chốt & Quá khứ nếu không có cờ bypass
+    // 3. Kiểm tra Giờ chốt & Quá khứ: Tuyệt đối không cho phép cắt suất cho ngày hôm nay khi đã qua giờ chốt hoặc ngày quá khứ
     const localToday = getVietnamTodayUTC();
     const isPastDate = requestDate < localToday;
     const isToday = requestDate.getTime() === localToday.getTime();
-    if (!bypassCutoff) {
-      if (isPastDate) {
-        return { success: false, error: 'Không thể cắt suất cho ngày đã qua nếu không xác nhận duyệt ngoại lệ.' };
-      }
-      if (isToday && isPastCutoffTime(cutoffTime)) {
-        return { 
-          success: false, 
-          error: `Đã quá giờ khóa sổ trong ngày (${cutoffTime}). Cần xác nhận duyệt ngoại lệ để tiếp tục thao tác.` 
-        };
-      }
+
+    if (isPastDate) {
+      return { success: false, error: 'Không thể cắt suất cho ngày trong quá khứ.' };
+    }
+    if (isToday && isPastCutoffTime(cutoffTime)) {
+      return { 
+        success: false, 
+        error: `Đã quá giờ khóa sổ của ngày hôm nay (${cutoffTime}). Hệ thống chỉ cho phép cắt suất từ ngày tiếp theo.` 
+      };
     }
 
     // 4. Kiểm tra TKB của lớp

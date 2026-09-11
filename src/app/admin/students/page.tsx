@@ -166,7 +166,20 @@ export default function AdminStudentsPage() {
   });
   const [isSubmittingEdit, setIsSubmittingEdit] = useState<boolean>(false);
 
-  const [cutoffTime, setCutoffTime] = useState<string>('07:30');
+  const [cutoffTime, setCutoffTime] = useState<string>('07:00');
+
+  const getTodayString = useCallback(() => {
+    const vnTime = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${vnTime.getFullYear()}-${pad(vnTime.getMonth() + 1)}-${pad(vnTime.getDate())}`;
+  }, []);
+
+  const getTomorrowString = useCallback(() => {
+    const vnTime = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+    vnTime.setDate(vnTime.getDate() + 1);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${vnTime.getFullYear()}-${pad(vnTime.getMonth() + 1)}-${pad(vnTime.getDate())}`;
+  }, []);
 
   // Tính ngày bắt đầu ăn: Nếu đã qua giờ chốt suất ngày hôm nay thì bắt đầu từ ngày mai
   const getSmartMealStartDate = useCallback((customCutoff?: string) => {
@@ -432,18 +445,18 @@ export default function AdminStudentsPage() {
 
   // Open cancel dialog with default dates & preview
   const handleOpenCancelDialog = (student: StudentItem) => {
-    const today = (() => {
-      const d = new Date();
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    })();
+    const today = getTodayString();
+    // Nếu đã qua giờ chốt suất của ngày hôm nay, suất ăn hôm nay đã chốt với bếp nên bắt buộc tính ăn hôm nay (includeStopDate = true)
+    const initialIncludeStopDate = isPastCutoffToday;
+
     setCancellingStudent(student);
     setCancelReason('');
     setCancelStopDate(today);
-    setCancelIncludeStopDate(false);
+    setCancelIncludeStopDate(initialIncludeStopDate);
     setCancelActualMealDays(0);
     setIsManualMealDays(false);
     setSettlementPreview(null);
-    loadSettlementPreview(student.id, today, false, null);
+    loadSettlementPreview(student.id, today, initialIncludeStopDate, null);
   };
 
   // Handle Cancel Boarding Action
@@ -1394,10 +1407,15 @@ export default function AdminStudentsPage() {
                     onChange={(e) => {
                       const newDate = e.target.value;
                       setCancelStopDate(newDate);
+                      const shouldForceInclude = isPastCutoffToday && newDate <= getTodayString();
+                      const nextInclude = shouldForceInclude ? true : cancelIncludeStopDate;
+                      if (shouldForceInclude) {
+                        setCancelIncludeStopDate(true);
+                      }
                       if (!isManualMealDays) {
-                        loadSettlementPreview(cancellingStudent.id, newDate, cancelIncludeStopDate, null);
+                        loadSettlementPreview(cancellingStudent.id, newDate, nextInclude, null);
                       } else {
-                        loadSettlementPreview(cancellingStudent.id, newDate, cancelIncludeStopDate, cancelActualMealDays);
+                        loadSettlementPreview(cancellingStudent.id, newDate, nextInclude, cancelActualMealDays);
                       }
                     }}
                     className="h-10 text-sm font-medium"
@@ -1453,12 +1471,28 @@ export default function AdminStudentsPage() {
                 </div>
               </div>
 
+              {/* Cảnh báo khi thao tác sau giờ chốt */}
+              {isPastCutoffToday && cancelStopDate <= getTodayString() && (
+                <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-xs">
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+                  <div className="flex-1">
+                    <span className="font-semibold block text-amber-800">
+                      Đã quá giờ chốt suất ({cutoffTime}) của ngày hôm nay!
+                    </span>
+                    <span className="text-[11px] text-amber-700">
+                      Suất ăn hôm nay đã chốt với nhà bếp. Học sinh vẫn được tính tiền ăn ngày hôm nay, việc ngừng ăn bắt đầu từ ngày mai.
+                    </span>
+                  </div>
+                </div>
+              )}
+
               {/* Toggle ăn trưa ngày ngừng ăn */}
               <div className="flex items-start gap-2.5 p-3 rounded-lg border bg-slate-50/70">
                 <input
                   type="checkbox"
                   id="cancelIncludeStopDate"
                   checked={cancelIncludeStopDate}
+                  disabled={isPastCutoffToday && cancelStopDate <= getTodayString()}
                   onChange={(e) => {
                     const checked = e.target.checked;
                     setCancelIncludeStopDate(checked);
@@ -1468,17 +1502,24 @@ export default function AdminStudentsPage() {
                       loadSettlementPreview(cancellingStudent.id, cancelStopDate, checked, cancelActualMealDays);
                     }
                   }}
-                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer disabled:opacity-50"
                 />
                 <label
                   htmlFor="cancelIncludeStopDate"
                   className="text-xs text-slate-700 leading-snug cursor-pointer select-none"
                 >
-                  <span className="font-semibold text-slate-900 block">
-                    Học sinh VẪN ĂN bữa trưa ngày này (ngừng ăn từ ngày hôm sau)
+                  <span className="font-semibold text-slate-900 flex items-center gap-1.5">
+                    <span>Học sinh VẪN ĂN bữa trưa ngày này (ngừng ăn từ ngày hôm sau)</span>
+                    {isPastCutoffToday && cancelStopDate <= getTodayString() && (
+                      <Badge variant="outline" className="text-[10px] py-0 px-1.5 bg-amber-100 text-amber-800 border-amber-300">
+                        Bắt buộc tính tiền do đã chốt bếp
+                      </Badge>
+                    )}
                   </span>
                   <span className="text-slate-500 text-[11px]">
-                    (Mặc định bỏ chọn: Học sinh không ăn trưa ngày {cancelStopDate}, tính ngày ăn đến hết ngày hôm trước)
+                    {isPastCutoffToday && cancelStopDate <= getTodayString()
+                      ? `(Đã quá ${cutoffTime}: Bắt buộc tính tiền suất ăn trưa hôm nay)`
+                      : `(Mặc định bỏ chọn: Học sinh không ăn trưa ngày ${cancelStopDate}, tính ngày ăn đến hết ngày hôm trước)`}
                   </span>
                 </label>
               </div>
@@ -1785,6 +1826,7 @@ export default function AdminStudentsPage() {
                 </label>
                 <Input
                   type="date"
+                  min={isPastCutoffToday ? getTomorrowString() : getTodayString()}
                   value={activateMealStartDate}
                   onChange={(e) => setActivateMealStartDate(e.target.value)}
                   className="h-10 text-sm font-medium border-emerald-200 focus:border-emerald-500"
@@ -1970,6 +2012,7 @@ export default function AdminStudentsPage() {
                 </label>
                 <Input
                   type="date"
+                  min={isPastCutoffToday ? getTomorrowString() : getTodayString()}
                   value={createFormData.mealStartDate}
                   onChange={(e) => setCreateFormData({ ...createFormData, mealStartDate: e.target.value })}
                   className="h-10 text-sm font-medium border-rose-200 focus:border-rose-500"

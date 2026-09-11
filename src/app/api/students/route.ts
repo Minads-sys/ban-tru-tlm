@@ -217,13 +217,13 @@ export async function POST(request: NextRequest) {
         parsedMealStartDate = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
       }
 
-      // Kiểm tra giờ chốt suất ngày (MEAL_LOCK_TIME_2 hoặc CUTOFF_TIME, mặc định 07:30)
+      // Kiểm tra giờ chốt suất ngày (MEAL_LOCK_TIME_2 hoặc CUTOFF_TIME, mặc định 07:00)
       const lockSettings = await prisma.systemSetting.findMany({
         where: { key: { in: ["MEAL_LOCK_TIME_2", "CUTOFF_TIME"] } }
       });
       const lockTime2 = lockSettings.find(s => s.key === "MEAL_LOCK_TIME_2")?.value 
                      || lockSettings.find(s => s.key === "CUTOFF_TIME")?.value 
-                     || "07:30";
+                     || "07:00";
 
       const localToday = getVietnamTodayUTC();
       const isPastLock = isPastCutoffTime(lockTime2);
@@ -646,11 +646,40 @@ async function calculateStudentSettlement({
     // ==================== XEM TRƯỚC QUYẾT TOÁN KHI HỦY BÁN TRÚ ====================
     if (action === "settlement-preview") {
       const { stopDate, includeStopDate, actualMealDays } = body;
+
+      // Kiểm tra giờ chốt suất ngày (MEAL_LOCK_TIME_2 hoặc CUTOFF_TIME, mặc định 07:00)
+      const lockSettings = await prisma.systemSetting.findMany({
+        where: { key: { in: ["MEAL_LOCK_TIME_2", "CUTOFF_TIME"] } }
+      });
+      const lockTime2 = lockSettings.find(s => s.key === "MEAL_LOCK_TIME_2")?.value 
+                     || lockSettings.find(s => s.key === "CUTOFF_TIME")?.value 
+                     || "07:00";
+
+      const localToday = getVietnamTodayUTC();
+      const isPastLock = isPastCutoffTime(lockTime2);
+
+      // Nếu đã qua giờ chốt của ngày ăn và ngày ngừng ăn là hôm nay hoặc quá khứ:
+      // Bắt buộc tính tiền suất ăn hôm nay (includeStopDate = true), chỉ ngừng ăn từ ngày tiếp theo
+      let effectiveIncludeStopDate = Boolean(includeStopDate);
+      if (isPastLock) {
+        let stopDateObj: Date;
+        if (stopDate && /^\d{4}-\d{2}-\d{2}$/.test(stopDate)) {
+          const [sY, sM, sD] = stopDate.split("-").map(Number);
+          stopDateObj = new Date(Date.UTC(sY, sM - 1, sD));
+        } else {
+          stopDateObj = localToday;
+        }
+
+        if (stopDateObj <= localToday) {
+          effectiveIncludeStopDate = true;
+        }
+      }
+
       const calculation = await calculateStudentSettlement({
         studentId,
         classId: student.classId,
         stopDateStr: stopDate,
-        includeStopDate: Boolean(includeStopDate),
+        includeStopDate: effectiveIncludeStopDate,
         actualMealDaysOverride:
           actualMealDays !== undefined && actualMealDays !== null
             ? Number(actualMealDays)
@@ -665,6 +694,8 @@ async function calculateStudentSettlement({
           className: student.class?.name || student.classId,
           stopDate: calculation.stopDate,
           includeStopDate: calculation.includeStopDate,
+          isPastLock,
+          lockTime2,
           calculatedDays: calculation.calculatedDays,
           actualMealDays: calculation.actualMealDays,
           unitPrice: calculation.unitPrice,
@@ -695,13 +726,13 @@ async function calculateStudentSettlement({
         parsedMealStartDate = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
       }
 
-      // Kiểm tra giờ chốt suất ngày (MEAL_LOCK_TIME_2 hoặc CUTOFF_TIME, mặc định 07:30)
+      // Kiểm tra giờ chốt suất ngày (MEAL_LOCK_TIME_2 hoặc CUTOFF_TIME, mặc định 07:00)
       const lockSettings = await prisma.systemSetting.findMany({
         where: { key: { in: ["MEAL_LOCK_TIME_2", "CUTOFF_TIME"] } }
       });
       const lockTime2 = lockSettings.find(s => s.key === "MEAL_LOCK_TIME_2")?.value 
                      || lockSettings.find(s => s.key === "CUTOFF_TIME")?.value 
-                     || "07:30";
+                     || "07:00";
 
       const localToday = getVietnamTodayUTC();
       const isPastLock = isPastCutoffTime(lockTime2);
@@ -769,16 +800,52 @@ async function calculateStudentSettlement({
     if (action === "cancel") {
       const { note, stopDate, includeStopDate, actualMealDays } = body;
 
+      // Kiểm tra giờ chốt suất ngày (MEAL_LOCK_TIME_2 hoặc CUTOFF_TIME, mặc định 07:00)
+      const lockSettings = await prisma.systemSetting.findMany({
+        where: { key: { in: ["MEAL_LOCK_TIME_2", "CUTOFF_TIME"] } }
+      });
+      const lockTime2 = lockSettings.find(s => s.key === "MEAL_LOCK_TIME_2")?.value 
+                     || lockSettings.find(s => s.key === "CUTOFF_TIME")?.value 
+                     || "07:00";
+
+      const localToday = getVietnamTodayUTC();
+      const isPastLock = isPastCutoffTime(lockTime2);
+
+      // Quy tắc: Sau thời gian chốt suất của ngày ăn, không được hủy bán trú mà cắt suất hôm nay.
+      // Suất ăn hôm nay đã chốt với bếp nên học sinh vẫn tính tiền ăn hôm nay (includeStopDate = true),
+      // ngày dừng ăn thực tế chỉ tính từ ngày tiếp theo.
+      let effectiveIncludeStopDate = Boolean(includeStopDate);
+      let forcedTodayCharged = false;
+
+      if (isPastLock) {
+        let stopDateObj: Date;
+        if (stopDate && /^\d{4}-\d{2}-\d{2}$/.test(stopDate)) {
+          const [sY, sM, sD] = stopDate.split("-").map(Number);
+          stopDateObj = new Date(Date.UTC(sY, sM - 1, sD));
+        } else {
+          stopDateObj = localToday;
+        }
+
+        if (stopDateObj <= localToday && !effectiveIncludeStopDate) {
+          effectiveIncludeStopDate = true;
+          forcedTodayCharged = true;
+        }
+      }
+
       const calculation = await calculateStudentSettlement({
         studentId,
         classId: student.classId,
         stopDateStr: stopDate,
-        includeStopDate: Boolean(includeStopDate),
+        includeStopDate: effectiveIncludeStopDate,
         actualMealDaysOverride:
           actualMealDays !== undefined && actualMealDays !== null
             ? Number(actualMealDays)
             : null,
       });
+
+      const finalNote = note || (forcedTodayCharged
+        ? `Hủy đăng ký ăn bán trú sau giờ chốt sổ (${lockTime2}). Đã tính suất ăn ngày ${calculation.stopDate}, ngừng ăn từ ngày tiếp theo.`
+        : `Hủy đăng ký ăn bán trú từ ngày ${calculation.stopDate}`);
 
       // Tạo phiếu quyết toán
       await prisma.settlementRecord.create({
@@ -788,7 +855,7 @@ async function calculateStudentSettlement({
           actualUsedAmount: calculation.actualUsedAmount,
           refundOrDebt: calculation.refundOrDebt,
           settlementType: calculation.settlementType,
-          note: note || `Hủy đăng ký ăn bán trú từ ngày ${calculation.stopDate}`,
+          note: finalNote,
           createdBy: adminId || student.userId,
         },
       });

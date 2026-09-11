@@ -63,11 +63,24 @@ export function BulkMealCancelDialog({
     return d.toISOString().split('T')[0];
   };
 
+  // Current Vietnam Tomorrow
+  const getTomorrowStr = () => {
+    const d = new Date(Date.now() + 7 * 60 * 60 * 1000 + 24 * 60 * 60 * 1000);
+    return d.toISOString().split('T')[0];
+  };
+
+  const isPastCutoffNow = () => {
+    const vnTime = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+    const [hours, minutes] = (cutoffTime || '07:00').split(':').map(Number);
+    return !isNaN(hours) && (vnTime.getHours() > hours || (vnTime.getHours() === hours && vnTime.getMinutes() >= (minutes || 0)));
+  };
+
+  const minCancelDate = isPastCutoffNow() ? getTomorrowStr() : getTodayStr();
+
   const [selectedClassId, setSelectedClassId] = useState<string>(classes[0]?.id || '');
-  const [cancelDate, setCancelDate] = useState<string>(getTodayStr());
+  const [cancelDate, setCancelDate] = useState<string>(() => (isPastCutoffNow() ? getTomorrowStr() : getTodayStr()));
   const [reason, setReason] = useState<string>('Đi dã ngoại / Hoạt động ngoại khóa');
   const [autoApprove, setAutoApprove] = useState<boolean>(true);
-  const [bypassCutoff, setBypassCutoff] = useState<boolean>(false);
 
   const [selectedStudentIds, setSelectedStudentIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -109,12 +122,13 @@ export function BulkMealCancelDialog({
     };
   }, [open, selectedClassId, cancelDate]);
 
-  // Reset trạng thái khi đóng popup
+  // Reset trạng thái khi đóng/mở popup
   useEffect(() => {
     if (!open) {
       setSelectedStudentIds(new Set());
       setSearchQuery('');
-      setBypassCutoff(false);
+    } else if (isPastCutoffNow() && cancelDate <= getTodayStr()) {
+      setCancelDate(getTomorrowStr());
     }
   }, [open]);
 
@@ -183,12 +197,12 @@ export function BulkMealCancelDialog({
       return;
     }
 
-    if (statusData?.isPastMorningCutoff && !bypassCutoff) {
-      const cutoffStr = statusData.cutoffTime || statusData.cutoffMorning;
+    if (statusData?.isPastMorningCutoff || (cancelDate <= getTodayStr() && isPastCutoffNow())) {
+      const cutoffStr = statusData?.cutoffTime || statusData?.cutoffMorning || cutoffTime || '07:00';
       Swal.fire({
-        icon: 'warning',
+        icon: 'error',
         title: 'Đã quá giờ khóa sổ',
-        text: `Thời điểm này đã quá giờ khóa sổ chính thức (${cutoffStr}) hoặc ngày đã qua. Vui lòng tích chọn "Xác nhận duyệt ngoại lệ" để tiếp tục.`,
+        text: `Đã quá giờ khóa sổ (${cutoffStr}) của ngày hôm nay. Hệ thống chỉ cho phép cắt suất từ ngày tiếp theo.`,
       });
       return;
     }
@@ -200,7 +214,7 @@ export function BulkMealCancelDialog({
         cancelDate,
         reason: reason.trim(),
         autoApprove,
-        bypassCutoff,
+        bypassCutoff: false,
       });
 
       if (res.success) {
@@ -261,6 +275,7 @@ export function BulkMealCancelDialog({
               </label>
               <Input
                 type="date"
+                min={minCancelDate}
                 value={cancelDate}
                 onChange={(e) => setCancelDate(e.target.value)}
                 className="h-9 text-xs bg-white"
@@ -304,24 +319,15 @@ export function BulkMealCancelDialog({
               )}
 
               {statusData.isPastMorningCutoff && (
-                <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-50/90 border border-amber-200 text-amber-900 text-xs">
-                  <Clock className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+                <div className="flex items-start gap-2.5 p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-900 text-xs">
+                  <AlertCircle className="h-4 w-4 shrink-0 text-rose-600 mt-0.5" />
                   <div className="flex-1">
-                    <div className="font-semibold">
-                      Đã quá giờ khóa sổ ({statusData.cutoffTime || statusData.cutoffMorning}) hoặc ngày đã qua!
+                    <div className="font-semibold text-rose-800">
+                      Đã quá giờ khóa sổ ({statusData.cutoffTime || statusData.cutoffMorning || cutoffTime || '07:00'}) của ngày hôm nay!
                     </div>
-                    <p className="text-[11px] text-amber-700 mt-0.5">
-                      Thao tác sau giờ khóa sổ cần xác nhận duyệt ngoại lệ để phục vụ đối soát.
+                    <p className="text-[11px] text-rose-700 mt-0.5">
+                      Theo quy định, không được phép cắt suất cho ngày hôm nay khi đã qua giờ khóa sổ. Hệ thống chỉ cho phép cắt suất từ ngày tiếp theo ({getTomorrowStr()}).
                     </p>
-                    <label className="flex items-center gap-2 mt-2 cursor-pointer font-medium text-amber-900">
-                      <input
-                        type="checkbox"
-                        checked={bypassCutoff}
-                        onChange={(e) => setBypassCutoff(e.target.checked)}
-                        className="rounded text-amber-600 focus:ring-amber-500 h-4 w-4"
-                      />
-                      <span>Xác nhận duyệt ngoại lệ sau giờ khóa sổ</span>
-                    </label>
                   </div>
                 </div>
               )}
@@ -530,7 +536,8 @@ export function BulkMealCancelDialog({
               selectedStudentIds.size === 0 ||
               statusData?.isSunday ||
               statusData?.isOutOfSchoolYear ||
-              !statusData?.hasSchedule
+              !statusData?.hasSchedule ||
+              statusData?.isPastMorningCutoff
             }
             className="bg-rose-600 hover:bg-rose-700 text-white text-xs h-9 px-4 gap-1.5 shadow-xs cursor-pointer disabled:opacity-50"
           >
