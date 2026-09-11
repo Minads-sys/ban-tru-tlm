@@ -209,12 +209,12 @@ export default function StandaloneKitchenDisplayPage() {
     fetchData();
   }, [fetchData]);
 
-  // 3. 30-second background polling if unlocked
+  // 3. 5-second background polling if unlocked
   useEffect(() => {
     if (isLocked) return;
     const timer = setInterval(() => {
       fetchData();
-    }, 30000);
+    }, 5000);
     return () => clearInterval(timer);
   }, [fetchData, isLocked]);
 

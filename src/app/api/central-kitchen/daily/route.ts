@@ -254,11 +254,33 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      // Số đi chợ đã chốt hoặc fallback về số hiện tại nếu chưa chốt riêng
-      const marketTotal = isHoliday ? 0 : (entry?.marketTotalServings ?? totalServings);
-      const marketMan = isHoliday ? 0 : (entry?.marketServingsMan ?? servingsMan);
-      const marketChao = isHoliday ? 0 : (entry?.marketServingsChao ?? servingsChao);
-      const marketChay = isHoliday ? 0 : (entry?.marketServingsChay ?? servingsChay);
+      // Số đi chợ đã chốt: nếu đã có số đi chợ > 0 thì dùng, còn nếu chưa có hoặc bằng 0 mà totalServings > 0 thì dùng totalServings
+      const hasMarket =
+        !isHoliday &&
+        entry?.marketTotalServings !== null &&
+        entry?.marketTotalServings !== undefined &&
+        entry.marketTotalServings > 0;
+
+      const marketTotal = isHoliday
+        ? 0
+        : hasMarket
+        ? (entry?.marketTotalServings || totalServings)
+        : totalServings;
+      const marketMan = isHoliday
+        ? 0
+        : hasMarket
+        ? (entry?.marketServingsMan || servingsMan)
+        : servingsMan;
+      const marketChao = isHoliday
+        ? 0
+        : hasMarket
+        ? (entry?.marketServingsChao || servingsChao)
+        : servingsChao;
+      const marketChay = isHoliday
+        ? 0
+        : hasMarket
+        ? (entry?.marketServingsChay || servingsChay)
+        : servingsChay;
       const diffServings = totalServings - marketTotal;
 
       return {
@@ -343,6 +365,12 @@ export async function GET(request: NextRequest) {
         dayTransitionTime,
       },
       serverTime: new Date().toISOString(),
+    }, {
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0",
+      },
     });
   } catch (error: any) {
     console.error("Error fetching daily entries:", error);
@@ -413,6 +441,10 @@ export async function POST(request: NextRequest) {
         servingsMan: manNum,
         servingsChao: chaoNum,
         servingsChay: chayNum,
+        marketTotalServings: totalServings,
+        marketServingsMan: manNum,
+        marketServingsChao: chaoNum,
+        marketServingsChay: chayNum,
         manMealType: manMealType === "NUOC" ? "NUOC" : "COM",
         noodleId: manMealType === "NUOC" ? noodleId || null : null,
         noodleName: manMealType === "NUOC" ? noodleName || null : null,
@@ -432,6 +464,14 @@ export async function POST(request: NextRequest) {
         fruitId: fruitId || null,
         fruitName: fruitName || null,
         note: note !== undefined ? note : existing?.note,
+        ...(existing?.lockStatus !== KitchenLockStatus.LOCKED_COOK
+          ? {
+              marketTotalServings: totalServings,
+              marketServingsMan: manNum,
+              marketServingsChao: chaoNum,
+              marketServingsChay: chayNum,
+            }
+          : {}),
       },
       include: { branch: true },
     });

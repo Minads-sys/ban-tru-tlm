@@ -170,18 +170,31 @@ export function ProductionDisplay({
       const isMealLocked = b.lockStatus === "LOCKED_COOK";
       const showMealLock = isMealLocked && isAfterMealCutoff;
 
+      const hasMarket =
+        b.marketServings?.total !== undefined &&
+        b.marketServings.total !== null &&
+        b.marketServings.total > 0;
+
       const dTotal = showMealLock
         ? b.totalServings
-        : (b.marketServings?.total ?? b.totalServings);
+        : hasMarket
+        ? b.marketServings!.total
+        : b.totalServings;
       const dMan = showMealLock
         ? b.servingsMan
-        : (b.marketServings?.man ?? b.servingsMan);
+        : hasMarket
+        ? (b.marketServings?.man ?? b.servingsMan)
+        : b.servingsMan;
       const dChay = showMealLock
         ? b.servingsChay
-        : (b.marketServings?.chay ?? b.servingsChay);
+        : hasMarket
+        ? (b.marketServings?.chay ?? b.servingsChay)
+        : b.servingsChay;
       const dChao = showMealLock
         ? b.servingsChao
-        : (b.marketServings?.chao ?? b.servingsChao);
+        : hasMarket
+        ? (b.marketServings?.chao ?? b.servingsChao)
+        : b.servingsChao;
 
       totalServings += dTotal;
       totalMan += dMan;
@@ -262,11 +275,11 @@ export function ProductionDisplay({
     return () => clearInterval(timer);
   }, [mealLockTime]);
 
-  // 30s auto-refresh polling
+  // 5s auto-refresh polling
   useEffect(() => {
     const pollTimer = setInterval(() => {
       refreshData();
-    }, 30000);
+    }, 5000);
     return () => clearInterval(pollTimer);
   }, [refreshData]);
 
@@ -473,21 +486,34 @@ export function ProductionDisplay({
           const showMealLock = isMealLocked && isAfterMealCutoff;
 
           // Số lượng hiển thị: Nếu chưa hiển thị Chốt Ăn thì VẪN CHỈ HIỂN THỊ SỐ ĐI CHỢ
+          const hasMarket =
+            branch.marketServings?.total !== undefined &&
+            branch.marketServings.total !== null &&
+            branch.marketServings.total > 0;
+
           const displayedTotal = showMealLock
             ? branch.totalServings
-            : (branch.marketServings?.total ?? branch.totalServings);
+            : hasMarket
+            ? branch.marketServings!.total
+            : branch.totalServings;
 
           const displayedMan = showMealLock
             ? branch.servingsMan
-            : (branch.marketServings?.man ?? branch.servingsMan);
+            : hasMarket
+            ? (branch.marketServings?.man ?? branch.servingsMan)
+            : branch.servingsMan;
 
           const displayedChay = showMealLock
             ? branch.servingsChay
-            : (branch.marketServings?.chay ?? branch.servingsChay);
+            : hasMarket
+            ? (branch.marketServings?.chay ?? branch.servingsChay)
+            : branch.servingsChay;
 
           const displayedChao = showMealLock
             ? branch.servingsChao
-            : (branch.marketServings?.chao ?? branch.servingsChao);
+            : hasMarket
+            ? (branch.marketServings?.chao ?? branch.servingsChao)
+            : branch.servingsChao;
 
           const diffServings = branch.marketServings
             ? branch.totalServings - branch.marketServings.total
