@@ -16,11 +16,24 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const providedKey = searchParams.get("key") || request.headers.get("x-kitchen-key");
 
-    // Lấy mã khóa màn hình bếp từ bảng cài đặt
-    const setting = await prisma.systemSetting.findUnique({
-      where: { key: "KITCHEN_DISPLAY_PASSKEY" },
+    // Lấy mã khóa màn hình bếp và các mốc giờ từ bảng cài đặt
+    const settings = await prisma.systemSetting.findMany({
+      where: {
+        key: {
+          in: [
+            "KITCHEN_DISPLAY_PASSKEY",
+            "KITCHEN_MARKET_LOCK_TIME",
+            "KITCHEN_MEAL_LOCK_TIME",
+            "KITCHEN_DAY_TRANSITION_TIME",
+          ],
+        },
+      },
     });
-    const currentPasskey = setting?.value || "123456";
+    const settingsMap = Object.fromEntries(settings.map((s) => [s.key, s.value]));
+    const currentPasskey = settingsMap["KITCHEN_DISPLAY_PASSKEY"] || "123456";
+    const marketLockTime = settingsMap["KITCHEN_MARKET_LOCK_TIME"] || "20:00";
+    const mealLockTime = settingsMap["KITCHEN_MEAL_LOCK_TIME"] || "08:00";
+    const dayTransitionTime = settingsMap["KITCHEN_DAY_TRANSITION_TIME"] || "14:00";
 
     // Kiểm tra: nếu không phải nhân viên đăng nhập, bắt buộc phải có Passkey hợp lệ
     const isStaff =
@@ -44,6 +57,12 @@ export async function GET(request: NextRequest) {
     let dateStr = searchParams.get("date");
     if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
       const now = new Date();
+      const [transH, transM] = (dayTransitionTime || "14:00").split(":").map(Number);
+      const nowH = now.getHours();
+      const nowM = now.getMinutes();
+      if (nowH > transH || (nowH === transH && nowM >= transM)) {
+        now.setDate(now.getDate() + 1);
+      }
       dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
     }
 
@@ -156,6 +175,13 @@ export async function GET(request: NextRequest) {
         fruitTotals[fruitName].totalServings += totalServings;
       }
 
+      // Số đi chợ đã chốt hoặc fallback về số hiện tại nếu chưa chốt riêng
+      const marketTotal = entry?.marketTotalServings ?? totalServings;
+      const marketMan = entry?.marketServingsMan ?? servingsMan;
+      const marketChao = entry?.marketServingsChao ?? servingsChao;
+      const marketChay = entry?.marketServingsChay ?? servingsChay;
+      const diffServings = totalServings - marketTotal;
+
       return {
         branchId: branch.id,
         branchCode: branch.code,
@@ -175,6 +201,15 @@ export async function GET(request: NextRequest) {
         fruitName,
         fruitPortionG,
         lockStatus,
+        marketServings: {
+          total: marketTotal,
+          man: marketMan,
+          chao: marketChao,
+          chay: marketChay,
+        },
+        difference: diffServings,
+        marketLockedAt: entry?.marketLockedAt ? entry.marketLockedAt.toISOString() : null,
+        mealLockedAt: entry?.mealLockedAt ? entry.mealLockedAt.toISOString() : null,
         note: entry?.note || "",
         hasEntry: !!entry,
         materials: {
@@ -219,6 +254,12 @@ export async function GET(request: NextRequest) {
         })),
       },
       passkey: isStaff ? currentPasskey : undefined,
+      config: {
+        marketLockTime,
+        mealLockTime,
+        dayTransitionTime,
+      },
+      serverTime: new Date().toISOString(),
     });
   } catch (error: any) {
     console.error("Error fetching daily entries:", error);
@@ -407,6 +448,25 @@ export async function PUT(request: NextRequest) {
           ? manNum + chaoNum + chayNum
           : undefined;
 
+      const isMarketLock = lockStatus === KitchenLockStatus.LOCKED_MARKET;
+      const isCookLock = lockStatus === KitchenLockStatus.LOCKED_COOK;
+
+      const marketSnapshotData = isMarketLock
+        ? {
+            marketTotalServings: totalNum || 0,
+            marketServingsMan: manNum || 0,
+            marketServingsChao: chaoNum || 0,
+            marketServingsChay: chayNum || 0,
+            marketLockedAt: new Date(),
+          }
+        : {};
+
+      const cookSnapshotData = isCookLock
+        ? {
+            mealLockedAt: new Date(),
+          }
+        : {};
+
       const entry = await prisma.centralKitchenDailyEntry.upsert({
         where: {
           date_branchId: {
@@ -428,9 +488,13 @@ export async function PUT(request: NextRequest) {
           fruitId: fruitId || null,
           fruitName: fruitName || null,
           note: note || null,
+          ...marketSnapshotData,
+          ...cookSnapshotData,
         },
         update: {
           lockStatus,
+          ...marketSnapshotData,
+          ...cookSnapshotData,
           ...(totalNum !== undefined ? { totalServings: totalNum } : {}),
           ...(manNum !== undefined ? { servingsMan: manNum } : {}),
           ...(chaoNum !== undefined ? { servingsChao: chaoNum } : {}),

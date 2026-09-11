@@ -533,8 +533,16 @@ model CentralKitchenDailyEntry {
   fruitId       String?           @map("fruit_id")                      // FK tới CentralKitchenIngredient loại trái cây
   fruitName     String?           @map("fruit_name")                    // Tên trái cây hiển thị
 
-  // Trạng thái khóa: UNLOCKED → LOCKED_MARKET → LOCKED_COOK
+  // Trạng thái khóa: UNLOCKED → LOCKED_MARKET (Chốt đi chợ) → LOCKED_COOK (Chốt số ăn)
   lockStatus    KitchenLockStatus @default(UNLOCKED) @map("lock_status")
+
+  // Lưu vết số đi chợ (chốt tối hôm trước)
+  marketTotalServings Int?          @map("market_total_servings")
+  marketServingsMan   Int?          @map("market_servings_man")
+  marketServingsChao  Int?          @map("market_servings_chao")
+  marketServingsChay  Int?          @map("market_servings_chay")
+  marketLockedAt      DateTime?     @map("market_locked_at")      // Thời điểm bấm Chốt đi chợ
+  mealLockedAt        DateTime?     @map("meal_locked_at")        // Thời điểm bấm Chốt số ăn
 
   note          String?
   createdAt     DateTime          @default(now()) @map("created_at")

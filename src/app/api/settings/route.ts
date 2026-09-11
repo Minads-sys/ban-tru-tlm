@@ -17,6 +17,9 @@ export async function GET() {
       STUDENT_SHOW_DEBT_TAB: 'false',
       STUDENT_SHOW_HISTORY_TAB: 'false',
       KITCHEN_DISPLAY_PASSKEY: '123456',
+      KITCHEN_MARKET_LOCK_TIME: '20:00',
+      KITCHEN_MEAL_LOCK_TIME: '08:00',
+      KITCHEN_DAY_TRANSITION_TIME: '14:00',
     };
 
     settings.forEach((s) => {

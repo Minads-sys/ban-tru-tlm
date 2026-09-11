@@ -35,6 +35,15 @@ interface BranchCardData {
   fruitName: string;
   fruitPortionG: number;
   lockStatus: "UNLOCKED" | "LOCKED_MARKET" | "LOCKED_COOK";
+  marketServings?: {
+    total: number;
+    man: number;
+    chao: number;
+    chay: number;
+  };
+  difference?: number;
+  marketLockedAt?: string | null;
+  mealLockedAt?: string | null;
   note?: string;
   hasEntry: boolean;
   materials: MaterialDetail;
@@ -67,6 +76,8 @@ interface ProductionDisplayProps {
   summary: DailySummary;
   refreshData: () => Promise<void>;
   ricePortionG?: number;
+  hideDateControls?: boolean;
+  mealLockTime?: string; // Mốc giờ chốt ăn cài đặt (mặc định "08:00")
 }
 
 const BRANCH_GRADIENTS: Record<string, { bg: string; border: string; totalColor: string }> = {
@@ -105,14 +116,119 @@ export function ProductionDisplay({
   summary,
   refreshData,
   ricePortionG = 150,
+  hideDateControls = false,
+  mealLockTime = "08:00",
 }: ProductionDisplayProps) {
-  const [currentTime, setCurrentTime] = useState<string>("");
-  const [dateFormatted, setDateFormatted] = useState<string>("");
+  const [realtimeClock, setRealtimeClock] = useState<string>("");
+  const [realtimeDate, setRealtimeDate] = useState<string>("");
+  const [isAfterMealCutoff, setIsAfterMealCutoff] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Live clock and date formatted
+  // Định dạng NGÀY ĂN PHỤC VỤ chuẩn xác theo prop date (không lấy theo now)
+  const servingDateFormatted = React.useMemo(() => {
+    if (!date) return "";
+    const [y, m, d] = date.split("-").map(Number);
+    const dateObj = new Date(y, m - 1, d);
+    const daysOfWeek = [
+      "Chủ Nhật",
+      "Thứ Hai",
+      "Thứ Ba",
+      "Thứ Tư",
+      "Thứ Năm",
+      "Thứ Sáu",
+      "Thứ Bảy",
+    ];
+    const dayName = daysOfWeek[dateObj.getDay()];
+    const dayStr = String(d).padStart(2, "0");
+    const monthStr = String(m).padStart(2, "0");
+    return `${dayName}, ${dayStr}/${monthStr}/${y}`;
+  }, [date]);
+
+  // Tính tổng số liệu toàn hệ thống chuẩn xác theo từng thẻ hiển thị trên màn hình
+  const displayedSummary = React.useMemo(() => {
+    let totalServings = 0;
+    let totalMan = 0;
+    let totalChao = 0;
+    let totalChay = 0;
+    let totalRiceKg = 0;
+    const noodleTotalsMap: Record<
+      string,
+      { noodleName: string; totalKg: number }
+    > = {};
+    const fruitTotalsMap: Record<
+      string,
+      { fruitName: string; totalKg: number }
+    > = {};
+
+    branches.forEach((b) => {
+      const isMealLocked = b.lockStatus === "LOCKED_COOK";
+      const showMealLock = isMealLocked && isAfterMealCutoff;
+
+      const dTotal = showMealLock
+        ? b.totalServings
+        : (b.marketServings?.total ?? b.totalServings);
+      const dMan = showMealLock
+        ? b.servingsMan
+        : (b.marketServings?.man ?? b.servingsMan);
+      const dChay = showMealLock
+        ? b.servingsChay
+        : (b.marketServings?.chay ?? b.servingsChay);
+      const dChao = showMealLock
+        ? b.servingsChao
+        : (b.marketServings?.chao ?? b.servingsChao);
+
+      totalServings += dTotal;
+      totalMan += dMan;
+      totalChay += dChay;
+      totalChao += dChao;
+
+      // Gạo
+      const riceServings =
+        b.manMealType === "COM" ? dMan + dChay : dChay;
+      totalRiceKg += (riceServings * ricePortionG) / 1000;
+
+      // Món Nước
+      if (b.manMealType === "NUOC" && dMan > 0) {
+        const nName = b.noodleName || "Món Nước";
+        const nPortion = b.noodlePortionG || 200;
+        const nKg = (dMan * nPortion) / 1000;
+        if (!noodleTotalsMap[nName]) {
+          noodleTotalsMap[nName] = { noodleName: nName, totalKg: 0 };
+        }
+        noodleTotalsMap[nName].totalKg += nKg;
+      }
+
+      // Trái cây
+      if (dTotal > 0 && b.fruitName) {
+        const fPortion = b.fruitPortionG || 150;
+        const fKg = (dTotal * fPortion) / 1000;
+        if (!fruitTotalsMap[b.fruitName]) {
+          fruitTotalsMap[b.fruitName] = { fruitName: b.fruitName, totalKg: 0 };
+        }
+        fruitTotalsMap[b.fruitName].totalKg += fKg;
+      }
+    });
+
+    return {
+      totalServings,
+      totalMan,
+      totalChao,
+      totalChay,
+      totalRiceKg: Number(totalRiceKg.toFixed(1)),
+      noodleTotals: Object.values(noodleTotalsMap).map((n) => ({
+        ...n,
+        totalKg: Number(n.totalKg.toFixed(1)),
+      })),
+      fruitTotals: Object.values(fruitTotalsMap).map((f) => ({
+        ...f,
+        totalKg: Number(f.totalKg.toFixed(1)),
+      })),
+    };
+  }, [branches, isAfterMealCutoff, ricePortionG]);
+
+  // Live clock thời gian thực và kiểm tra mốc giờ chốt ăn (mealLockTime)
   useEffect(() => {
     const updateTime = () => {
       const now = new Date();
@@ -122,28 +238,25 @@ export function ProductionDisplay({
         second: "2-digit",
         hour12: false,
       });
-      setCurrentTime(timeStr);
+      setRealtimeClock(timeStr);
 
-      const daysOfWeek = [
-        "Chủ Nhật",
-        "Thứ Hai",
-        "Thứ Ba",
-        "Thứ Tư",
-        "Thứ Năm",
-        "Thứ Sáu",
-        "Thứ Bảy",
-      ];
-      const dayName = daysOfWeek[now.getDay()];
+      const daysOfWeek = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
+      const dayShort = daysOfWeek[now.getDay()];
       const d = String(now.getDate()).padStart(2, "0");
       const m = String(now.getMonth() + 1).padStart(2, "0");
-      const y = now.getFullYear();
-      setDateFormatted(`${dayName}, ${d}/${m}/${y}`);
+      setRealtimeDate(`${dayShort}, ${d}/${m}`);
+
+      // Kiểm tra giờ hiện tại có qua giờ chốt ăn (mặc định 08:00) hay chưa
+      const [cutH, cutM] = (mealLockTime || "08:00").split(":").map(Number);
+      const nowH = now.getHours();
+      const nowM = now.getMinutes();
+      setIsAfterMealCutoff(nowH > cutH || (nowH === cutH && nowM >= cutM));
     };
 
     updateTime();
     const timer = setInterval(updateTime, 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [mealLockTime]);
 
   // 30s auto-refresh polling
   useEffect(() => {
@@ -234,53 +347,61 @@ export function ProductionDisplay({
           </div>
         </div>
 
-        {/* Center: Date picker navigator */}
-        <div className="flex items-center gap-1.5 bg-slate-800/80 px-2 py-1 rounded-xl border border-slate-700">
-          <button
-            onClick={() => changeDateByDays(-1)}
-            className="p-1 rounded hover:bg-slate-700 text-slate-300 hover:text-white transition"
-            title="Ngày trước"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <div className="flex items-center gap-1.5 px-2">
-            <Calendar className="w-4 h-4 text-blue-400" />
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => onDateChange(e.target.value)}
-              className="bg-transparent text-sm font-bold text-white border-0 focus:outline-none cursor-pointer [color-scheme:dark]"
-            />
+        {/* Center: Date picker navigator (Ẩn khi hideDateControls = true trên màn hình TV) */}
+        {!hideDateControls && (
+          <div className="flex items-center gap-1.5 bg-slate-800/80 px-2 py-1 rounded-xl border border-slate-700">
+            <button
+              onClick={() => changeDateByDays(-1)}
+              className="p-1 rounded hover:bg-slate-700 text-slate-300 hover:text-white transition"
+              title="Ngày trước"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <div className="flex items-center gap-1.5 px-2">
+              <Calendar className="w-4 h-4 text-blue-400" />
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => onDateChange(e.target.value)}
+                className="bg-transparent text-sm font-bold text-white border-0 focus:outline-none cursor-pointer [color-scheme:dark]"
+              />
+            </div>
+            <button
+              onClick={() => changeDateByDays(1)}
+              className="p-1 rounded hover:bg-slate-700 text-slate-300 hover:text-white transition"
+              title="Ngày sau"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
           </div>
-          <button
-            onClick={() => changeDateByDays(1)}
-            className="p-1 rounded hover:bg-slate-700 text-slate-300 hover:text-white transition"
-            title="Ngày sau"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
+        )}
 
         {/* Right: Date 40px, Clock 25px, Action Buttons */}
-        <div className="flex items-center gap-3 sm:gap-5">
-          {/* Thứ, ngày, tháng tăng font lên 40px (responsive scaled on mobile) */}
-          <div className="flex items-center gap-3 bg-white/5 px-4 py-1.5 rounded-xl border border-white/10 shadow-inner">
+        <div className="flex items-center gap-3 sm:gap-4">
+          {/* KHỐI 1: TIÊU ĐỀ NGÀY ĂN PHỤC VỤ (Font lớn 40px, không gắn chữ đi chợ) */}
+          <div className="flex items-center gap-2 bg-white/10 px-3.5 sm:px-4 py-1.5 rounded-xl border border-white/20 shadow-inner">
+            <span className="text-xs sm:text-sm font-black text-amber-300 uppercase tracking-wider shrink-0">
+              📅 NGÀY ĂN:
+            </span>
             <span
-              className="font-black text-slate-100 tracking-tight leading-none text-2xl sm:text-[34px] lg:text-[40px]"
+              className="font-black text-white tracking-tight leading-none text-xl sm:text-[32px] lg:text-[38px]"
               style={{ letterSpacing: "-0.5px" }}
             >
-              {dateFormatted}
+              {servingDateFormatted}
             </span>
           </div>
 
-          {/* Đồng hồ thời gian thực font 25px */}
-          <div className="flex items-center gap-2 bg-white/5 px-3 py-2 rounded-xl border border-white/10 shadow-inner">
-            <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shadow-sm shadow-emerald-400" />
-            <span
-              className="font-extrabold text-emerald-400 tabular-nums leading-none text-lg sm:text-[25px]"
-            >
-              {currentTime}
-            </span>
+          {/* KHỐI 2: ĐỒNG HỒ THỜI GIAN THỰC TẾ HIỆN TẠI */}
+          <div className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-xl border border-white/10 shadow-inner">
+            <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shadow-sm shadow-emerald-400 shrink-0" />
+            <div className="flex flex-col text-left">
+              <span className="font-extrabold text-emerald-400 tabular-nums leading-none text-base sm:text-[20px]">
+                {realtimeClock}
+              </span>
+              <span className="text-[10px] text-slate-400 font-bold tracking-wider uppercase leading-none mt-1">
+                Hiện tại ({realtimeDate})
+              </span>
+            </div>
           </div>
 
           {/* Controls: Refresh & Fullscreen */}
@@ -313,8 +434,45 @@ export function ProductionDisplay({
       <div className="grid grid-cols-1 md:grid-cols-2 flex-1 p-2 sm:p-3 gap-3 min-h-0 auto-rows-fr overflow-y-auto">
         {branches.map((branch) => {
           const config = BRANCH_GRADIENTS[branch.branchCode] || DEFAULT_GRADIENT;
-          const isLockedCook = branch.lockStatus === "LOCKED_COOK";
-          const isLockedMarket = branch.lockStatus === "LOCKED_MARKET";
+
+          // QUY TẮC VÀNG: Chỉ hiển thị "CHỐT SỐ ĂN" khi:
+          // 1. Chi nhánh đã bấm chốt ăn (LOCKED_COOK)
+          // 2. VÀ thời gian thực tế đã qua giờ chốt ăn (sau 08:00)
+          const isMealLocked = branch.lockStatus === "LOCKED_COOK";
+          const showMealLock = isMealLocked && isAfterMealCutoff;
+
+          // Số lượng hiển thị: Nếu chưa hiển thị Chốt Ăn thì VẪN CHỈ HIỂN THỊ SỐ ĐI CHỢ
+          const displayedTotal = showMealLock
+            ? branch.totalServings
+            : (branch.marketServings?.total ?? branch.totalServings);
+
+          const displayedMan = showMealLock
+            ? branch.servingsMan
+            : (branch.marketServings?.man ?? branch.servingsMan);
+
+          const displayedChay = showMealLock
+            ? branch.servingsChay
+            : (branch.marketServings?.chay ?? branch.servingsChay);
+
+          const displayedChao = showMealLock
+            ? branch.servingsChao
+            : (branch.marketServings?.chao ?? branch.servingsChao);
+
+          const diffServings = branch.marketServings
+            ? branch.totalServings - branch.marketServings.total
+            : 0;
+
+          const displayedRiceServings =
+            branch.manMealType === "COM"
+              ? displayedMan + displayedChay
+              : displayedChay;
+          const displayedRiceKg = (displayedRiceServings * ricePortionG) / 1000;
+          const displayedNoodleKg =
+            branch.manMealType === "NUOC"
+              ? (displayedMan * (branch.noodlePortionG || 200)) / 1000
+              : 0;
+          const displayedFruitKg =
+            (displayedTotal * (branch.fruitPortionG || 150)) / 1000;
 
           return (
             <div
@@ -327,36 +485,66 @@ export function ProductionDisplay({
             >
               {/* BRANCH HEADER */}
               <div className="px-4 py-2 bg-black/30 flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2.5 sm:gap-3">
                   <div
-                    className="w-3 h-3 rounded-full shadow-md"
+                    className="w-3 h-3 rounded-full shadow-md shrink-0"
                     style={{ backgroundColor: branch.branchColor || "#60a5fa" }}
                   />
-                  <span className="text-xl sm:text-2xl font-black uppercase tracking-wider text-white">
-                    {branch.branchName}
-                  </span>
+                  <div>
+                    <span className="text-lg sm:text-2xl font-black uppercase tracking-wider text-white">
+                      {branch.branchName}
+                    </span>
+                    {/* Dòng chênh lệch số lượng nếu có */}
+                    {showMealLock && diffServings !== 0 && (
+                      <div className="text-[11px] font-bold text-amber-200 bg-black/40 px-2 py-0.5 rounded border border-amber-400/30 mt-0.5">
+                        Đi chợ: {branch.marketServings?.total} ➔ Ăn: {branch.totalServings} (
+                        {diffServings > 0 ? `+${diffServings}` : diffServings} suất)
+                      </div>
+                    )}
+                  </div>
 
                   {/* Trạng thái chốt đặt cạnh tên chi nhánh */}
-                  {isLockedCook ? (
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs sm:text-sm font-extrabold uppercase tracking-wide bg-emerald-500/25 text-emerald-300 border border-emerald-500/50">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                      🔥 CHỐT NẤU
+                  {showMealLock ? (
+                    <div className="flex flex-col items-start">
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs sm:text-sm font-extrabold uppercase tracking-wide bg-emerald-500/25 text-emerald-300 border border-emerald-500/50">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                        🍽️ ĐÃ CHỐT SỐ ĂN
+                      </div>
+                      {branch.mealLockedAt && (
+                        <span className="text-[10px] text-emerald-200/80 font-medium pl-1 mt-0.5">
+                          Lúc {new Date(branch.mealLockedAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      )}
                     </div>
-                  ) : isLockedMarket ? (
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs sm:text-sm font-extrabold uppercase tracking-wide bg-blue-500/25 text-blue-300 border border-blue-500/50">
-                      <span className="w-2 h-2 rounded-full bg-blue-400" />
-                      🛒 CHỐT ĐI CHỢ
+                  ) : branch.lockStatus === "LOCKED_MARKET" || branch.lockStatus === "LOCKED_COOK" ? (
+                    <div className="flex flex-col items-start">
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs sm:text-sm font-extrabold uppercase tracking-wide bg-blue-500/25 text-blue-300 border border-blue-500/50">
+                        <span className="w-2 h-2 rounded-full bg-blue-400" />
+                        🛒 ĐÃ CHỐT ĐI CHỢ
+                      </div>
+                      {isAfterMealCutoff && (
+                        <span className="text-[10px] text-amber-300 font-bold pl-1 mt-0.5 animate-pulse">
+                          ⚠️ Chưa chốt số ăn
+                        </span>
+                      )}
                     </div>
                   ) : (
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs sm:text-sm font-extrabold uppercase tracking-wide bg-red-500/25 text-red-300 border border-red-500/50 animate-pulse">
-                      <span className="w-2 h-2 rounded-full bg-red-400" />
-                      ⏳ CHƯA CHỐT
+                    <div className="flex flex-col items-start">
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs sm:text-sm font-extrabold uppercase tracking-wide bg-red-500/25 text-red-300 border border-red-500/50 animate-pulse">
+                        <span className="w-2 h-2 rounded-full bg-red-400" />
+                        ⏳ CHƯA BÁO ĐI CHỢ
+                      </div>
+                      {isAfterMealCutoff && (
+                        <span className="text-[10px] text-amber-300 font-bold pl-1 mt-0.5">
+                          ⚠️ Chưa chốt số ăn
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>
 
                 {/* Số suất tổng to hơn 1.5 lần (68px) */}
-                <div className="flex items-baseline gap-1.5 bg-white/15 px-3.5 py-1 rounded-xl shadow-inner">
+                <div className="flex items-baseline gap-1.5 bg-white/15 px-3.5 py-1 rounded-xl shadow-inner shrink-0">
                   <span
                     className="font-black leading-none text-4xl sm:text-5xl lg:text-[68px]"
                     style={{
@@ -364,7 +552,7 @@ export function ProductionDisplay({
                       letterSpacing: "-2px",
                     }}
                   >
-                    {branch.totalServings.toLocaleString("vi-VN")}
+                    {displayedTotal.toLocaleString("vi-VN")}
                   </span>
                   <span className="text-xs sm:text-base font-bold opacity-80 text-slate-200">
                     suất
@@ -389,7 +577,7 @@ export function ProductionDisplay({
                       className="font-black leading-none text-3xl sm:text-4xl lg:text-[63px]"
                       style={{ color: "#fbbf24", letterSpacing: "-1.5px" }}
                     >
-                      {branch.servingsMan.toLocaleString("vi-VN")}
+                      {displayedMan.toLocaleString("vi-VN")}
                     </span>
                   </div>
 
@@ -402,7 +590,7 @@ export function ProductionDisplay({
                       className="font-black leading-none text-3xl sm:text-4xl lg:text-[63px]"
                       style={{ color: "#4ade80", letterSpacing: "-1.5px" }}
                     >
-                      {branch.servingsChay.toLocaleString("vi-VN")}
+                      {displayedChay.toLocaleString("vi-VN")}
                     </span>
                   </div>
 
@@ -415,7 +603,7 @@ export function ProductionDisplay({
                       className="font-black leading-none text-3xl sm:text-4xl lg:text-[63px]"
                       style={{ color: "#67e8f9", letterSpacing: "-1.5px" }}
                     >
-                      {branch.servingsChao.toLocaleString("vi-VN")}
+                      {displayedChao.toLocaleString("vi-VN")}
                     </span>
                   </div>
                 </div>
@@ -435,13 +623,13 @@ export function ProductionDisplay({
                         </span>
                         <span className="text-[11px] sm:text-[13px] font-semibold text-slate-300">
                           ({ricePortionG}g ×{" "}
-                          {(branch.servingsMan + branch.servingsChay).toLocaleString("vi-VN")}{" "}
+                          {displayedRiceServings.toLocaleString("vi-VN")}{" "}
                           suất cơm)
                         </span>
                       </div>
                       <div className="flex items-baseline gap-1">
                         <span className="font-black text-amber-200 leading-none text-2xl sm:text-3xl lg:text-[40px] tracking-tight">
-                          {branch.materials.riceKg.toFixed(1)}
+                          {displayedRiceKg.toFixed(1)}
                         </span>
                         <span className="text-sm sm:text-lg font-bold text-amber-300">
                           kg
@@ -457,13 +645,13 @@ export function ProductionDisplay({
                             🍜 {branch.noodleName || "Món Nước"}
                           </span>
                           <span className="text-[11px] sm:text-[13px] font-semibold text-slate-300">
-                            ({branch.noodlePortionG}g ×{" "}
-                            {branch.servingsMan.toLocaleString("vi-VN")} suất mặn)
+                            ({branch.noodlePortionG || 200}g ×{" "}
+                            {displayedMan.toLocaleString("vi-VN")} suất mặn)
                           </span>
                         </div>
                         <div className="flex items-baseline gap-1">
                           <span className="font-black text-amber-200 leading-none text-2xl sm:text-3xl lg:text-[40px] tracking-tight">
-                            {branch.materials.noodleKg.toFixed(1)}
+                            {displayedNoodleKg.toFixed(1)}
                           </span>
                           <span className="text-sm sm:text-lg font-bold text-amber-300">
                             kg
@@ -471,7 +659,7 @@ export function ProductionDisplay({
                         </div>
                       </div>
 
-                      {branch.servingsChay > 0 && (
+                      {displayedChay > 0 && (
                         <div className="bg-black/25 rounded-xl p-1.5 sm:p-2 border-l-4 border-emerald-400">
                           <div className="flex items-baseline gap-2 flex-wrap mb-0.5">
                             <span className="font-black text-white text-sm sm:text-lg lg:text-[20px]">
@@ -479,12 +667,12 @@ export function ProductionDisplay({
                             </span>
                             <span className="text-[10px] sm:text-[12px] font-semibold text-slate-300">
                               ({ricePortionG}g ×{" "}
-                              {branch.servingsChay.toLocaleString("vi-VN")} suất chay)
+                              {displayedChay.toLocaleString("vi-VN")} suất chay)
                             </span>
                           </div>
                           <div className="flex items-baseline gap-1">
                             <span className="font-black text-emerald-200 leading-none text-xl sm:text-2xl lg:text-[30px]">
-                              {branch.materials.riceKg.toFixed(1)}
+                              {((displayedChay * ricePortionG) / 1000).toFixed(1)}
                             </span>
                             <span className="text-xs sm:text-sm font-bold text-emerald-300">
                               kg
@@ -502,13 +690,13 @@ export function ProductionDisplay({
                         🍌 {branch.fruitName || "Trái cây"}
                       </span>
                       <span className="text-[11px] sm:text-[13px] font-semibold text-slate-300">
-                        ({branch.fruitPortionG}g ×{" "}
-                        {branch.totalServings.toLocaleString("vi-VN")} suất)
+                        ({branch.fruitPortionG || 150}g ×{" "}
+                        {displayedTotal.toLocaleString("vi-VN")} suất)
                       </span>
                     </div>
                     <div className="flex items-baseline gap-1">
                       <span className="font-black text-yellow-200 leading-none text-2xl sm:text-3xl lg:text-[40px] tracking-tight">
-                        {branch.materials.fruitKg.toFixed(1)}
+                        {displayedFruitKg.toFixed(1)}
                       </span>
                       <span className="text-sm sm:text-lg font-bold text-yellow-300">
                         kg
@@ -537,7 +725,7 @@ export function ProductionDisplay({
               TỔNG SUẤT
             </div>
             <div className="text-2xl sm:text-4xl font-black text-white leading-none">
-              {summary.totalServings.toLocaleString("vi-VN")}
+              {displayedSummary.totalServings.toLocaleString("vi-VN")}
             </div>
           </div>
 
@@ -549,7 +737,7 @@ export function ProductionDisplay({
               MẶN
             </div>
             <div className="text-xl sm:text-2xl font-black text-amber-300 leading-none">
-              {summary.totalMan.toLocaleString("vi-VN")}
+              {displayedSummary.totalMan.toLocaleString("vi-VN")}
             </div>
           </div>
 
@@ -559,7 +747,7 @@ export function ProductionDisplay({
               CHAY
             </div>
             <div className="text-xl sm:text-2xl font-black text-emerald-300 leading-none">
-              {summary.totalChay.toLocaleString("vi-VN")}
+              {displayedSummary.totalChay.toLocaleString("vi-VN")}
             </div>
           </div>
 
@@ -569,7 +757,7 @@ export function ProductionDisplay({
               CHÁO
             </div>
             <div className="text-xl sm:text-2xl font-black text-cyan-300 leading-none">
-              {summary.totalChao.toLocaleString("vi-VN")}
+              {displayedSummary.totalChao.toLocaleString("vi-VN")}
             </div>
           </div>
 
@@ -581,13 +769,13 @@ export function ProductionDisplay({
               TỔNG GẠO
             </div>
             <div className="text-xl sm:text-2xl font-black text-amber-200 leading-none">
-              {summary.totalRiceKg.toFixed(1)}{" "}
+              {displayedSummary.totalRiceKg.toFixed(1)}{" "}
               <span className="text-xs text-slate-400 font-semibold">kg</span>
             </div>
           </div>
 
           {/* Món Nước */}
-          {summary.noodleTotals.map((noodle, idx) => (
+          {displayedSummary.noodleTotals.map((noodle, idx) => (
             <div key={idx} className="text-center">
               <div className="text-[10px] sm:text-xs font-bold text-slate-300 uppercase">
                 {noodle.noodleName}
@@ -600,7 +788,7 @@ export function ProductionDisplay({
           ))}
 
           {/* Trái cây */}
-          {summary.fruitTotals.map((fruit, idx) => (
+          {displayedSummary.fruitTotals.map((fruit, idx) => (
             <div key={idx} className="text-center">
               <div className="text-[10px] sm:text-xs font-bold text-slate-300 uppercase">
                 {fruit.fruitName}

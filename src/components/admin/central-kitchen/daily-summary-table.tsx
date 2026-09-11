@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Lock, Unlock, ShoppingCart, Flame, Clock } from "lucide-react";
+import { Lock, Unlock, ShoppingCart, Utensils, Clock } from "lucide-react";
 import { toast } from "@/lib/toast";
 
 interface BranchCardData {
@@ -145,7 +145,7 @@ export function DailySummaryTable({
                   <td className="py-3.5 px-4">
                     {isLockedCook ? (
                       <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300">
-                        <Flame className="w-3 h-3" /> 🔥 Chốt nấu
+                        <Utensils className="w-3 h-3" /> 🍽️ Chốt số ăn
                       </span>
                     ) : isLockedMarket ? (
                       <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
@@ -204,9 +204,9 @@ export function DailySummaryTable({
                         <button
                           onClick={() => handleQuickStatusChange(b.branchId, "LOCKED_COOK")}
                           className="px-2 py-1 rounded bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 font-bold text-xs hover:bg-emerald-100"
-                          title="Chốt nấu"
+                          title="Chốt số ăn"
                         >
-                          Chốt nấu
+                          Chốt số ăn
                         </button>
                       )}
                       {(b.lockStatus === "LOCKED_COOK" || b.lockStatus === "LOCKED_MARKET") && (

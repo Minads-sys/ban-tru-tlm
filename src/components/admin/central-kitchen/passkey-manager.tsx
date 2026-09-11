@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { KeyRound, ShieldCheck, Copy, Check, Save, Lock, AlertTriangle } from "lucide-react";
+import { KeyRound, ShieldCheck, Copy, Check, Save, Lock, AlertTriangle, Clock, CalendarClock } from "lucide-react";
 import { toast } from "@/lib/toast";
 
 interface PasskeyManagerProps {
@@ -18,6 +18,24 @@ export function PasskeyManager({
   const [pin, setPin] = useState<string>(initialPasskey);
   const [saving, setSaving] = useState<boolean>(false);
   const [copiedType, setCopiedType] = useState<string | null>(null);
+
+  // Mốc giờ vận hành Bếp
+  const [dayTransitionTime, setDayTransitionTime] = useState<string>("14:00");
+  const [marketLockTime, setMarketLockTime] = useState<string>("20:00");
+  const [mealLockTime, setMealLockTime] = useState<string>("08:00");
+  const [savingHours, setSavingHours] = useState<boolean>(false);
+
+  useEffect(() => {
+    // Tải cấu hình mốc giờ từ API
+    fetch("/api/settings")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.KITCHEN_DAY_TRANSITION_TIME) setDayTransitionTime(data.KITCHEN_DAY_TRANSITION_TIME);
+        if (data.KITCHEN_MARKET_LOCK_TIME) setMarketLockTime(data.KITCHEN_MARKET_LOCK_TIME);
+        if (data.KITCHEN_MEAL_LOCK_TIME) setMealLockTime(data.KITCHEN_MEAL_LOCK_TIME);
+      })
+      .catch(console.error);
+  }, []);
 
   useEffect(() => {
     if (initialPasskey) {
@@ -67,6 +85,31 @@ export function PasskeyManager({
     setCopiedType(type);
     toast.success("Đã sao chép liên kết vào bộ nhớ tạm!");
     setTimeout(() => setCopiedType(null), 2000);
+  };
+
+  const handleSaveHours = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingHours(true);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          KITCHEN_DAY_TRANSITION_TIME: dayTransitionTime,
+          KITCHEN_MARKET_LOCK_TIME: marketLockTime,
+          KITCHEN_MEAL_LOCK_TIME: mealLockTime,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Lỗi lưu mốc giờ");
+
+      toast.success("Đã cập nhật các mốc giờ vận hành Bếp thành công!");
+    } catch (err: any) {
+      toast.error(err.message || "Lỗi cập nhật mốc giờ");
+    } finally {
+      setSavingHours(false);
+    }
   };
 
   return (
@@ -194,6 +237,104 @@ export function PasskeyManager({
             Sao chép
           </button>
         </div>
+      </div>
+
+      {/* SECTION 2: MỐC GIỜ VẬN HÀNH BẾP TRUNG TÂM */}
+      <div className="pt-4 border-t border-slate-200 dark:border-slate-700 space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 border border-blue-500/20">
+            <Clock className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              Mốc Giờ Vận Hành Bếp Trung Tâm
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Cài đặt giờ tự động chuyển ca trên TV Display, hạn chốt đi chợ và hạn chốt số ăn
+            </p>
+          </div>
+        </div>
+
+        {userRole === "ADMIN" || userRole === "BOARDING_MANAGER" || !userRole ? (
+          <form onSubmit={handleSaveHours} className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* 1. Giờ chuyển ngày */}
+              <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700 space-y-1.5">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase">
+                  🔄 Giờ chuyển ngày phục vụ:
+                </label>
+                <div className="flex items-center gap-2">
+                  <CalendarClock className="w-4 h-4 text-blue-500 shrink-0" />
+                  <input
+                    type="time"
+                    value={dayTransitionTime}
+                    onChange={(e) => setDayTransitionTime(e.target.value)}
+                    className="w-full text-base font-black px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 cursor-pointer"
+                  />
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight">
+                  Từ {dayTransitionTime} chiều, TV tự động nhảy sang <strong>ngày phục vụ tiếp theo</strong> để tiếp nhận số đi chợ.
+                </p>
+              </div>
+
+              {/* 2. Giờ chốt đi chợ */}
+              <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700 space-y-1.5">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase">
+                  🛒 Hạn chốt đi chợ (Tối trước):
+                </label>
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-amber-500 shrink-0" />
+                  <input
+                    type="time"
+                    value={marketLockTime}
+                    onChange={(e) => setMarketLockTime(e.target.value)}
+                    className="w-full text-base font-black px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-amber-600 dark:text-amber-400 focus:outline-none focus:border-amber-500 cursor-pointer"
+                  />
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight">
+                  Hạn chót các trường gửi số đi chợ tối hôm trước (mặc định 20:00).
+                </p>
+              </div>
+
+              {/* 3. Giờ chốt số ăn */}
+              <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700 space-y-1.5">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase">
+                  🍽️ Hạn chốt số ăn (Sáng ăn):
+                </label>
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-emerald-500 shrink-0" />
+                  <input
+                    type="time"
+                    value={mealLockTime}
+                    onChange={(e) => setMealLockTime(e.target.value)}
+                    className="w-full text-base font-black px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 focus:outline-none focus:border-emerald-500 cursor-pointer"
+                  />
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight">
+                  Sau {mealLockTime} sáng, khi trường bấm chốt ăn thì TV mới hiện <strong>"ĐÃ CHỐT SỐ ĂN"</strong>.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-2">
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                💡 Lưu ý: Nếu trường chưa bấm chốt số ăn thì TV luôn hiển thị <strong>Chốt đi chợ</strong>.
+              </span>
+              <button
+                type="submit"
+                disabled={savingHours}
+                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold text-xs sm:text-sm rounded-xl shadow-md shadow-blue-600/20 transition disabled:opacity-50 cursor-pointer"
+              >
+                <Save className="w-4 h-4" />
+                {savingHours ? "Đang lưu..." : "Lưu mốc giờ vận hành"}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <div className="p-4 rounded-xl bg-slate-100 dark:bg-slate-800/40 text-xs text-slate-600 dark:text-slate-400">
+            Mốc giờ vận hành do Quản trị viên (Admin) quản lý.
+          </div>
+        )}
       </div>
     </div>
   );

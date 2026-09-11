@@ -287,7 +287,7 @@ export function DailyEntryForm({
   const getStatusLabel = (status: string) => {
     switch (status) {
       case "LOCKED_COOK":
-        return "🔥 Chốt nấu";
+        return "🍽️ Chốt số ăn";
       case "LOCKED_MARKET":
         return "🛒 Chốt đi chợ";
       default:
@@ -406,7 +406,7 @@ export function DailyEntryForm({
                 </option>
                 <option value="UNLOCKED">⏳ Mở tất cả (Chưa chốt)</option>
                 <option value="LOCKED_MARKET">🛒 Chốt đi chợ tất cả</option>
-                <option value="LOCKED_COOK">🔥 Chốt nấu tất cả</option>
+                <option value="LOCKED_COOK">🍽️ Chốt số ăn tất cả</option>
               </select>
             </div>
           )}
@@ -529,7 +529,7 @@ export function DailyEntryForm({
                         🛒 Chốt đi chợ
                       </option>
                       <option value="LOCKED_COOK" className="bg-slate-900 text-white">
-                        🔥 Chốt nấu
+                        🍽️ Chốt số ăn
                       </option>
                     </select>
                   </div>

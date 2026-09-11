@@ -19,8 +19,17 @@ import {
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000; // 7 ngày tính bằng milliseconds
 
-function getTodayString(): string {
+function getServingDate(transitionTime: string = "14:00"): string {
   const now = new Date();
+  const [transH, transM] = (transitionTime || "14:00").split(":").map(Number);
+  const nowH = now.getHours();
+  const nowM = now.getMinutes();
+
+  // Từ 14:00 trở đi, tự động chuyển sang ngày phục vụ tiếp theo (ngày mai)
+  if (nowH > transH || (nowH === transH && nowM >= transM)) {
+    now.setDate(now.getDate() + 1);
+  }
+
   const y = now.getFullYear();
   const m = String(now.getMonth() + 1).padStart(2, "0");
   const d = String(now.getDate()).padStart(2, "0");
@@ -28,7 +37,8 @@ function getTodayString(): string {
 }
 
 export default function StandaloneKitchenDisplayPage() {
-  const [date, setDate] = useState<string>(getTodayString());
+  const [dayTransitionTime, setDayTransitionTime] = useState<string>("14:00");
+  const [date, setDate] = useState<string>(() => getServingDate("14:00"));
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -59,6 +69,12 @@ export default function StandaloneKitchenDisplayPage() {
       noodles: any[];
       fruits: any[];
     };
+    config?: {
+      marketLockTime: string;
+      mealLockTime: string;
+      dayTransitionTime: string;
+    };
+    serverTime?: string;
   }>({
     branches: [],
     summary: {
@@ -77,6 +93,18 @@ export default function StandaloneKitchenDisplayPage() {
       fruits: [],
     },
   });
+
+  // Tự động kiểm tra chuyển sang ngày phục vụ tiếp theo khi đến giờ chuyển ca (mặc định 14:00)
+  useEffect(() => {
+    const checkServingDate = () => {
+      const targetDate = getServingDate(dayTransitionTime);
+      setDate((prev) => (prev !== targetDate ? targetDate : prev));
+    };
+
+    checkServingDate();
+    const interval = setInterval(checkServingDate, 10000);
+    return () => clearInterval(interval);
+  }, [dayTransitionTime]);
 
   // 1. Initial 7-day expiration check & key resolution
   useEffect(() => {
@@ -149,6 +177,12 @@ export default function StandaloneKitchenDisplayPage() {
         }
 
         setDailyData(json);
+        if (
+          json.config?.dayTransitionTime &&
+          json.config.dayTransitionTime !== dayTransitionTime
+        ) {
+          setDayTransitionTime(json.config.dayTransitionTime);
+        }
         setIsLocked(false);
         return true;
       } catch (err: any) {
@@ -467,6 +501,8 @@ export default function StandaloneKitchenDisplayPage() {
             await fetchData();
           }}
           ricePortionG={dailyData.ingredients?.ricePortionG || 150}
+          hideDateControls={true}
+          mealLockTime={dailyData.config?.mealLockTime || "08:00"}
         />
       </div>
     </div>

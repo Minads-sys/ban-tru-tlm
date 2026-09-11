@@ -364,6 +364,7 @@ export default function CentralKitchenPage() {
               summary={dailyData.summary}
               refreshData={fetchData}
               ricePortionG={dailyData.ingredients.ricePortionG}
+              mealLockTime={(dailyData as any).config?.mealLockTime || "08:00"}
             />
           </div>
         </TabsContent>
