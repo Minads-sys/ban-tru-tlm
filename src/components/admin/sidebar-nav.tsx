@@ -22,6 +22,7 @@ import {
   Utensils,
   History,
   Building2,
+  Truck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -94,6 +95,12 @@ const NAV_ITEMS: NavItem[] = [
     href: "/admin/central-kitchen",
     icon: Building2,
     permission: "MANAGE_KITCHEN",
+  },
+  {
+    title: "Giao nhận suất cơm",
+    href: "/admin/meal-delivery",
+    icon: Truck,
+    permission: "DELIVER_MEALS",
   },
   {
     title: "Hóa đơn & Thanh toán",

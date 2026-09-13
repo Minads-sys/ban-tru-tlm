@@ -61,6 +61,7 @@ model User {
   cashierClosings      DailyCashClosing[]   @relation("UserCashClosings")
   accountantClosings   DailyCashClosing[]   @relation("AccountantConfirmations")
   auditLogs            AuditLog[]
+  deliveryRecords      MealDeliveryRecord[]
 
   @@map("users")
 }
@@ -573,4 +574,33 @@ model CentralKitchenHoliday {
   @@index([branchId])
   @@map("central_kitchen_holidays")
 }
+
+// ==================== NHẬT KÝ GIAO NHẬN SUẤT ĂN ====================
+
+model MealDeliveryRecord {
+  id             String   @id @default(cuid())
+  deliveryDate   DateTime @map("delivery_date") @db.Date
+  shift          String   @default("ALL") @map("shift") // "TIET_4" | "TIET_5" | "ALL"
+  branchId       String?  @map("branch_id")
+  receiverName   String   @map("receiver_name")
+  receiverPhone  String?  @map("receiver_phone")
+  deliveredMan   Int      @default(0) @map("delivered_man")
+  deliveredChay  Int      @default(0) @map("delivered_chay")
+  deliveredChao  Int      @default(0) @map("delivered_chao")
+  totalDelivered Int      @default(0) @map("total_delivered")
+  expectedTotal  Int?     @map("expected_total")
+  photoUrl       String   @map("photo_url")
+  photoSizeKb    Int?     @map("photo_size_kb")
+  deliveredById  String   @map("delivered_by_id")
+  note           String?
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  deliveredBy    User     @relation(fields: [deliveredById], references: [id])
+
+  @@index([deliveryDate])
+  @@index([deliveredById])
+  @@map("meal_delivery_records")
+}
+
 

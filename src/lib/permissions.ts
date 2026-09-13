@@ -6,6 +6,7 @@ export const PERMISSIONS = {
   MANAGE_FINANCE: "MANAGE_FINANCE",
   VIEW_REPORTS: "VIEW_REPORTS",
   MANAGE_SETTINGS: "MANAGE_SETTINGS",
+  DELIVER_MEALS: "DELIVER_MEALS",
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;
@@ -18,6 +19,7 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   MANAGE_FINANCE: "Quản lý hóa đơn & thanh toán",
   VIEW_REPORTS: "Xem báo cáo thống kê",
   MANAGE_SETTINGS: "Cài đặt cấu hình hệ thống",
+  DELIVER_MEALS: "Giao nhận suất cơm & Ký nhận ảnh",
 };
 
 export const ALL_PERMISSIONS = Object.keys(PERMISSIONS) as Permission[];
