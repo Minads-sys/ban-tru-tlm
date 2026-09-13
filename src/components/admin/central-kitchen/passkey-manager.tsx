@@ -169,13 +169,13 @@ export function PasskeyManager({
             <div className="flex items-start gap-2 text-emerald-600 dark:text-emerald-400 font-semibold">
               <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5" />
               <span>
-                <strong>Bộ đếm chu kỳ 7 ngày tự động:</strong> Mỗi thiết bị Smart TV hoặc máy tính sau khi nhập mã PIN sẽ duy trì phiên trong <strong>7 ngày</strong>. Hết 7 ngày, hệ thống sẽ tự động khóa lại và yêu cầu người dùng nhập lại mã PIN 6 số một lần để tiếp tục sử dụng.
+                <strong>Lưu phiên VĨNH VIỄN (Không thời hạn):</strong> Mỗi thiết bị Smart TV hoặc máy tính sau khi nhập đúng mã PIN (hoặc mở qua link gắn mã) sẽ được lưu vĩnh viễn trên trình duyệt, không bao giờ tự động hết hạn hay yêu cầu nhập lại hàng tuần.
               </span>
             </div>
             <div className="flex items-start gap-2 text-amber-600 dark:text-amber-400">
               <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
               <span>
-                <strong>Lưu ý:</strong> Khi bạn đổi mã PIN 6 số này, tất cả các thiết bị cũ đang mở sẽ lập tức bị khóa lại ngay mà không cần đợi hết 7 ngày.
+                <strong>Bảo mật khi cần:</strong> Khi bạn đổi mã PIN 6 số mới tại đây, tất cả các thiết bị cũ đang mở sẽ lập tức bị khóa lại và yêu cầu nhập mã PIN mới.
               </span>
             </div>
           </div>
@@ -203,7 +203,7 @@ export function PasskeyManager({
               {secureUrl}
             </code>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-              • Tiện lợi khi cài đặt dấu trang (Bookmark) trên Smart TV, mở là xem ngay không cần gõ mã.
+              • Tiện lợi khi cài đặt dấu trang (Bookmark) trên Smart TV, mở 1 lần là lưu vĩnh viễn không cần gõ mã.
             </p>
           </div>
           <button

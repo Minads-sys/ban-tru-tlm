@@ -392,7 +392,7 @@ export default function CentralKitchenPage() {
                   </span>
                   <span className="text-slate-500">•</span>
                   <span className="text-slate-400">
-                    ⏱️ Chu kỳ xác thực: <strong>7 ngày / lần</strong>
+                    ⏱️ Thời hạn phiên: <strong>Vĩnh viễn (Không thời hạn)</strong>
                   </span>
                 </div>
               </div>
@@ -524,7 +524,7 @@ export default function CentralKitchenPage() {
                 <span className="font-mono font-black text-amber-600 dark:text-amber-400 text-sm tracking-widest">{currentPasskey}</span>
               </div>
               <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
-                ⏱️ Chu kỳ bảo mật: Tự động yêu cầu nhập lại mã sau <strong>7 ngày</strong>.
+                ⏱️ Thời hạn phiên: <strong>Lưu vĩnh viễn trên thiết bị</strong> (chỉ khóa khi Quản trị viên đổi mã PIN mới).
               </div>
               <ol className="list-decimal list-inside text-slate-600 dark:text-slate-400 space-y-1 pt-1">
                 <li>Mã QR trên đã đính kèm sẵn mã PIN, quét là xem được ngay.</li>

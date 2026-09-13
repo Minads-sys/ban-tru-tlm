@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Calendar,
+  Lock,
 } from "lucide-react";
 
 interface MaterialDetail {
@@ -81,6 +82,7 @@ interface ProductionDisplayProps {
   hideDateControls?: boolean;
   mealLockTime?: string; // Mốc giờ chốt ăn cài đặt (mặc định "08:00")
   isStandalone?: boolean;
+  onRelock?: () => void;
 }
 
 const BRANCH_GRADIENTS: Record<string, { bg: string; border: string; totalColor: string }> = {
@@ -122,6 +124,7 @@ export function ProductionDisplay({
   hideDateControls = false,
   mealLockTime = "08:00",
   isStandalone = false,
+  onRelock,
 }: ProductionDisplayProps) {
   const [realtimeClock, setRealtimeClock] = useState<string>("");
   const [realtimeDate, setRealtimeDate] = useState<string>("");
@@ -502,8 +505,17 @@ export function ProductionDisplay({
             </div>
           </div>
 
-          {/* Controls: Refresh & Fullscreen on Desktop / TV */}
+          {/* Controls: Lock, Refresh & Fullscreen on Desktop / TV */}
           <div className="hidden sm:flex items-center gap-1 shrink-0">
+            {onRelock && (
+              <button
+                onClick={onRelock}
+                className="p-1.5 rounded-lg bg-slate-800 hover:bg-red-500/20 text-slate-400 hover:text-red-400 transition"
+                title="Khóa màn hình / Đăng xuất"
+              >
+                <Lock className="w-3.5 h-3.5" />
+              </button>
+            )}
             <button
               onClick={handleManualRefresh}
               className={`p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition ${

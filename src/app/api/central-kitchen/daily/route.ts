@@ -41,18 +41,17 @@ export async function GET(request: NextRequest) {
         session.user.role
       );
 
-    // Tạm thời vô hiệu hóa kiểm tra PIN/Passkey theo yêu cầu
-    // if (!isStaff) {
-    //   if (!providedKey || providedKey.trim() !== currentPasskey.trim()) {
-    //     return NextResponse.json(
-    //       {
-    //         error: "Mã khóa bảo vệ (Passkey) không chính xác hoặc đã hết hạn",
-    //         requirePasskey: true,
-    //       },
-    //       { status: 401 }
-    //     );
-    //   }
-    // }
+    if (!isStaff) {
+      if (!providedKey || providedKey.trim() !== currentPasskey.trim()) {
+        return NextResponse.json(
+          {
+            error: "Mã khóa bảo vệ (Passkey) không chính xác hoặc đã thay đổi",
+            requirePasskey: true,
+          },
+          { status: 401 }
+        );
+      }
+    }
 
     let dateStr = searchParams.get("date");
     if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {

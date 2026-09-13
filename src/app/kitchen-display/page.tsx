@@ -17,8 +17,6 @@ import {
   Delete,
 } from "lucide-react";
 
-const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000; // 7 ngày tính bằng milliseconds
-
 function getServingDate(transitionTime: string = "14:00"): string {
   const now = new Date();
   const [transH, transM] = (transitionTime || "14:00").split(":").map(Number);
@@ -51,15 +49,14 @@ export default function StandaloneKitchenDisplayPage() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Passkey protection states (6 digits PIN with 7-day expiry)
+  // Passkey protection states (6 digits PIN - vĩnh viễn / không thời hạn)
   const [passkey, setPasskey] = useState<string>("");
   const [inputPasskey, setInputPasskey] = useState<string>("");
   const [isLocked, setIsLocked] = useState<boolean>(false);
   const [authError, setAuthError] = useState<string | null>(null);
-  const [expiryNotice, setExpiryNotice] = useState<string | null>(null);
-  const [daysRemaining, setDaysRemaining] = useState<number>(7);
   const [isVerifying, setIsVerifying] = useState<boolean>(false);
   const [showPassword, setShowPassword] = useState<boolean>(false);
+  const [isInitialized, setIsInitialized] = useState<boolean>(false);
 
   const [dailyData, setDailyData] = useState<{
     branches: any[];
@@ -115,23 +112,22 @@ export default function StandaloneKitchenDisplayPage() {
     return () => clearInterval(interval);
   }, [dayTransitionTime]);
 
-  // 1. Initial 7-day expiration check & key resolution
+  // 1. Khởi tạo & nạp mã PIN vĩnh viễn từ URL (?key=...) hoặc localStorage (Không thời hạn)
   useEffect(() => {
     if (typeof window !== "undefined") {
       const urlParams = new URLSearchParams(window.location.search);
       const urlKey = urlParams.get("key");
       const storedKey = localStorage.getItem("kitchen_display_passkey");
-      const storedSavedAt = localStorage.getItem("kitchen_display_passkey_saved_at");
+      const activeKey = urlKey || storedKey || "";
 
-      const now = Date.now();
-
-      // Tạm thời vô hiệu hóa kiểm tra mã PIN theo yêu cầu
-      setIsLocked(false);
+      // Nếu mở link gắn sẵn key -> tự động lưu vĩnh viễn vào localStorage
       if (urlKey) {
-        setPasskey(urlKey);
-      } else if (storedKey) {
-        setPasskey(storedKey);
+        localStorage.setItem("kitchen_display_passkey", urlKey);
       }
+
+      setPasskey(activeKey);
+      setIsInitialized(true);
+      fetchData(activeKey);
     }
   }, []);
 
@@ -180,20 +176,22 @@ export default function StandaloneKitchenDisplayPage() {
     [date, passkey]
   );
 
+  // Tải lại khi đổi ngày hoặc mã passkey
   useEffect(() => {
+    if (!isInitialized) return;
     fetchData();
-  }, [fetchData]);
+  }, [date, passkey, isInitialized]);
 
-  // 3. 5-second background polling if unlocked
+  // 3. Tự động đồng bộ số liệu ngầm mỗi 5 giây khi màn hình đã mở khóa
   useEffect(() => {
-    if (isLocked) return;
+    if (!isInitialized || isLocked) return;
     const timer = setInterval(() => {
       fetchData();
     }, 5000);
     return () => clearInterval(timer);
-  }, [fetchData, isLocked]);
+  }, [fetchData, isInitialized, isLocked]);
 
-  // 4. Verify 6-digit PIN code & reset 7-day counter
+  // 4. Xác thực mã PIN 6 số và lưu vĩnh viễn (không thời hạn)
   const verifyPin = useCallback(
     async (pinToVerify: string) => {
       const clean = pinToVerify.trim();
@@ -207,12 +205,9 @@ export default function StandaloneKitchenDisplayPage() {
 
       if (success) {
         setPasskey(clean);
-        setDaysRemaining(7);
-        setExpiryNotice(null);
         if (typeof window !== "undefined") {
-          // Lưu mã PIN kèm mốc thời gian hiện tại để đếm đủ 7 ngày
+          // Lưu mã PIN vĩnh viễn vào bộ nhớ trình duyệt, không bao giờ hết hạn
           localStorage.setItem("kitchen_display_passkey", clean);
-          localStorage.setItem("kitchen_display_passkey_saved_at", String(Date.now()));
         }
       } else {
         setAuthError("Mã PIN 6 số không chính xác! Vui lòng thử lại.");
@@ -265,15 +260,14 @@ export default function StandaloneKitchenDisplayPage() {
       }
       setPasskey("");
       setInputPasskey("");
-      setDaysRemaining(0);
       setIsLocked(true);
     }
   };
 
-  // RENDER: 6-DIGIT PIN LOCK SCREEN WITH 7-DAY NOTICE
+  // RENDER: 6-DIGIT PIN LOCK SCREEN (KHÔNG THỜI HẠN)
   if (isLocked) {
     return (
-      <div className="min-h-screen w-screen bg-slate-950 flex flex-col items-center justify-center p-4 select-none relative overflow-hidden">
+      <div className="min-h-screen w-full bg-slate-950 flex flex-col items-center justify-center p-4 select-none relative overflow-hidden">
         {/* Ambient background glow */}
         <div className="absolute -top-40 -left-40 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl" />
         <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-amber-600/10 rounded-full blur-3xl" />
@@ -290,21 +284,13 @@ export default function StandaloneKitchenDisplayPage() {
           <h1 className="text-2xl font-black text-white tracking-tight mb-1">
             BẾP TRUNG TÂM
           </h1>
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 text-xs font-bold uppercase tracking-wider mb-3">
-            <Clock className="w-3.5 h-3.5" /> Chu kỳ bảo mật 7 ngày
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-bold uppercase tracking-wider mb-3">
+            <ShieldCheck className="w-3.5 h-3.5" /> Xác thực bảo mật • Không thời hạn
           </div>
 
-          {/* Expiry Notice if 7 days elapsed */}
-          {expiryNotice ? (
-            <div className="p-3 rounded-2xl bg-amber-500/15 border border-amber-500/40 text-amber-300 text-xs font-semibold mb-4 leading-relaxed text-left flex items-start gap-2">
-              <Clock className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-              <span>{expiryNotice}</span>
-            </div>
-          ) : (
-            <p className="text-xs text-slate-400 mb-4 leading-relaxed">
-              Vui lòng nhập <strong>mã PIN 6 số</strong> do Quản trị viên (Admin) cấp để mở khóa màn hình điều hành Bếp.
-            </p>
-          )}
+          <p className="text-xs text-slate-400 mb-4 leading-relaxed">
+            Vui lòng nhập <strong>mã PIN 6 số</strong> do Quản trị viên cấp. Thiết bị sẽ được lưu <strong>vĩnh viễn (không thời hạn)</strong> và không cần nhập lại sau này.
+          </p>
 
           {/* 6 VISUAL PIN BOXES */}
           <div className="flex items-center justify-center gap-2 sm:gap-3 my-4">
@@ -472,6 +458,7 @@ export default function StandaloneKitchenDisplayPage() {
           hideDateControls={true}
           mealLockTime={dailyData.config?.mealLockTime || "08:00"}
           isStandalone={true}
+          onRelock={handleRelock}
         />
       </div>
     </div>
