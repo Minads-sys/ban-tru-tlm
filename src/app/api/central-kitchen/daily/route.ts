@@ -35,24 +35,24 @@ export async function GET(request: NextRequest) {
     const mealLockTime = settingsMap["KITCHEN_MEAL_LOCK_TIME"] || "08:00";
     const dayTransitionTime = settingsMap["KITCHEN_DAY_TRANSITION_TIME"] || "14:00";
 
-    // Kiểm tra: nếu không phải nhân viên đăng nhập, bắt buộc phải có Passkey hợp lệ
     const isStaff =
       session?.user &&
       ["ADMIN", "BOARDING_MANAGER", "BOARDING_STAFF", "KITCHEN_SECRETARY"].includes(
         session.user.role
       );
 
-    if (!isStaff) {
-      if (!providedKey || providedKey.trim() !== currentPasskey.trim()) {
-        return NextResponse.json(
-          {
-            error: "Mã khóa bảo vệ (Passkey) không chính xác hoặc đã hết hạn",
-            requirePasskey: true,
-          },
-          { status: 401 }
-        );
-      }
-    }
+    // Tạm thời vô hiệu hóa kiểm tra PIN/Passkey theo yêu cầu
+    // if (!isStaff) {
+    //   if (!providedKey || providedKey.trim() !== currentPasskey.trim()) {
+    //     return NextResponse.json(
+    //       {
+    //         error: "Mã khóa bảo vệ (Passkey) không chính xác hoặc đã hết hạn",
+    //         requirePasskey: true,
+    //       },
+    //       { status: 401 }
+    //     );
+    //   }
+    // }
 
     let dateStr = searchParams.get("date");
     if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {

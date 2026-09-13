@@ -80,6 +80,7 @@ interface ProductionDisplayProps {
   ricePortionG?: number;
   hideDateControls?: boolean;
   mealLockTime?: string; // Mốc giờ chốt ăn cài đặt (mặc định "08:00")
+  isStandalone?: boolean;
 }
 
 const BRANCH_GRADIENTS: Record<string, { bg: string; border: string; totalColor: string }> = {
@@ -120,6 +121,7 @@ export function ProductionDisplay({
   ricePortionG = 150,
   hideDateControls = false,
   mealLockTime = "08:00",
+  isStandalone = false,
 }: ProductionDisplayProps) {
   const [realtimeClock, setRealtimeClock] = useState<string>("");
   const [realtimeDate, setRealtimeDate] = useState<string>("");
@@ -288,24 +290,65 @@ export function ProductionDisplay({
     return () => clearInterval(pollTimer);
   }, [refreshData]);
 
-  // Fullscreen change listener
+  // Fullscreen change & F11 / resize listener
   useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
+    const checkIsFullscreen = () => {
+      const doc = document as any;
+      const isDocFullscreen = !!(
+        doc.fullscreenElement ||
+        doc.webkitFullscreenElement ||
+        doc.mozFullScreenElement ||
+        doc.msFullscreenElement
+      );
+      const isWindowFullscreen =
+        typeof window !== "undefined" &&
+        (Math.abs(window.innerHeight - window.screen.height) < 5 ||
+          window.matchMedia("(display-mode: fullscreen)").matches);
+      return isDocFullscreen || isWindowFullscreen;
     };
-    document.addEventListener("fullscreenchange", handleFullscreenChange);
+
+    const updateFullscreen = () => {
+      setIsFullscreen(checkIsFullscreen());
+    };
+
+    updateFullscreen();
+    document.addEventListener("fullscreenchange", updateFullscreen);
+    document.addEventListener("webkitfullscreenchange", updateFullscreen);
+    window.addEventListener("resize", updateFullscreen);
     return () => {
-      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      document.removeEventListener("fullscreenchange", updateFullscreen);
+      document.removeEventListener("webkitfullscreenchange", updateFullscreen);
+      window.removeEventListener("resize", updateFullscreen);
     };
   }, []);
 
   const toggleFullscreen = async () => {
     if (!containerRef.current) return;
     try {
-      if (!document.fullscreenElement) {
-        await containerRef.current.requestFullscreen();
+      const doc = document as any;
+      const elem = containerRef.current as any;
+      const isFs =
+        doc.fullscreenElement ||
+        doc.webkitFullscreenElement ||
+        doc.mozFullScreenElement ||
+        doc.msFullscreenElement;
+
+      if (!isFs) {
+        if (elem.requestFullscreen) {
+          await elem.requestFullscreen();
+        } else if (elem.webkitRequestFullscreen) {
+          await elem.webkitRequestFullscreen();
+        } else if (elem.msRequestFullscreen) {
+          await elem.msRequestFullscreen();
+        }
       } else {
-        await document.exitFullscreen();
+        if (doc.exitFullscreen) {
+          await doc.exitFullscreen();
+        } else if (doc.webkitExitFullscreen) {
+          await doc.webkitExitFullscreen();
+        } else if (doc.msExitFullscreen) {
+          await doc.msExitFullscreen();
+        }
       }
     } catch (err) {
       console.error("Fullscreen toggle failed:", err);
@@ -328,54 +371,58 @@ export function ProductionDisplay({
     onDateChange(`${newY}-${newM}-${newD}`);
   };
 
+  const isFixedViewport = isStandalone || isFullscreen;
+
   return (
     <div
       ref={containerRef}
-      className="flex flex-col bg-slate-950 text-white select-none w-full overflow-hidden transition-colors"
+      className={`flex flex-col bg-slate-950 text-white select-none w-full overflow-hidden transition-colors ${
+        isFixedViewport ? "h-screen h-[100dvh] max-h-screen" : ""
+      }`}
       style={{
-        minHeight: isFullscreen ? "100vh" : "calc(100vh - 110px)",
-        height: isFullscreen ? "100vh" : undefined,
+        minHeight: isFixedViewport ? "100vh" : "calc(100vh - 110px)",
+        height: isFixedViewport ? "100vh" : undefined,
       }}
     >
       {/* TOP BAR */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between px-3 sm:px-6 py-2 bg-slate-900/90 border-b border-slate-800 shrink-0 gap-2 sm:gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between px-3 sm:px-5 py-1 sm:py-1.5 bg-slate-900/90 border-b border-slate-800 shrink-0 gap-1.5 sm:gap-3">
         {/* Left: Title & Controls */}
-        <div className="flex items-center justify-between w-full sm:w-auto gap-3">
-          <div className="flex items-center gap-2.5 sm:gap-4">
-            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/30 shrink-0">
+        <div className="flex items-center justify-between w-full sm:w-auto gap-2 sm:gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/30 shrink-0">
               <svg
-                width="18"
-                height="18"
+                width="16"
+                height="16"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="white"
                 strokeWidth="2.5"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                className="sm:w-[22px] sm:h-[22px]"
+                className="sm:w-[20px] sm:h-[20px]"
               >
                 <path d="M6 13.87A4 4 0 0 1 7.41 6a5.11 5.11 0 0 1 1.05-1.54 5 5 0 0 1 7.08 0A5.11 5.11 0 0 1 16.59 6 4 4 0 0 1 18 13.87V21H6Z" />
                 <line x1="6" y1="17" x2="18" y2="17" />
               </svg>
             </div>
             <div>
-              <div className="text-base sm:text-2xl font-black tracking-tight text-white flex items-center gap-1.5 sm:gap-2">
+              <div className="text-sm sm:text-xl font-black tracking-tight text-white flex items-center gap-1.5">
                 BẾP TRUNG TÂM
-                <span className="hidden sm:inline-block text-xs font-bold px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30 uppercase tracking-widest">
+                <span className="hidden md:inline-block text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30 uppercase tracking-widest">
                   Màn hình TV 16:9
                 </span>
               </div>
-              <div className="text-[10px] sm:text-xs text-slate-400 font-bold uppercase tracking-wider">
+              <div className="text-[9px] sm:text-[11px] text-slate-400 font-bold uppercase tracking-wider">
                 CHẾ ĐỘ SẢN XUẤT • {branches.length} CHI NHÁNH
               </div>
             </div>
           </div>
 
-          {/* Controls on mobile: Refresh & Fullscreen */}
+          {/* Controls on mobile */}
           <div className="flex sm:hidden items-center gap-1">
             <button
               onClick={handleManualRefresh}
-              className={`p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition ${
+              className={`p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition ${
                 isRefreshing ? "animate-spin text-blue-400" : ""
               }`}
               title="Làm mới dữ liệu"
@@ -384,7 +431,7 @@ export function ProductionDisplay({
             </button>
             <button
               onClick={toggleFullscreen}
-              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition"
+              className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition"
               title={isFullscreen ? "Thoát toàn màn hình" : "Toàn màn hình TV"}
             >
               {isFullscreen ? (
@@ -396,23 +443,23 @@ export function ProductionDisplay({
           </div>
         </div>
 
-        {/* Center: Date picker navigator (Ẩn khi hideDateControls = true trên màn hình TV) */}
+        {/* Center: Date picker navigator (Ẩn khi hideDateControls = true) */}
         {!hideDateControls && (
-          <div className="flex items-center gap-1.5 bg-slate-800/80 px-2 py-1 rounded-xl border border-slate-700 self-center sm:self-auto">
+          <div className="flex items-center gap-1 bg-slate-800/80 px-2 py-0.5 rounded-lg border border-slate-700 self-center sm:self-auto">
             <button
               onClick={() => changeDateByDays(-1)}
               className="p-1 rounded hover:bg-slate-700 text-slate-300 hover:text-white transition"
               title="Ngày trước"
             >
-              <ChevronLeft className="w-4 h-4" />
+              <ChevronLeft className="w-3.5 h-3.5" />
             </button>
-            <div className="flex items-center gap-1.5 px-2">
-              <Calendar className="w-4 h-4 text-blue-400" />
+            <div className="flex items-center gap-1 px-1.5">
+              <Calendar className="w-3.5 h-3.5 text-blue-400" />
               <input
                 type="date"
                 value={date}
                 onChange={(e) => onDateChange(e.target.value)}
-                className="bg-transparent text-sm font-bold text-white border-0 focus:outline-none cursor-pointer [color-scheme:dark]"
+                className="bg-transparent text-xs font-bold text-white border-0 focus:outline-none cursor-pointer [color-scheme:dark]"
               />
             </div>
             <button
@@ -420,20 +467,20 @@ export function ProductionDisplay({
               className="p-1 rounded hover:bg-slate-700 text-slate-300 hover:text-white transition"
               title="Ngày sau"
             >
-              <ChevronRight className="w-4 h-4" />
+              <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
         )}
 
-        {/* Right: Date 40px, Clock 25px, Action Buttons */}
-        <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-4 w-full sm:w-auto">
-          {/* KHỐI 1: TIÊU ĐỀ NGÀY ĂN PHỤC VỤ (Font lớn trên TV, gọn gàng trên mobile không bị tràn) */}
-          <div className="flex-1 sm:flex-initial flex items-center gap-1.5 sm:gap-2 bg-white/10 px-2.5 sm:px-4 py-1.5 rounded-xl border border-white/20 shadow-inner min-w-0">
-            <span className="text-[10px] sm:text-sm font-black text-amber-300 uppercase tracking-wider shrink-0">
+        {/* Right: Date & Clock & Action Buttons */}
+        <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-3 w-full sm:w-auto">
+          {/* KHỐI 1: TIÊU ĐỀ NGÀY ĂN PHỤC VỤ */}
+          <div className="flex-1 sm:flex-initial flex items-center gap-1.5 bg-white/10 px-2.5 sm:px-3 py-1 rounded-xl border border-white/20 shadow-inner min-w-0">
+            <span className="text-[10px] sm:text-xs font-black text-amber-300 uppercase tracking-wider shrink-0">
               📅 NGÀY ĂN:
             </span>
             <span
-              className="font-black text-white tracking-tight leading-none text-xs sm:text-[28px] lg:text-[38px] whitespace-nowrap overflow-hidden text-ellipsis"
+              className="font-black text-white tracking-tight leading-none text-xs sm:text-lg lg:text-[clamp(18px,2.4vh,30px)] whitespace-nowrap overflow-hidden text-ellipsis"
               style={{ letterSpacing: "-0.5px" }}
             >
               {servingDateFormatted}
@@ -441,38 +488,40 @@ export function ProductionDisplay({
           </div>
 
           {/* KHỐI 2: ĐỒNG HỒ THỜI GIAN THỰC TẾ HIỆN TẠI */}
-          <div className="flex items-center gap-1.5 sm:gap-2 bg-white/5 px-2 sm:px-3 py-1.5 rounded-xl border border-white/10 shadow-inner shrink-0">
-            <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-emerald-400 animate-pulse shadow-sm shadow-emerald-400 shrink-0" />
+          <div className="flex items-center gap-1.5 bg-white/5 px-2 sm:px-2.5 py-1 rounded-xl border border-white/10 shadow-inner shrink-0">
+            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-sm shadow-emerald-400 shrink-0" />
             <div className="flex flex-col text-left">
-              <span className="font-extrabold text-emerald-400 tabular-nums leading-none text-xs sm:text-[20px]">
+              <span
+                className="font-extrabold text-emerald-400 tabular-nums leading-none text-xs sm:text-sm lg:text-[clamp(14px,1.8vh,20px)]"
+              >
                 {realtimeClock}
               </span>
-              <span className="text-[8px] sm:text-[10px] text-slate-400 font-bold tracking-wider uppercase leading-none mt-0.5 sm:mt-1 whitespace-nowrap">
+              <span className="text-[8px] sm:text-[9px] text-slate-400 font-bold tracking-wider uppercase leading-none mt-0.5 whitespace-nowrap">
                 Hiện tại ({realtimeDate})
               </span>
             </div>
           </div>
 
           {/* Controls: Refresh & Fullscreen on Desktop / TV */}
-          <div className="hidden sm:flex items-center gap-1.5 shrink-0">
+          <div className="hidden sm:flex items-center gap-1 shrink-0">
             <button
               onClick={handleManualRefresh}
-              className={`p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition ${
+              className={`p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition ${
                 isRefreshing ? "animate-spin text-blue-400" : ""
               }`}
-              title="Làm mới dữ liệu (Tự động mỗi 30s)"
+              title="Làm mới dữ liệu (Tự động mỗi 5s)"
             >
-              <RefreshCw className="w-4 h-4" />
+              <RefreshCw className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={toggleFullscreen}
-              className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition"
+              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition"
               title={isFullscreen ? "Thoát toàn màn hình" : "Toàn màn hình TV (F11)"}
             >
               {isFullscreen ? (
-                <Minimize2 className="w-4 h-4" />
+                <Minimize2 className="w-3.5 h-3.5" />
               ) : (
-                <Maximize2 className="w-4 h-4" />
+                <Maximize2 className="w-3.5 h-3.5" />
               )}
             </button>
           </div>
@@ -480,7 +529,11 @@ export function ProductionDisplay({
       </div>
 
       {/* 4 BRANCH CARDS GRID */}
-      <div className="grid grid-cols-1 md:grid-cols-2 flex-1 p-2 sm:p-3 gap-3 min-h-0 auto-rows-fr overflow-y-auto">
+      <div
+        className={`grid grid-cols-1 md:grid-cols-2 ${
+          isFixedViewport ? "md:grid-rows-2 h-full" : "auto-rows-fr"
+        } flex-1 p-2 sm:p-2.5 gap-2 sm:gap-2.5 min-h-0 overflow-hidden`}
+      >
         {branches.map((branch) => {
           const config = BRANCH_GRADIENTS[branch.branchCode] || DEFAULT_GRADIENT;
 
@@ -539,26 +592,26 @@ export function ProductionDisplay({
           return (
             <div
               key={branch.branchId}
-              className="rounded-2xl overflow-hidden flex flex-col min-h-[220px] shadow-2xl transition-transform"
+              className="rounded-xl lg:rounded-2xl overflow-hidden flex flex-col h-full min-h-0 shadow-xl transition-transform"
               style={{
                 background: config.bg,
                 border: `2px solid ${config.border}`,
               }}
             >
               {/* BRANCH HEADER */}
-              <div className="px-4 py-2 bg-black/30 flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-2.5 sm:gap-3">
+              <div className="px-3 sm:px-4 py-1 sm:py-1.5 bg-black/30 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-2 sm:gap-3 min-w-0">
                   <div
-                    className="w-3 h-3 rounded-full shadow-md shrink-0"
+                    className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full shadow-md shrink-0"
                     style={{ backgroundColor: branch.branchColor || "#60a5fa" }}
                   />
-                  <div>
-                    <span className="text-lg sm:text-2xl font-black uppercase tracking-wider text-white">
+                  <div className="min-w-0">
+                    <span className="text-base sm:text-xl lg:text-2xl font-black uppercase tracking-wider text-white truncate block">
                       {branch.branchName}
                     </span>
                     {/* Dòng chênh lệch số lượng nếu có */}
                     {showMealLock && diffServings !== 0 && (
-                      <div className="text-[11px] font-bold text-amber-200 bg-black/40 px-2 py-0.5 rounded border border-amber-400/30 mt-0.5">
+                      <div className="text-[10px] sm:text-[11px] font-bold text-amber-200 bg-black/40 px-1.5 py-0.2 rounded border border-amber-400/30 mt-0.5 whitespace-nowrap">
                         Đi chợ: {branch.marketServings?.total} ➔ Ăn: {branch.totalServings} (
                         {diffServings > 0 ? `+${diffServings}` : diffServings} suất)
                       </div>
@@ -567,48 +620,48 @@ export function ProductionDisplay({
 
                   {/* Trạng thái chốt đặt cạnh tên chi nhánh */}
                   {branch.isHoliday ? (
-                    <div className="flex flex-col items-start">
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs sm:text-sm font-extrabold uppercase tracking-wide bg-purple-500/30 text-purple-200 border border-purple-400/50">
+                    <div className="flex flex-col items-start shrink-0">
+                      <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] sm:text-xs font-extrabold uppercase tracking-wide bg-purple-500/30 text-purple-200 border border-purple-400/50">
                         <span>🏖️</span> NGHỈ THEO LỊCH
                       </div>
                       {branch.holidayReason && (
-                        <span className="text-[10px] sm:text-xs text-purple-200 font-semibold pl-1 mt-0.5 max-w-[180px] sm:max-w-[240px] truncate">
+                        <span className="text-[9px] sm:text-[10px] text-purple-200 font-semibold pl-1 max-w-[140px] truncate">
                           {branch.holidayReason}
                         </span>
                       )}
                     </div>
                   ) : showMealLock ? (
-                    <div className="flex flex-col items-start">
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs sm:text-sm font-extrabold uppercase tracking-wide bg-emerald-500/25 text-emerald-300 border border-emerald-500/50">
-                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    <div className="flex flex-col items-start shrink-0">
+                      <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] sm:text-xs font-extrabold uppercase tracking-wide bg-emerald-500/25 text-emerald-300 border border-emerald-500/50">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                         🍽️ ĐÃ CHỐT SỐ ĂN
                       </div>
                       {branch.mealLockedAt && (
-                        <span className="text-[10px] text-emerald-200/80 font-medium pl-1 mt-0.5">
+                        <span className="text-[9px] text-emerald-200/80 font-medium pl-1">
                           Lúc {new Date(branch.mealLockedAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
                         </span>
                       )}
                     </div>
                   ) : branch.lockStatus === "LOCKED_MARKET" || branch.lockStatus === "LOCKED_COOK" ? (
-                    <div className="flex flex-col items-start">
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs sm:text-sm font-extrabold uppercase tracking-wide bg-blue-500/25 text-blue-300 border border-blue-500/50">
-                        <span className="w-2 h-2 rounded-full bg-blue-400" />
+                    <div className="flex flex-col items-start shrink-0">
+                      <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] sm:text-xs font-extrabold uppercase tracking-wide bg-blue-500/25 text-blue-300 border border-blue-500/50">
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
                         🛒 ĐÃ CHỐT ĐI CHỢ
                       </div>
                       {isAfterMealCutoff && (
-                        <span className="text-[10px] text-amber-300 font-bold pl-1 mt-0.5 animate-pulse">
+                        <span className="text-[9px] text-amber-300 font-bold pl-1 animate-pulse">
                           ⚠️ Chưa chốt số ăn
                         </span>
                       )}
                     </div>
                   ) : (
-                    <div className="flex flex-col items-start">
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs sm:text-sm font-extrabold uppercase tracking-wide bg-red-500/25 text-red-300 border border-red-500/50 animate-pulse">
-                        <span className="w-2 h-2 rounded-full bg-red-400" />
+                    <div className="flex flex-col items-start shrink-0">
+                      <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] sm:text-xs font-extrabold uppercase tracking-wide bg-red-500/25 text-red-300 border border-red-500/50 animate-pulse">
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
                         ⏳ CHƯA BÁO ĐI CHỢ
                       </div>
                       {isAfterMealCutoff && (
-                        <span className="text-[10px] text-amber-300 font-bold pl-1 mt-0.5">
+                        <span className="text-[9px] text-amber-300 font-bold pl-1">
                           ⚠️ Chưa chốt số ăn
                         </span>
                       )}
@@ -616,18 +669,18 @@ export function ProductionDisplay({
                   )}
                 </div>
 
-                {/* Số suất tổng to hơn 1.5 lần (68px) */}
-                <div className="flex items-baseline gap-1.5 bg-white/15 px-3.5 py-1 rounded-xl shadow-inner shrink-0">
+                {/* Số suất tổng */}
+                <div className="flex items-baseline gap-1 bg-white/15 px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-xl shadow-inner shrink-0">
                   <span
-                    className="font-black leading-none text-4xl sm:text-5xl lg:text-[68px]"
+                    className="font-black leading-none tracking-tight"
                     style={{
                       color: branch.isHoliday ? "#cbd5e1" : config.totalColor,
-                      letterSpacing: "-2px",
+                      fontSize: "clamp(26px, 4.2vh, 56px)",
                     }}
                   >
                     {branch.isHoliday ? "0" : displayedTotal.toLocaleString("vi-VN")}
                   </span>
-                  <span className="text-xs sm:text-base font-bold opacity-80 text-slate-200">
+                  <span className="text-xs sm:text-sm font-bold opacity-80 text-slate-200">
                     suất
                   </span>
                 </div>
@@ -635,27 +688,27 @@ export function ProductionDisplay({
 
               {/* BRANCH BODY */}
               {branch.isHoliday ? (
-                <div className="flex-1 flex flex-col items-center justify-center p-6 text-center bg-black/25 min-h-[140px]">
-                  <div className="text-4xl sm:text-5xl mb-2">🏖️</div>
-                  <div className="text-lg sm:text-2xl font-black text-white">
+                <div className="flex-1 flex flex-col items-center justify-center p-4 text-center bg-black/25 min-h-0">
+                  <div className="text-3xl sm:text-4xl mb-1">🏖️</div>
+                  <div className="text-base sm:text-xl font-black text-white">
                     Chi nhánh nghỉ hoạt động theo lịch
                   </div>
                   {branch.holidayReason && (
-                    <div className="mt-2 px-4 py-1.5 bg-white/10 rounded-full text-xs sm:text-sm text-purple-200 font-bold max-w-md border border-purple-400/20 shadow-sm">
+                    <div className="mt-1.5 px-3 py-1 bg-white/10 rounded-full text-xs text-purple-200 font-bold max-w-md border border-purple-400/20 shadow-sm">
                       📢 {branch.holidayReason}
                     </div>
                   )}
-                  <div className="mt-2 text-xs text-slate-300">
-                    Không phục vụ suất ăn trong ngày này
-                  </div>
                 </div>
               ) : (
-                <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-0 min-h-0">
+                <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-0 min-h-0 overflow-hidden">
                   {/* Left: Meals List (Mặn, Chay, Cháo) */}
-                  <div className="px-4 py-2 flex flex-col justify-center gap-1.5 sm:gap-2">
+                  <div className="px-3 sm:px-4 py-1 flex flex-col justify-around min-h-0">
                     {/* Row 1: Mặn Cơm hoặc Mặn Nước */}
-                    <div className="flex items-center justify-between py-1">
-                      <span className="font-extrabold opacity-95 text-xl sm:text-2xl lg:text-[32px] leading-tight">
+                    <div className="flex items-center justify-between py-0.5">
+                      <span
+                        className="font-extrabold opacity-95 leading-tight"
+                        style={{ fontSize: "clamp(15px, 2vh, 26px)" }}
+                      >
                         {branch.manMealType === "NUOC" ? (
                           <>🍜 Món Nước</>
                         ) : (
@@ -663,34 +716,49 @@ export function ProductionDisplay({
                         )}
                       </span>
                       <span
-                        className="font-black leading-none text-3xl sm:text-4xl lg:text-[63px]"
-                        style={{ color: "#fbbf24", letterSpacing: "-1.5px" }}
+                        className="font-black leading-none tracking-tight"
+                        style={{
+                          color: "#fbbf24",
+                          fontSize: "clamp(22px, 3.8vh, 52px)",
+                        }}
                       >
                         {displayedMan.toLocaleString("vi-VN")}
                       </span>
                     </div>
 
                     {/* Row 2: Chay */}
-                    <div className="flex items-center justify-between py-1">
-                      <span className="font-extrabold opacity-95 text-xl sm:text-2xl lg:text-[32px] leading-tight">
+                    <div className="flex items-center justify-between py-0.5">
+                      <span
+                        className="font-extrabold opacity-95 leading-tight"
+                        style={{ fontSize: "clamp(15px, 2vh, 26px)" }}
+                      >
                         🥬 Chay
                       </span>
                       <span
-                        className="font-black leading-none text-3xl sm:text-4xl lg:text-[63px]"
-                        style={{ color: "#4ade80", letterSpacing: "-1.5px" }}
+                        className="font-black leading-none tracking-tight"
+                        style={{
+                          color: "#4ade80",
+                          fontSize: "clamp(22px, 3.8vh, 52px)",
+                        }}
                       >
                         {displayedChay.toLocaleString("vi-VN")}
                       </span>
                     </div>
 
                     {/* Row 3: Cháo */}
-                    <div className="flex items-center justify-between py-1">
-                      <span className="font-extrabold opacity-95 text-xl sm:text-2xl lg:text-[32px] leading-tight">
+                    <div className="flex items-center justify-between py-0.5">
+                      <span
+                        className="font-extrabold opacity-95 leading-tight"
+                        style={{ fontSize: "clamp(15px, 2vh, 26px)" }}
+                      >
                         🥣 Cháo
                       </span>
                       <span
-                        className="font-black leading-none text-3xl sm:text-4xl lg:text-[63px]"
-                        style={{ color: "#67e8f9", letterSpacing: "-1.5px" }}
+                        className="font-black leading-none tracking-tight"
+                        style={{
+                          color: "#67e8f9",
+                          fontSize: "clamp(22px, 3.8vh, 52px)",
+                        }}
                       >
                         {displayedChao.toLocaleString("vi-VN")}
                       </span>
@@ -698,25 +766,31 @@ export function ProductionDisplay({
                   </div>
 
                   {/* Right: Calculated Materials (Gạo, Món Nước, Trái cây) */}
-                  <div className="px-4 py-2 flex flex-col justify-center gap-1.5 sm:gap-2 border-t sm:border-t-0 sm:border-l border-white/10 bg-black/15">
+                  <div className="px-2.5 sm:px-3 py-1 flex flex-col justify-around gap-1 min-h-0 border-t sm:border-t-0 sm:border-l border-white/10 bg-black/15 overflow-hidden">
                     {/* If Mặn Cơm: Single Gạo box */}
                     {branch.manMealType === "COM" ? (
-                      <div className="bg-black/25 rounded-xl p-2 sm:p-2.5 border-l-4 border-amber-400">
-                        <div className="flex items-baseline gap-2 flex-wrap mb-0.5">
-                          <span className="font-black text-white text-base sm:text-xl lg:text-[24px]">
+                      <div className="bg-black/25 rounded-lg sm:rounded-xl p-1.5 sm:p-2 border-l-4 border-amber-400 min-h-0 flex flex-col justify-center">
+                        <div className="flex items-baseline gap-1.5 flex-wrap mb-0.5">
+                          <span
+                            className="font-black text-white"
+                            style={{ fontSize: "clamp(13px, 1.7vh, 20px)" }}
+                          >
                             🌾 Gạo
                           </span>
-                          <span className="text-[11px] sm:text-[13px] font-semibold text-slate-300">
+                          <span className="text-[10px] sm:text-xs font-semibold text-slate-300">
                             ({ricePortionG}g ×{" "}
                             {displayedRiceServings.toLocaleString("vi-VN")}{" "}
-                            suất cơm)
+                            suất)
                           </span>
                         </div>
                         <div className="flex items-baseline gap-1">
-                          <span className="font-black text-amber-200 leading-none text-2xl sm:text-3xl lg:text-[40px] tracking-tight">
+                          <span
+                            className="font-black text-amber-200 leading-none tracking-tight"
+                            style={{ fontSize: "clamp(18px, 2.8vh, 36px)" }}
+                          >
                             {displayedRiceKg.toFixed(1)}
                           </span>
-                          <span className="text-sm sm:text-lg font-bold text-amber-300">
+                          <span className="text-xs sm:text-sm font-bold text-amber-300">
                             kg
                           </span>
                         </div>
@@ -724,41 +798,53 @@ export function ProductionDisplay({
                     ) : (
                       /* If Mặn Nước: Noodle box + Chay rice box */
                       <>
-                        <div className="bg-black/25 rounded-xl p-2 sm:p-2.5 border-l-4 border-amber-400">
-                          <div className="flex items-baseline gap-2 flex-wrap mb-0.5">
-                            <span className="font-black text-white text-base sm:text-xl lg:text-[24px]">
+                        <div className="bg-black/25 rounded-lg sm:rounded-xl p-1.5 sm:p-2 border-l-4 border-amber-400 min-h-0 flex flex-col justify-center">
+                          <div className="flex items-baseline gap-1.5 flex-wrap mb-0.5">
+                            <span
+                              className="font-black text-white"
+                              style={{ fontSize: "clamp(13px, 1.7vh, 20px)" }}
+                            >
                               🍜 {branch.noodleName && branch.noodleName !== "Món nước" && branch.noodleName !== "Món Nước" ? branch.noodleName : "Bánh phở"}
                             </span>
-                            <span className="text-[11px] sm:text-[13px] font-semibold text-slate-300">
+                            <span className="text-[10px] sm:text-xs font-semibold text-slate-300">
                               ({branch.noodlePortionG || 200}g ×{" "}
-                              {displayedMan.toLocaleString("vi-VN")} suất mặn)
+                              {displayedMan.toLocaleString("vi-VN")} suất)
                             </span>
                           </div>
                           <div className="flex items-baseline gap-1">
-                            <span className="font-black text-amber-200 leading-none text-2xl sm:text-3xl lg:text-[40px] tracking-tight">
+                            <span
+                              className="font-black text-amber-200 leading-none tracking-tight"
+                              style={{ fontSize: "clamp(18px, 2.8vh, 36px)" }}
+                            >
                               {displayedNoodleKg.toFixed(1)}
                             </span>
-                            <span className="text-sm sm:text-lg font-bold text-amber-300">
+                            <span className="text-xs sm:text-sm font-bold text-amber-300">
                               kg
                             </span>
                           </div>
                         </div>
 
                         {displayedChay > 0 && (
-                          <div className="bg-black/25 rounded-xl p-2 sm:p-2.5 border-l-4 border-emerald-400">
-                            <div className="flex items-baseline gap-2 flex-wrap mb-0.5">
-                              <span className="font-black text-white text-base sm:text-xl lg:text-[24px]">
-                                🌾 Gạo cấp Chay
+                          <div className="bg-black/25 rounded-lg sm:rounded-xl p-1 sm:p-1.5 border-l-4 border-emerald-400 min-h-0 flex flex-col justify-center">
+                            <div className="flex items-baseline gap-1 flex-wrap">
+                              <span
+                                className="font-black text-white"
+                                style={{ fontSize: "clamp(12px, 1.5vh, 18px)" }}
+                              >
+                                🌾 Gạo Chay
                               </span>
-                              <span className="text-[11px] sm:text-[13px] font-semibold text-slate-300">
-                                ({ricePortionG}g × {displayedChay} suất chay)
+                              <span className="text-[9px] sm:text-[10px] font-semibold text-slate-300">
+                                ({ricePortionG}g × {displayedChay})
                               </span>
                             </div>
                             <div className="flex items-baseline gap-1">
-                              <span className="font-black text-emerald-200 leading-none text-xl sm:text-2xl lg:text-[30px]">
+                              <span
+                                className="font-black text-emerald-200 leading-none"
+                                style={{ fontSize: "clamp(15px, 2.2vh, 26px)" }}
+                              >
                                 {((displayedChay * ricePortionG) / 1000).toFixed(1)}
                               </span>
-                              <span className="text-xs sm:text-sm font-bold text-emerald-300">
+                              <span className="text-[10px] sm:text-xs font-bold text-emerald-300">
                                 kg
                               </span>
                             </div>
@@ -768,21 +854,27 @@ export function ProductionDisplay({
                     )}
 
                     {/* Trái cây box */}
-                    <div className="bg-black/25 rounded-xl p-2 sm:p-2.5 border-l-4 border-yellow-400">
-                      <div className="flex items-baseline gap-2 flex-wrap mb-0.5">
-                        <span className="font-black text-white text-base sm:text-xl lg:text-[24px]">
-                          🍌 {branch.fruitName || "Trái cây"}
+                    <div className="bg-black/25 rounded-lg sm:rounded-xl p-1.5 sm:p-2 border-l-4 border-yellow-400 min-h-0 flex flex-col justify-center">
+                      <div className="flex items-baseline gap-1.5 flex-wrap mb-0.5">
+                        <span
+                          className="font-black text-white"
+                          style={{ fontSize: "clamp(13px, 1.7vh, 20px)" }}
+                        >
+                          🍉 {branch.fruitName || "Trái cây"}
                         </span>
-                        <span className="text-[11px] sm:text-[13px] font-semibold text-slate-300">
+                        <span className="text-[10px] sm:text-xs font-semibold text-slate-300">
                           ({branch.fruitPortionG || 150}g ×{" "}
                           {displayedTotal.toLocaleString("vi-VN")} suất)
                         </span>
                       </div>
                       <div className="flex items-baseline gap-1">
-                        <span className="font-black text-yellow-200 leading-none text-2xl sm:text-3xl lg:text-[40px] tracking-tight">
+                        <span
+                          className="font-black text-yellow-200 leading-none tracking-tight"
+                          style={{ fontSize: "clamp(18px, 2.8vh, 36px)" }}
+                        >
                           {displayedFruitKg.toFixed(1)}
                         </span>
-                        <span className="text-sm sm:text-lg font-bold text-yellow-300">
+                        <span className="text-xs sm:text-sm font-bold text-yellow-300">
                           kg
                         </span>
                       </div>
@@ -796,91 +888,112 @@ export function ProductionDisplay({
       </div>
 
       {/* BOTTOM TOTAL SUMMARY BAR */}
-      <div className="mx-2 sm:mx-3 mb-2 px-4 sm:px-6 py-2 bg-slate-900/95 rounded-xl border border-slate-800 flex flex-wrap items-center justify-between shrink-0 gap-3 shadow-xl">
-        <div className="flex items-center gap-2">
-          <span className="text-xs sm:text-sm font-black text-slate-400 uppercase tracking-widest">
+      <div className="mx-2 sm:mx-3 mb-1.5 sm:mb-2 px-3 sm:px-6 py-1 sm:py-1.5 bg-slate-900/95 rounded-xl border border-slate-800 flex items-center justify-between shrink-0 gap-2 sm:gap-4 shadow-xl overflow-x-auto">
+        <div className="flex items-center gap-1.5 shrink-0">
+          <span className="text-[10px] sm:text-xs font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">
             HỆ THỐNG TOÀN TRƯỜNG
           </span>
         </div>
 
-        <div className="flex flex-wrap items-center gap-4 sm:gap-8">
+        <div className="flex items-center gap-3 sm:gap-6 shrink-0">
           {/* Tổng suất */}
-          <div className="text-center">
-            <div className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase">
+          <div className="text-center shrink-0">
+            <div className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase">
               TỔNG SUẤT
             </div>
-            <div className="text-2xl sm:text-4xl font-black text-white leading-none">
+            <div
+              className="font-black text-white leading-none"
+              style={{ fontSize: "clamp(18px, 2.8vh, 32px)" }}
+            >
               {displayedSummary.totalServings.toLocaleString("vi-VN")}
             </div>
           </div>
 
-          <div className="w-px h-8 bg-slate-800 hidden sm:block" />
+          <div className="w-px h-6 sm:h-7 bg-slate-800 shrink-0" />
 
           {/* Mặn */}
-          <div className="text-center">
-            <div className="text-[10px] sm:text-xs font-bold text-amber-400 uppercase">
+          <div className="text-center shrink-0">
+            <div className="text-[9px] sm:text-[10px] font-bold text-amber-400 uppercase">
               MẶN
             </div>
-            <div className="text-xl sm:text-2xl font-black text-amber-300 leading-none">
+            <div
+              className="font-black text-amber-300 leading-none"
+              style={{ fontSize: "clamp(16px, 2.4vh, 26px)" }}
+            >
               {displayedSummary.totalMan.toLocaleString("vi-VN")}
             </div>
           </div>
 
           {/* Chay */}
-          <div className="text-center">
-            <div className="text-[10px] sm:text-xs font-bold text-emerald-400 uppercase">
+          <div className="text-center shrink-0">
+            <div className="text-[9px] sm:text-[10px] font-bold text-emerald-400 uppercase">
               CHAY
             </div>
-            <div className="text-xl sm:text-2xl font-black text-emerald-300 leading-none">
+            <div
+              className="font-black text-emerald-300 leading-none"
+              style={{ fontSize: "clamp(16px, 2.4vh, 26px)" }}
+            >
               {displayedSummary.totalChay.toLocaleString("vi-VN")}
             </div>
           </div>
 
           {/* Cháo */}
-          <div className="text-center">
-            <div className="text-[10px] sm:text-xs font-bold text-cyan-400 uppercase">
+          <div className="text-center shrink-0">
+            <div className="text-[9px] sm:text-[10px] font-bold text-cyan-400 uppercase">
               CHÁO
             </div>
-            <div className="text-xl sm:text-2xl font-black text-cyan-300 leading-none">
+            <div
+              className="font-black text-cyan-300 leading-none"
+              style={{ fontSize: "clamp(16px, 2.4vh, 26px)" }}
+            >
               {displayedSummary.totalChao.toLocaleString("vi-VN")}
             </div>
           </div>
 
-          <div className="w-px h-8 bg-slate-800 hidden sm:block" />
+          <div className="w-px h-6 sm:h-7 bg-slate-800 shrink-0" />
 
           {/* Tổng Gạo */}
-          <div className="text-center">
-            <div className="text-[10px] sm:text-xs font-bold text-slate-300 uppercase">
+          <div className="text-center shrink-0">
+            <div className="text-[9px] sm:text-[10px] font-bold text-slate-300 uppercase">
               TỔNG GẠO
             </div>
-            <div className="text-xl sm:text-2xl font-black text-amber-200 leading-none">
+            <div
+              className="font-black text-amber-200 leading-none"
+              style={{ fontSize: "clamp(16px, 2.4vh, 26px)" }}
+            >
               {displayedSummary.totalRiceKg.toFixed(1)}{" "}
-              <span className="text-xs text-slate-400 font-semibold">kg</span>
+              <span className="text-[10px] text-slate-400 font-semibold">kg</span>
             </div>
           </div>
 
           {/* Món Nước */}
           {displayedSummary.noodleTotals.map((noodle, idx) => (
-            <div key={idx} className="text-center">
-              <div className="text-[10px] sm:text-xs font-bold text-slate-300 uppercase">
+            <div key={idx} className="text-center shrink-0">
+              <div className="text-[9px] sm:text-[10px] font-bold text-slate-300 uppercase truncate max-w-[90px]">
                 {noodle.noodleName}
               </div>
-              <div className="text-xl sm:text-2xl font-black text-amber-200 leading-none">
+              <div
+                className="font-black text-amber-200 leading-none"
+                style={{ fontSize: "clamp(16px, 2.4vh, 26px)" }}
+              >
                 {noodle.totalKg.toFixed(1)}{" "}
-                <span className="text-xs text-slate-400 font-semibold">kg</span>
+                <span className="text-[10px] text-slate-400 font-semibold">kg</span>
               </div>
             </div>
           ))}
 
           {/* Trái cây */}
           {displayedSummary.fruitTotals.map((fruit, idx) => (
-            <div key={idx} className="text-center">
-              <div className="text-[10px] sm:text-xs font-bold text-slate-300 uppercase">
+            <div key={idx} className="text-center shrink-0">
+              <div className="text-[9px] sm:text-[10px] font-bold text-slate-300 uppercase truncate max-w-[90px]">
                 {fruit.fruitName}
               </div>
-              <div className="text-xl sm:text-2xl font-black text-yellow-200 leading-none">
+              <div
+                className="font-black text-yellow-200 leading-none"
+                style={{ fontSize: "clamp(16px, 2.4vh, 26px)" }}
+              >
                 {fruit.totalKg.toFixed(1)}{" "}
-                <span className="text-xs text-slate-400 font-semibold">kg</span>
+                <span className="text-[10px] text-slate-400 font-semibold">kg</span>
               </div>
             </div>
           ))}

@@ -125,36 +125,11 @@ export default function StandaloneKitchenDisplayPage() {
 
       const now = Date.now();
 
-      // Kiểm tra chu kỳ 7 ngày đã hết hạn chưa
-      if (storedSavedAt) {
-        const savedAtTime = Number(storedSavedAt);
-        const elapsed = now - savedAtTime;
-
-        if (elapsed >= SEVEN_DAYS_MS) {
-          // ĐÃ HẾT HẠN 7 NGÀY: Xóa mã lưu và khóa màn hình yêu cầu nhập lại
-          localStorage.removeItem("kitchen_display_passkey");
-          localStorage.removeItem("kitchen_display_passkey_saved_at");
-          setIsLocked(true);
-          setExpiryNotice(
-            "Phiên làm việc 7 ngày đã hết hạn. Theo quy định bảo mật, vui lòng nhập lại mã PIN 6 số để tiếp tục sử dụng."
-          );
-          setPasskey("");
-          return;
-        } else {
-          // Còn hạn: tính số ngày còn lại
-          const remainingMs = SEVEN_DAYS_MS - elapsed;
-          const remaining = Math.max(1, Math.ceil(remainingMs / (24 * 60 * 60 * 1000)));
-          setDaysRemaining(remaining);
-        }
-      }
-
+      // Tạm thời vô hiệu hóa kiểm tra mã PIN theo yêu cầu
+      setIsLocked(false);
       if (urlKey) {
-        // Gắn key mới từ URL: khởi tạo chu kỳ 7 ngày mới
-        localStorage.setItem("kitchen_display_passkey", urlKey);
-        localStorage.setItem("kitchen_display_passkey_saved_at", String(now));
-        setDaysRemaining(7);
         setPasskey(urlKey);
-      } else if (storedKey && storedSavedAt) {
+      } else if (storedKey) {
         setPasskey(storedKey);
       }
     }
@@ -467,9 +442,9 @@ export default function StandaloneKitchenDisplayPage() {
 
   // RENDER: FULLSCREEN PRODUCTION DASHBOARD
   return (
-    <div className="min-h-screen w-screen bg-slate-950 flex flex-col overflow-hidden relative">
+    <div className="h-screen h-[100dvh] max-h-screen w-full bg-slate-950 flex flex-col overflow-hidden relative">
       {error && (
-        <div className="bg-red-600 text-white px-4 py-1.5 text-xs font-bold flex items-center justify-between z-50">
+        <div className="bg-red-600 text-white px-4 py-1.5 text-xs font-bold flex items-center justify-between z-50 shrink-0">
           <div className="flex items-center gap-2">
             <AlertCircle className="w-4 h-4" />
             <span>Cảnh báo mất kết nối: {error} (Đang tự động thử lại...)</span>
@@ -483,24 +458,8 @@ export default function StandaloneKitchenDisplayPage() {
         </div>
       )}
 
-      {/* Floating 7-day Security Pill at bottom-left */}
-      <div className="fixed bottom-3 left-4 z-40 flex items-center gap-2 bg-slate-900/85 border border-slate-800 px-3 py-1.5 rounded-xl shadow-lg backdrop-blur-xs text-[11px] text-slate-400">
-        <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-        <span>
-          Bảo mật: Phiên 7 ngày (Còn <strong>{daysRemaining} ngày</strong>)
-        </span>
-      </div>
 
-      {/* Subtle Lock Button at bottom-right corner to allow logging out */}
-      <button
-        onClick={handleRelock}
-        className="fixed bottom-3 right-3 z-50 opacity-25 hover:opacity-100 transition-opacity p-2 rounded-xl bg-slate-900/80 border border-slate-700 text-slate-400 hover:text-white"
-        title="Khóa lại màn hình / Đổi mã PIN"
-      >
-        <Lock className="w-4 h-4" />
-      </button>
-
-      <div className="flex-1 w-full h-screen">
+      <div className="flex-1 w-full min-h-0 h-full overflow-hidden">
         <ProductionDisplay
           date={date}
           onDateChange={setDate}
@@ -512,6 +471,7 @@ export default function StandaloneKitchenDisplayPage() {
           ricePortionG={dailyData.ingredients?.ricePortionG || 150}
           hideDateControls={true}
           mealLockTime={dailyData.config?.mealLockTime || "08:00"}
+          isStandalone={true}
         />
       </div>
     </div>
