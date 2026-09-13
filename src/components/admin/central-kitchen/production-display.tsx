@@ -670,17 +670,18 @@ export function ProductionDisplay({
                 </div>
 
                 {/* Số suất tổng */}
-                <div className="flex items-baseline gap-1 bg-white/15 px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-xl shadow-inner shrink-0">
+                <div className="flex items-baseline gap-1.5 bg-white/15 px-3 sm:px-4 py-1 rounded-xl shadow-inner shrink-0">
                   <span
                     className="font-black leading-none tracking-tight"
                     style={{
                       color: branch.isHoliday ? "#cbd5e1" : config.totalColor,
-                      fontSize: "clamp(26px, 4.2vh, 56px)",
+                      fontSize: "clamp(38px, 6.5vh, 64px)",
+                      letterSpacing: "-1.5px",
                     }}
                   >
                     {branch.isHoliday ? "0" : displayedTotal.toLocaleString("vi-VN")}
                   </span>
-                  <span className="text-xs sm:text-sm font-bold opacity-80 text-slate-200">
+                  <span className="text-xs sm:text-base font-bold opacity-80 text-slate-200">
                     suất
                   </span>
                 </div>
@@ -702,12 +703,12 @@ export function ProductionDisplay({
               ) : (
                 <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-0 min-h-0 overflow-hidden">
                   {/* Left: Meals List (Mặn, Chay, Cháo) */}
-                  <div className="px-3 sm:px-4 py-1 flex flex-col justify-around min-h-0">
+                  <div className="px-3 sm:px-5 py-1 flex flex-col justify-around min-h-0">
                     {/* Row 1: Mặn Cơm hoặc Mặn Nước */}
                     <div className="flex items-center justify-between py-0.5">
                       <span
                         className="font-extrabold opacity-95 leading-tight"
-                        style={{ fontSize: "clamp(15px, 2vh, 26px)" }}
+                        style={{ fontSize: "clamp(18px, 2.8vh, 30px)" }}
                       >
                         {branch.manMealType === "NUOC" ? (
                           <>🍜 Món Nước</>
@@ -719,7 +720,8 @@ export function ProductionDisplay({
                         className="font-black leading-none tracking-tight"
                         style={{
                           color: "#fbbf24",
-                          fontSize: "clamp(22px, 3.8vh, 52px)",
+                          fontSize: "clamp(36px, 6.2vh, 62px)",
+                          letterSpacing: "-1px",
                         }}
                       >
                         {displayedMan.toLocaleString("vi-VN")}
@@ -730,7 +732,7 @@ export function ProductionDisplay({
                     <div className="flex items-center justify-between py-0.5">
                       <span
                         className="font-extrabold opacity-95 leading-tight"
-                        style={{ fontSize: "clamp(15px, 2vh, 26px)" }}
+                        style={{ fontSize: "clamp(18px, 2.8vh, 30px)" }}
                       >
                         🥬 Chay
                       </span>
@@ -738,7 +740,8 @@ export function ProductionDisplay({
                         className="font-black leading-none tracking-tight"
                         style={{
                           color: "#4ade80",
-                          fontSize: "clamp(22px, 3.8vh, 52px)",
+                          fontSize: "clamp(36px, 6.2vh, 62px)",
+                          letterSpacing: "-1px",
                         }}
                       >
                         {displayedChay.toLocaleString("vi-VN")}
@@ -749,7 +752,7 @@ export function ProductionDisplay({
                     <div className="flex items-center justify-between py-0.5">
                       <span
                         className="font-extrabold opacity-95 leading-tight"
-                        style={{ fontSize: "clamp(15px, 2vh, 26px)" }}
+                        style={{ fontSize: "clamp(18px, 2.8vh, 30px)" }}
                       >
                         🥣 Cháo
                       </span>
@@ -757,7 +760,8 @@ export function ProductionDisplay({
                         className="font-black leading-none tracking-tight"
                         style={{
                           color: "#67e8f9",
-                          fontSize: "clamp(22px, 3.8vh, 52px)",
+                          fontSize: "clamp(36px, 6.2vh, 62px)",
+                          letterSpacing: "-1px",
                         }}
                       >
                         {displayedChao.toLocaleString("vi-VN")}
@@ -766,18 +770,18 @@ export function ProductionDisplay({
                   </div>
 
                   {/* Right: Calculated Materials (Gạo, Món Nước, Trái cây) */}
-                  <div className="px-2.5 sm:px-3 py-1 flex flex-col justify-around gap-1 min-h-0 border-t sm:border-t-0 sm:border-l border-white/10 bg-black/15 overflow-hidden">
+                  <div className="px-3 sm:px-4 py-1 flex flex-col justify-around gap-1.5 min-h-0 border-t sm:border-t-0 sm:border-l border-white/10 bg-black/15 overflow-hidden">
                     {/* If Mặn Cơm: Single Gạo box */}
                     {branch.manMealType === "COM" ? (
-                      <div className="bg-black/25 rounded-lg sm:rounded-xl p-1.5 sm:p-2 border-l-4 border-amber-400 min-h-0 flex flex-col justify-center">
+                      <div className="bg-black/25 rounded-xl p-2 sm:p-2.5 border-l-4 border-amber-400 min-h-0 flex flex-col justify-center">
                         <div className="flex items-baseline gap-1.5 flex-wrap mb-0.5">
                           <span
                             className="font-black text-white"
-                            style={{ fontSize: "clamp(13px, 1.7vh, 20px)" }}
+                            style={{ fontSize: "clamp(15px, 2.2vh, 22px)" }}
                           >
                             🌾 Gạo
                           </span>
-                          <span className="text-[10px] sm:text-xs font-semibold text-slate-300">
+                          <span className="text-[11px] sm:text-xs font-semibold text-slate-300">
                             ({ricePortionG}g ×{" "}
                             {displayedRiceServings.toLocaleString("vi-VN")}{" "}
                             suất)
@@ -786,11 +790,11 @@ export function ProductionDisplay({
                         <div className="flex items-baseline gap-1">
                           <span
                             className="font-black text-amber-200 leading-none tracking-tight"
-                            style={{ fontSize: "clamp(18px, 2.8vh, 36px)" }}
+                            style={{ fontSize: "clamp(26px, 4.8vh, 46px)" }}
                           >
                             {displayedRiceKg.toFixed(1)}
                           </span>
-                          <span className="text-xs sm:text-sm font-bold text-amber-300">
+                          <span className="text-xs sm:text-base font-bold text-amber-300">
                             kg
                           </span>
                         </div>
@@ -798,15 +802,15 @@ export function ProductionDisplay({
                     ) : (
                       /* If Mặn Nước: Noodle box + Chay rice box */
                       <>
-                        <div className="bg-black/25 rounded-lg sm:rounded-xl p-1.5 sm:p-2 border-l-4 border-amber-400 min-h-0 flex flex-col justify-center">
+                        <div className="bg-black/25 rounded-xl p-2 sm:p-2.5 border-l-4 border-amber-400 min-h-0 flex flex-col justify-center">
                           <div className="flex items-baseline gap-1.5 flex-wrap mb-0.5">
                             <span
                               className="font-black text-white"
-                              style={{ fontSize: "clamp(13px, 1.7vh, 20px)" }}
+                              style={{ fontSize: "clamp(15px, 2.2vh, 22px)" }}
                             >
                               🍜 {branch.noodleName && branch.noodleName !== "Món nước" && branch.noodleName !== "Món Nước" ? branch.noodleName : "Bánh phở"}
                             </span>
-                            <span className="text-[10px] sm:text-xs font-semibold text-slate-300">
+                            <span className="text-[11px] sm:text-xs font-semibold text-slate-300">
                               ({branch.noodlePortionG || 200}g ×{" "}
                               {displayedMan.toLocaleString("vi-VN")} suất)
                             </span>
@@ -814,37 +818,37 @@ export function ProductionDisplay({
                           <div className="flex items-baseline gap-1">
                             <span
                               className="font-black text-amber-200 leading-none tracking-tight"
-                              style={{ fontSize: "clamp(18px, 2.8vh, 36px)" }}
+                              style={{ fontSize: "clamp(26px, 4.8vh, 46px)" }}
                             >
                               {displayedNoodleKg.toFixed(1)}
                             </span>
-                            <span className="text-xs sm:text-sm font-bold text-amber-300">
+                            <span className="text-xs sm:text-base font-bold text-amber-300">
                               kg
                             </span>
                           </div>
                         </div>
 
                         {displayedChay > 0 && (
-                          <div className="bg-black/25 rounded-lg sm:rounded-xl p-1 sm:p-1.5 border-l-4 border-emerald-400 min-h-0 flex flex-col justify-center">
+                          <div className="bg-black/25 rounded-lg sm:rounded-xl p-1.5 border-l-4 border-emerald-400 min-h-0 flex flex-col justify-center">
                             <div className="flex items-baseline gap-1 flex-wrap">
                               <span
                                 className="font-black text-white"
-                                style={{ fontSize: "clamp(12px, 1.5vh, 18px)" }}
+                                style={{ fontSize: "clamp(13px, 1.8vh, 20px)" }}
                               >
                                 🌾 Gạo Chay
                               </span>
-                              <span className="text-[9px] sm:text-[10px] font-semibold text-slate-300">
+                              <span className="text-[10px] sm:text-xs font-semibold text-slate-300">
                                 ({ricePortionG}g × {displayedChay})
                               </span>
                             </div>
                             <div className="flex items-baseline gap-1">
                               <span
                                 className="font-black text-emerald-200 leading-none"
-                                style={{ fontSize: "clamp(15px, 2.2vh, 26px)" }}
+                                style={{ fontSize: "clamp(20px, 3vh, 32px)" }}
                               >
                                 {((displayedChay * ricePortionG) / 1000).toFixed(1)}
                               </span>
-                              <span className="text-[10px] sm:text-xs font-bold text-emerald-300">
+                              <span className="text-xs sm:text-sm font-bold text-emerald-300">
                                 kg
                               </span>
                             </div>
@@ -854,15 +858,15 @@ export function ProductionDisplay({
                     )}
 
                     {/* Trái cây box */}
-                    <div className="bg-black/25 rounded-lg sm:rounded-xl p-1.5 sm:p-2 border-l-4 border-yellow-400 min-h-0 flex flex-col justify-center">
+                    <div className="bg-black/25 rounded-xl p-2 sm:p-2.5 border-l-4 border-yellow-400 min-h-0 flex flex-col justify-center">
                       <div className="flex items-baseline gap-1.5 flex-wrap mb-0.5">
                         <span
                           className="font-black text-white"
-                          style={{ fontSize: "clamp(13px, 1.7vh, 20px)" }}
+                          style={{ fontSize: "clamp(15px, 2.2vh, 22px)" }}
                         >
                           🍉 {branch.fruitName || "Trái cây"}
                         </span>
-                        <span className="text-[10px] sm:text-xs font-semibold text-slate-300">
+                        <span className="text-[11px] sm:text-xs font-semibold text-slate-300">
                           ({branch.fruitPortionG || 150}g ×{" "}
                           {displayedTotal.toLocaleString("vi-VN")} suất)
                         </span>
@@ -870,11 +874,11 @@ export function ProductionDisplay({
                       <div className="flex items-baseline gap-1">
                         <span
                           className="font-black text-yellow-200 leading-none tracking-tight"
-                          style={{ fontSize: "clamp(18px, 2.8vh, 36px)" }}
+                          style={{ fontSize: "clamp(26px, 4.8vh, 46px)" }}
                         >
                           {displayedFruitKg.toFixed(1)}
                         </span>
-                        <span className="text-xs sm:text-sm font-bold text-yellow-300">
+                        <span className="text-xs sm:text-base font-bold text-yellow-300">
                           kg
                         </span>
                       </div>
@@ -888,9 +892,9 @@ export function ProductionDisplay({
       </div>
 
       {/* BOTTOM TOTAL SUMMARY BAR */}
-      <div className="mx-2 sm:mx-3 mb-1.5 sm:mb-2 px-3 sm:px-6 py-1 sm:py-1.5 bg-slate-900/95 rounded-xl border border-slate-800 flex items-center justify-between shrink-0 gap-2 sm:gap-4 shadow-xl overflow-x-auto">
+      <div className="mx-2 sm:mx-3 mb-1.5 sm:mb-2 px-3 sm:px-6 py-1.5 sm:py-2 bg-slate-900/95 rounded-xl border border-slate-800 flex items-center justify-between shrink-0 gap-2 sm:gap-4 shadow-xl overflow-x-auto">
         <div className="flex items-center gap-1.5 shrink-0">
-          <span className="text-[10px] sm:text-xs font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">
+          <span className="text-xs sm:text-sm font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">
             HỆ THỐNG TOÀN TRƯỜNG
           </span>
         </div>
@@ -898,12 +902,12 @@ export function ProductionDisplay({
         <div className="flex items-center gap-3 sm:gap-6 shrink-0">
           {/* Tổng suất */}
           <div className="text-center shrink-0">
-            <div className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase">
+            <div className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase">
               TỔNG SUẤT
             </div>
             <div
               className="font-black text-white leading-none"
-              style={{ fontSize: "clamp(18px, 2.8vh, 32px)" }}
+              style={{ fontSize: "clamp(22px, 3.6vh, 38px)" }}
             >
               {displayedSummary.totalServings.toLocaleString("vi-VN")}
             </div>
@@ -913,12 +917,12 @@ export function ProductionDisplay({
 
           {/* Mặn */}
           <div className="text-center shrink-0">
-            <div className="text-[9px] sm:text-[10px] font-bold text-amber-400 uppercase">
+            <div className="text-[10px] sm:text-xs font-bold text-amber-400 uppercase">
               MẶN
             </div>
             <div
               className="font-black text-amber-300 leading-none"
-              style={{ fontSize: "clamp(16px, 2.4vh, 26px)" }}
+              style={{ fontSize: "clamp(18px, 3vh, 30px)" }}
             >
               {displayedSummary.totalMan.toLocaleString("vi-VN")}
             </div>
@@ -926,12 +930,12 @@ export function ProductionDisplay({
 
           {/* Chay */}
           <div className="text-center shrink-0">
-            <div className="text-[9px] sm:text-[10px] font-bold text-emerald-400 uppercase">
+            <div className="text-[10px] sm:text-xs font-bold text-emerald-400 uppercase">
               CHAY
             </div>
             <div
               className="font-black text-emerald-300 leading-none"
-              style={{ fontSize: "clamp(16px, 2.4vh, 26px)" }}
+              style={{ fontSize: "clamp(18px, 3vh, 30px)" }}
             >
               {displayedSummary.totalChay.toLocaleString("vi-VN")}
             </div>
@@ -939,12 +943,12 @@ export function ProductionDisplay({
 
           {/* Cháo */}
           <div className="text-center shrink-0">
-            <div className="text-[9px] sm:text-[10px] font-bold text-cyan-400 uppercase">
+            <div className="text-[10px] sm:text-xs font-bold text-cyan-400 uppercase">
               CHÁO
             </div>
             <div
               className="font-black text-cyan-300 leading-none"
-              style={{ fontSize: "clamp(16px, 2.4vh, 26px)" }}
+              style={{ fontSize: "clamp(18px, 3vh, 30px)" }}
             >
               {displayedSummary.totalChao.toLocaleString("vi-VN")}
             </div>
@@ -954,30 +958,30 @@ export function ProductionDisplay({
 
           {/* Tổng Gạo */}
           <div className="text-center shrink-0">
-            <div className="text-[9px] sm:text-[10px] font-bold text-slate-300 uppercase">
+            <div className="text-[10px] sm:text-xs font-bold text-slate-300 uppercase">
               TỔNG GẠO
             </div>
             <div
               className="font-black text-amber-200 leading-none"
-              style={{ fontSize: "clamp(16px, 2.4vh, 26px)" }}
+              style={{ fontSize: "clamp(18px, 3vh, 30px)" }}
             >
               {displayedSummary.totalRiceKg.toFixed(1)}{" "}
-              <span className="text-[10px] text-slate-400 font-semibold">kg</span>
+              <span className="text-xs text-slate-400 font-semibold">kg</span>
             </div>
           </div>
 
           {/* Món Nước */}
           {displayedSummary.noodleTotals.map((noodle, idx) => (
             <div key={idx} className="text-center shrink-0">
-              <div className="text-[9px] sm:text-[10px] font-bold text-slate-300 uppercase truncate max-w-[90px]">
+              <div className="text-[10px] sm:text-xs font-bold text-slate-300 uppercase truncate max-w-[90px]">
                 {noodle.noodleName}
               </div>
               <div
                 className="font-black text-amber-200 leading-none"
-                style={{ fontSize: "clamp(16px, 2.4vh, 26px)" }}
+                style={{ fontSize: "clamp(18px, 3vh, 30px)" }}
               >
                 {noodle.totalKg.toFixed(1)}{" "}
-                <span className="text-[10px] text-slate-400 font-semibold">kg</span>
+                <span className="text-xs text-slate-400 font-semibold">kg</span>
               </div>
             </div>
           ))}
@@ -985,15 +989,15 @@ export function ProductionDisplay({
           {/* Trái cây */}
           {displayedSummary.fruitTotals.map((fruit, idx) => (
             <div key={idx} className="text-center shrink-0">
-              <div className="text-[9px] sm:text-[10px] font-bold text-slate-300 uppercase truncate max-w-[90px]">
+              <div className="text-[10px] sm:text-xs font-bold text-slate-300 uppercase truncate max-w-[90px]">
                 {fruit.fruitName}
               </div>
               <div
                 className="font-black text-yellow-200 leading-none"
-                style={{ fontSize: "clamp(16px, 2.4vh, 26px)" }}
+                style={{ fontSize: "clamp(18px, 3vh, 30px)" }}
               >
                 {fruit.totalKg.toFixed(1)}{" "}
-                <span className="text-[10px] text-slate-400 font-semibold">kg</span>
+                <span className="text-xs text-slate-400 font-semibold">kg</span>
               </div>
             </div>
           ))}
