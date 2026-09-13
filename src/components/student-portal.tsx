@@ -378,6 +378,18 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
     });
   };
 
+  const isDateHavingMeal = (dateStr: string): boolean => {
+    if (!dateStr) return false;
+    if (isSunday(dateStr)) return false;
+    if (monthlyScheduleData?.days) {
+      const dayInfo = monthlyScheduleData.days.find((d: any) => d.dateStr === dateStr);
+      if (dayInfo) {
+        return !!dayInfo.hasMeal;
+      }
+    }
+    return true;
+  };
+
   const fetchStudentInfo = useCallback(async (id: string) => {
     try {
       setLoadingStudent(true);
@@ -600,6 +612,14 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
       return;
     }
 
+    if (monthlyScheduleData?.days) {
+      const dayInfo = monthlyScheduleData.days.find((d: any) => d.dateStr === newDate);
+      if (dayInfo && !dayInfo.hasMeal) {
+        setCancelError("Lớp bạn không có lịch ăn bán trú vào ngày này (theo Thời khóa biểu hoặc Lịch đặc biệt).");
+        return;
+      }
+    }
+
     // Ngày hợp lệ: Hiển thị popup buộc học sinh xác nhận đã nộp đơn xin nghỉ phép và được duyệt
     const result = await Swal.fire({
       title: "Xác nhận xin nghỉ phép",
@@ -648,6 +668,14 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
     if (isDateCancelled(cancelDate)) {
       setCancelError("Học sinh đang có yêu cầu cắt suất vào ngày này (chưa bị từ chối).");
       return;
+    }
+
+    if (monthlyScheduleData?.days) {
+      const dayInfo = monthlyScheduleData.days.find((d: any) => d.dateStr === cancelDate);
+      if (dayInfo && !dayInfo.hasMeal) {
+        setCancelError("Lớp bạn không có lịch ăn bán trú vào ngày này. Không thể gửi yêu cầu cắt suất.");
+        return;
+      }
     }
 
     if (!isConfirmedLeave) {
@@ -728,6 +756,14 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
     if (isDateCancelled(overrideDate)) {
       setOverrideError("Học sinh đang có yêu cầu cắt suất vào ngày này (chưa bị từ chối), không thể đổi món.");
       return;
+    }
+
+    if (monthlyScheduleData?.days) {
+      const dayInfo = monthlyScheduleData.days.find((d: any) => d.dateStr === overrideDate);
+      if (dayInfo && !dayInfo.hasMeal) {
+        setOverrideError("Lớp bạn không có lịch ăn bán trú vào ngày này. Không thể đổi món.");
+        return;
+      }
     }
 
     setSubmittingOverride(true);
@@ -1814,10 +1850,55 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                           <span>Chủ nhật không có lịch ăn bán trú. Vui lòng chọn ngày khác (Thứ 2 đến Thứ 6).</span>
                         </p>
                       )}
-                      {cancelDate && isConfirmedLeave && (
+                      {cancelDate && monthlyScheduleData?.days && !isDateHavingMeal(cancelDate) && !isSunday(cancelDate) && (
+                        <p className="text-xs font-medium text-rose-600 flex items-center gap-1.5 mt-1.5 bg-rose-50 p-2 rounded border border-rose-200">
+                          <AlertCircle className="h-4 w-4 shrink-0 text-rose-500" />
+                          <span>Lớp bạn không có lịch ăn bán trú vào ngày này (theo Thời khóa biểu hoặc Lịch đặc biệt). Vui lòng chọn ngày khác.</span>
+                        </p>
+                      )}
+                      {cancelDate && isConfirmedLeave && isDateHavingMeal(cancelDate) && (
                         <div className="flex items-center gap-2 p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 font-medium mt-1.5">
                           <CheckCircle className="h-4 w-4 shrink-0 text-emerald-600" />
                           <span>Đã xác nhận nộp đơn xin nghỉ phép cho nhà trường và được duyệt.</span>
+                        </div>
+                      )}
+
+                      {monthlyScheduleData?.days && (
+                        <div className="mt-2.5 pt-2.5 border-t border-slate-100">
+                          <p className="text-xs text-slate-500 mb-1.5 font-medium flex items-center gap-1.5">
+                            <CalendarDays className="h-3.5 w-3.5 text-purple-600" />
+                            <span>Các ngày có lịch ăn trong tuần được phép cắt suất:</span>
+                          </p>
+                          {(() => {
+                            const validDays = monthlyScheduleData.days.filter(
+                              (d: any) => d.hasMeal && d.dateStr >= minDate && d.dateStr <= maxDate && !isDateCancelled(d.dateStr)
+                            );
+                            if (validDays.length === 0) {
+                              return (
+                                <p className="text-xs text-amber-600 bg-amber-50 p-2 rounded border border-amber-200">
+                                  Hiện tại không có ngày nào có lịch ăn bán trú hợp lệ để cắt suất trong tuần này.
+                                </p>
+                              );
+                            }
+                            return (
+                              <div className="flex flex-wrap gap-1.5">
+                                {validDays.map((d: any) => (
+                                  <button
+                                    key={d.dateStr}
+                                    type="button"
+                                    onClick={() => handleCancelDateChange(d.dateStr)}
+                                    className={`text-xs px-2.5 py-1 rounded-md border font-medium transition-all cursor-pointer ${
+                                      cancelDate === d.dateStr
+                                        ? "bg-purple-600 text-white border-purple-600 shadow-xs"
+                                        : "bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100"
+                                    }`}
+                                  >
+                                    {d.dowName} ({d.dateStr.split("-").slice(1).reverse().join("/")})
+                                  </button>
+                                ))}
+                              </div>
+                            );
+                          })()}
                         </div>
                       )}
                     </div>
@@ -1835,7 +1916,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
 
                     <Button
                       type="submit"
-                      disabled={submittingCancel || !cancelDate || !reason.trim() || isSunday(cancelDate) || !isConfirmedLeave}
+                      disabled={submittingCancel || !cancelDate || !reason.trim() || isSunday(cancelDate) || !isConfirmedLeave || !isDateHavingMeal(cancelDate)}
                       className="w-full bg-green-600 hover:bg-green-700 text-white disabled:bg-gray-400 disabled:text-black disabled:opacity-100 font-medium"
                     >
                       {submittingCancel ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
@@ -1937,6 +2018,54 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                           <span>Học sinh đang có yêu cầu cắt suất vào ngày này (chưa bị từ chối), không thể đổi món.</span>
                         </p>
                       )}
+                      {overrideDate && monthlyScheduleData?.days && !isDateHavingMeal(overrideDate) && !isSunday(overrideDate) && (
+                        <p className="text-xs font-medium text-rose-600 flex items-center gap-1.5 mt-1.5 bg-rose-50 p-2 rounded border border-rose-200">
+                          <AlertCircle className="h-4 w-4 shrink-0 text-rose-500" />
+                          <span>Lớp bạn không có lịch ăn bán trú vào ngày này. Không thể đổi món.</span>
+                        </p>
+                      )}
+
+                      {monthlyScheduleData?.days && (
+                        <div className="mt-2.5 pt-2.5 border-t border-slate-100">
+                          <p className="text-xs text-slate-500 mb-1.5 font-medium flex items-center gap-1.5">
+                            <CalendarDays className="h-3.5 w-3.5 text-purple-600" />
+                            <span>Các ngày có lịch ăn trong tuần được phép đổi món:</span>
+                          </p>
+                          {(() => {
+                            const validDays = monthlyScheduleData.days.filter(
+                              (d: any) => d.hasMeal && d.dateStr >= minDate && d.dateStr <= maxDate && !isDateCancelled(d.dateStr)
+                            );
+                            if (validDays.length === 0) {
+                              return (
+                                <p className="text-xs text-amber-600 bg-amber-50 p-2 rounded border border-amber-200">
+                                  Hiện tại không có ngày nào có lịch ăn bán trú hợp lệ để đổi món trong tuần này.
+                                </p>
+                              );
+                            }
+                            return (
+                              <div className="flex flex-wrap gap-1.5">
+                                {validDays.map((d: any) => (
+                                  <button
+                                    key={d.dateStr}
+                                    type="button"
+                                    onClick={() => {
+                                      setOverrideDate(d.dateStr);
+                                      if (overrideError) setOverrideError(null);
+                                    }}
+                                    className={`text-xs px-2.5 py-1 rounded-md border font-medium transition-all cursor-pointer ${
+                                      overrideDate === d.dateStr
+                                        ? "bg-purple-600 text-white border-purple-600 shadow-xs"
+                                        : "bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100"
+                                    }`}
+                                  >
+                                    {d.dowName} ({d.dateStr.split("-").slice(1).reverse().join("/")})
+                                  </button>
+                                ))}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      )}
                     </div>
                     <div className="space-y-2">
                       <Label>Món ăn muốn đổi <span className="text-rose-500">*</span></Label>
@@ -1953,7 +2082,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                     </div>
                     <Button
                       type="submit"
-                      disabled={submittingOverride || !overrideDate || isSunday(overrideDate) || isDateCancelled(overrideDate)}
+                      disabled={submittingOverride || !overrideDate || isSunday(overrideDate) || isDateCancelled(overrideDate) || !isDateHavingMeal(overrideDate)}
                       className="w-full bg-green-600 hover:bg-green-700 text-white disabled:bg-gray-400 disabled:text-black disabled:opacity-100 font-medium"
                     >
                       {submittingOverride ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}

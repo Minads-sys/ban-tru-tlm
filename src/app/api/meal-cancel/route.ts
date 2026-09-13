@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db";
 import { BoardingStatus } from "@prisma/client";
-import { getVietnamTodayUTC, isPastCutoffTime } from "@/lib/utils";
+import { getVietnamTodayUTC, isPastCutoffTime, getWeekNumber, getSchoolWeekInfo } from "@/lib/utils";
 import { broadcastChange } from "@/lib/realtime-hub";
 
 // GET: Lấy danh sách yêu cầu cắt suất của 1 học sinh
@@ -137,16 +137,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const startOfYear = new Date(Date.UTC(requestDate.getUTCFullYear(), 0, 1));
-    const weekNumber = Math.ceil(
-      ((requestDate.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getUTCDay() + 1) / 7
-    );
+    const calendarWeekNumber = getWeekNumber(requestDate);
+    const schoolWeekInfo = getSchoolWeekInfo(requestDate);
+    const schoolWeekNumber = schoolWeekInfo.schoolWeekNumber;
+    const possibleWeeks = Array.from(new Set([calendarWeekNumber, schoolWeekNumber]));
+    const possibleYears = Array.from(new Set([requestDate.getUTCFullYear(), schoolWeekInfo.calendarYear]));
 
     const schedule = await prisma.classWeeklySchedule.findFirst({
       where: {
         classId: student.classId,
-        year: requestDate.getUTCFullYear(),
-        weekNumber,
+        year: { in: possibleYears },
+        weekNumber: { in: possibleWeeks },
         [dayField]: { not: "NONE" },
       },
     });

@@ -4,7 +4,7 @@ import prisma from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
 import { broadcastChange } from '@/lib/realtime-hub';
-import { getVietnamTodayUTC, isPastCutoffTime } from '@/lib/utils';
+import { getVietnamTodayUTC, isPastCutoffTime, getWeekNumber, getSchoolWeekInfo } from '@/lib/utils';
 import { logAudit, AUDIT_ACTIONS, AUDIT_MODULES } from '@/lib/audit-log';
 
 /**
@@ -373,17 +373,18 @@ export async function getBulkActionStudentStatus(classId: string, dateStr: strin
       };
       const dayField = dayFieldMap[dayOfWeek];
 
-      const startOfYear = new Date(Date.UTC(requestDate.getUTCFullYear(), 0, 1));
-      const weekNumber = Math.ceil(
-        ((requestDate.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getUTCDay() + 1) / 7
-      );
+      const calendarWeekNumber = getWeekNumber(requestDate);
+      const schoolWeekInfo = getSchoolWeekInfo(requestDate);
+      const schoolWeekNumber = schoolWeekInfo.schoolWeekNumber;
+      const possibleWeeks = Array.from(new Set([calendarWeekNumber, schoolWeekNumber]));
+      const possibleYears = Array.from(new Set([requestDate.getUTCFullYear(), schoolWeekInfo.calendarYear]));
 
       if (dayField) {
         const schedule = await prisma.classWeeklySchedule.findFirst({
           where: {
             classId,
-            year: requestDate.getUTCFullYear(),
-            weekNumber,
+            year: { in: possibleYears },
+            weekNumber: { in: possibleWeeks },
             [dayField]: { not: 'NONE' },
           },
         });
@@ -587,16 +588,17 @@ export async function bulkCreateAndApproveCancellations(params: {
       4: 'thursday', 5: 'friday', 6: 'saturday',
     };
     const dayField = dayFieldMap[dayOfWeek];
-    const startOfYear = new Date(Date.UTC(requestDate.getUTCFullYear(), 0, 1));
-    const weekNumber = Math.ceil(
-      ((requestDate.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getUTCDay() + 1) / 7
-    );
+    const calendarWeekNumber = getWeekNumber(requestDate);
+    const schoolWeekInfo = getSchoolWeekInfo(requestDate);
+    const schoolWeekNumber = schoolWeekInfo.schoolWeekNumber;
+    const possibleWeeks = Array.from(new Set([calendarWeekNumber, schoolWeekNumber]));
+    const possibleYears = Array.from(new Set([requestDate.getUTCFullYear(), schoolWeekInfo.calendarYear]));
 
     const schedule = await prisma.classWeeklySchedule.findFirst({
       where: {
         classId,
-        year: requestDate.getUTCFullYear(),
-        weekNumber,
+        year: { in: possibleYears },
+        weekNumber: { in: possibleWeeks },
         [dayField]: { not: 'NONE' },
       },
     });
@@ -785,16 +787,17 @@ export async function bulkOverrideMeals(params: {
       4: 'thursday', 5: 'friday', 6: 'saturday',
     };
     const dayField = dayFieldMap[dayOfWeek];
-    const startOfYear = new Date(Date.UTC(requestDate.getUTCFullYear(), 0, 1));
-    const weekNumber = Math.ceil(
-      ((requestDate.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getUTCDay() + 1) / 7
-    );
+    const calendarWeekNumber = getWeekNumber(requestDate);
+    const schoolWeekInfo = getSchoolWeekInfo(requestDate);
+    const schoolWeekNumber = schoolWeekInfo.schoolWeekNumber;
+    const possibleWeeks = Array.from(new Set([calendarWeekNumber, schoolWeekNumber]));
+    const possibleYears = Array.from(new Set([requestDate.getUTCFullYear(), schoolWeekInfo.calendarYear]));
 
     const schedule = await prisma.classWeeklySchedule.findFirst({
       where: {
         classId,
-        year: requestDate.getUTCFullYear(),
-        weekNumber,
+        year: { in: possibleYears },
+        weekNumber: { in: possibleWeeks },
         [dayField]: { not: 'NONE' },
       },
     });
