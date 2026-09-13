@@ -47,3 +47,6 @@ sync_vps.py
 backups/
 backups/*
 
+# user uploads
+/public/uploads/
+

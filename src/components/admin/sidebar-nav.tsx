@@ -151,40 +151,40 @@ export function SidebarNav({ user }: SidebarNavProps) {
   };
 
   const renderNavContent = () => (
-    <div className="flex h-full flex-col justify-between bg-slate-900 text-slate-100">
-      {/* Brand Header */}
-      <div>
-        <div className="flex h-16 items-center justify-between border-b border-slate-800 px-5">
-          <Link
-            href="/admin"
-            className="flex items-center gap-3 font-bold tracking-tight hover:opacity-90 transition-opacity"
-            onClick={() => setIsOpen(false)}
-          >
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 shadow-md shadow-blue-500/20 text-white">
-              <Utensils className="h-5 w-5" />
+    <div className="flex h-full flex-col bg-slate-900 text-slate-100 select-none overflow-hidden">
+      {/* Brand Header - Cố định ở đầu */}
+      <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-800 px-5 bg-slate-900 z-10">
+        <Link
+          href="/admin"
+          className="flex items-center gap-3 font-bold tracking-tight hover:opacity-90 transition-opacity"
+          onClick={() => setIsOpen(false)}
+        >
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-600 shadow-md shadow-blue-500/20 text-white">
+            <Utensils className="h-5 w-5" />
+          </div>
+          <div>
+            <div className="text-base font-bold text-white tracking-wide">
+              BAN-TRU-TLM
             </div>
-            <div>
-              <div className="text-base font-bold text-white tracking-wide">
-                BAN-TRU-TLM
-              </div>
-              <div className="text-[11px] font-medium text-slate-400">
-                Quản lý Bán trú
-              </div>
+            <div className="text-[11px] font-medium text-slate-400">
+              Quản lý Bán trú
             </div>
-          </Link>
-          {/* Close button for mobile */}
-          <button
-            type="button"
-            className="rounded-md p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white md:hidden"
-            onClick={() => setIsOpen(false)}
-            aria-label="Đóng menu"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
+          </div>
+        </Link>
+        {/* Close button for mobile */}
+        <button
+          type="button"
+          className="rounded-md p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white md:hidden cursor-pointer"
+          onClick={() => setIsOpen(false)}
+          aria-label="Đóng menu"
+        >
+          <X className="h-5 w-5" />
+        </button>
+      </div>
 
-        {/* Nav links */}
-        <nav className="space-y-1 px-3 py-4">
+      {/* Nav links - Cho phép cuộn lên xuống mượt mà */}
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain sidebar-scroll px-3 py-3">
+        <nav className="space-y-1">
           {NAV_ITEMS.filter(item => {
             if (user?.role === "KITCHEN_SECRETARY") {
               return item.href === "/admin/central-kitchen";
@@ -254,8 +254,8 @@ export function SidebarNav({ user }: SidebarNavProps) {
         </nav>
       </div>
 
-      {/* Footer User Info & Sign Out */}
-      <div className="border-t border-slate-800 p-4">
+      {/* Footer User Info & Sign Out - Cố định ở chân */}
+      <div className="shrink-0 border-t border-slate-800 p-4 bg-slate-900">
         <div className="mb-3 flex items-center gap-3 rounded-lg bg-slate-800/60 p-2.5">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-500/20 text-blue-400">
             <ShieldCheck className="h-5 w-5" />
