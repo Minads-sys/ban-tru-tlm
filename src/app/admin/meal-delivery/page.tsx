@@ -26,6 +26,10 @@ import {
   PlusCircle,
   History,
   ShieldCheck,
+  ChevronLeft,
+  ChevronRight,
+  Images,
+  Layers,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -41,6 +45,8 @@ import Swal from "sweetalert2";
 import { compressImage, CompressedImageResult } from "@/lib/image-compressor";
 import { formatDate } from "@/lib/utils";
 
+const MAX_PHOTOS = 20;
+
 interface DeliveryRecord {
   id: string;
   deliveryDate: string;
@@ -53,6 +59,7 @@ interface DeliveryRecord {
   totalDelivered: number;
   expectedTotal?: number | null;
   photoUrl: string;
+  photoUrls?: string[];
   photoSizeKb?: number | null;
   note?: string | null;
   createdAt: string;
@@ -93,12 +100,11 @@ export default function MealDeliveryPage() {
   const [expectedSummary, setExpectedSummary] = useState<ExpectedSummary | null>(null);
   const [loadingExpected, setLoadingExpected] = useState<boolean>(false);
 
-  // Ảnh & Nén ảnh
+  // Quản lý nhiều ảnh & Nén ảnh (Tối đa 20 ảnh)
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [compressedResult, setCompressedResult] = useState<CompressedImageResult | null>(null);
-  const [compressing, setCompressing] = useState<boolean>(false);
+  const [compressedPhotos, setCompressedPhotos] = useState<CompressedImageResult[]>([]);
+  const [compressingProgress, setCompressingProgress] = useState<{ current: number; total: number } | null>(null);
 
   // Submit
   const [submitting, setSubmitting] = useState<boolean>(false);
@@ -108,9 +114,9 @@ export default function MealDeliveryPage() {
   const [loadingRecords, setLoadingRecords] = useState<boolean>(false);
   const [filterDate, setFilterDate] = useState<string>("");
 
-  // Lightbox xem ảnh
-  const [viewingPhotoUrl, setViewingPhotoUrl] = useState<string | null>(null);
-  const [viewingRecord, setViewingRecord] = useState<DeliveryRecord | null>(null);
+  // Lightbox Gallery xem ảnh
+  const [galleryRecord, setGalleryRecord] = useState<DeliveryRecord | null>(null);
+  const [activePhotoIndex, setActivePhotoIndex] = useState<number>(0);
 
   // Tải số suất kế hoạch của ngày
   const fetchExpectedSummary = async (dateStr: string) => {
@@ -159,33 +165,54 @@ export default function MealDeliveryPage() {
     }
   }, [activeTab, filterDate]);
 
-  // Xử lý khi chọn file ảnh (tự động nén qua Canvas)
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (!file.type.startsWith("image/")) {
+  // Xử lý nén nhiều ảnh (chọn file từ máy hoặc chụp liên tiếp)
+  const handleProcessFiles = async (files: FileList | File[]) => {
+    const fileArray = Array.from(files).filter((f) => f.type.startsWith("image/"));
+    if (fileArray.length === 0) {
       toast.error("Vui lòng chọn file hình ảnh hợp lệ (JPG, PNG, WebP)!");
       return;
     }
 
+    const currentCount = compressedPhotos.length;
+    const availableSlots = MAX_PHOTOS - currentCount;
+
+    if (availableSlots <= 0) {
+      toast.error(`Đã đạt giới hạn tối đa ${MAX_PHOTOS} ảnh cho một phiếu giao nhận!`);
+      return;
+    }
+
+    const filesToProcess = fileArray.slice(0, availableSlots);
+    if (fileArray.length > availableSlots) {
+      toast.warning(`Chỉ có thể thêm ${availableSlots} ảnh nữa (tối đa ${MAX_PHOTOS} ảnh).`);
+    }
+
     try {
-      setCompressing(true);
-      const result = await compressImage(file, {
-        maxWidth: 1800,
-        maxHeight: 1800,
-        quality: 0.78,
-        format: "image/webp",
-      });
-      setSelectedFile(result.file);
-      setCompressedResult(result);
-      toast.success(`Đã nén ảnh: ${result.originalSizeKb}KB → ${result.compressedSizeKb}KB (Giảm ${result.compressionRatioPercent}%)`);
+      const newCompressedList: CompressedImageResult[] = [];
+      for (let i = 0; i < filesToProcess.length; i++) {
+        setCompressingProgress({ current: i + 1, total: filesToProcess.length });
+        const result = await compressImage(filesToProcess[i], {
+          maxWidth: 1800,
+          maxHeight: 1800,
+          quality: 0.78,
+          format: "image/webp",
+        });
+        newCompressedList.push(result);
+      }
+
+      setCompressedPhotos((prev) => [...prev, ...newCompressedList]);
+      toast.success(`Đã nén thành công ${newCompressedList.length} ảnh!`);
     } catch (error) {
       console.error("Lỗi khi nén ảnh:", error);
-      toast.error("Không thể nén ảnh: " + String(error));
+      toast.error("Đã xảy ra lỗi khi nén ảnh: " + String(error));
     } finally {
-      setCompressing(false);
+      setCompressingProgress(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      if (cameraInputRef.current) cameraInputRef.current.value = "";
     }
+  };
+
+  const handleRemovePhoto = (index: number) => {
+    setCompressedPhotos((prev) => prev.filter((_, i) => i !== index));
   };
 
   // Tự động điền số suất theo kế hoạch hệ thống
@@ -201,6 +228,13 @@ export default function MealDeliveryPage() {
     (Number(deliveredMan) || 0) +
     (Number(deliveredChay) || 0) +
     (Number(deliveredChao) || 0);
+
+  // Tính tổng dung lượng các ảnh đã nén
+  const totalOriginalSizeKb = compressedPhotos.reduce((sum, p) => sum + p.originalSizeKb, 0);
+  const totalCompressedSizeKb = compressedPhotos.reduce((sum, p) => sum + p.compressedSizeKb, 0);
+  const overallCompressionRatio = totalOriginalSizeKb > 0
+    ? Math.round(((totalOriginalSizeKb - totalCompressedSizeKb) / totalOriginalSizeKb) * 100)
+    : 0;
 
   // Submit phiếu giao nhận
   const handleSubmit = async (e: React.FormEvent) => {
@@ -221,8 +255,8 @@ export default function MealDeliveryPage() {
       return;
     }
 
-    if (!selectedFile) {
-      toast.error("Vui lòng chụp ảnh hoặc tải lên phiếu ký nhận cơm!");
+    if (compressedPhotos.length === 0) {
+      toast.error("Vui lòng chụp hoặc tải lên ít nhất 1 ảnh biên bản ký nhận!");
       return;
     }
 
@@ -240,7 +274,11 @@ export default function MealDeliveryPage() {
         formData.append("expectedTotal", String(expectedSummary.expectedTotal));
       }
       formData.append("note", note.trim());
-      formData.append("photo", selectedFile);
+
+      // Gửi từng file ảnh đã nén (tối đa 20 file)
+      for (const item of compressedPhotos) {
+        formData.append("photos", item.file);
+      }
 
       const res = await fetch("/api/meal-delivery", {
         method: "POST",
@@ -252,7 +290,7 @@ export default function MealDeliveryPage() {
       if (res.ok) {
         Swal.fire({
           title: "Giao nhận thành công!",
-          text: `Đã lưu phiếu giao ${totalDelivered} suất cơm cho "${receiverName.trim()}". Ảnh ký nhận đã được lưu trữ an toàn.`,
+          text: `Đã lưu phiếu giao ${totalDelivered} suất cơm cho "${receiverName.trim()}" kèm ${compressedPhotos.length} ảnh ký nhận.`,
           icon: "success",
           confirmButtonColor: "#16a34a",
           confirmButtonText: "Đồng ý",
@@ -265,10 +303,7 @@ export default function MealDeliveryPage() {
         setDeliveredChay(0);
         setDeliveredChao(0);
         setNote("");
-        setSelectedFile(null);
-        setCompressedResult(null);
-        if (fileInputRef.current) fileInputRef.current.value = "";
-        if (cameraInputRef.current) cameraInputRef.current.value = "";
+        setCompressedPhotos([]);
 
         // Chuyển sang tab lịch sử để xem lại
         setActiveTab("history");
@@ -290,9 +325,10 @@ export default function MealDeliveryPage() {
 
   // Xóa phiếu giao nhận
   const handleDeleteRecord = async (record: DeliveryRecord) => {
+    const photoCount = (record.photoUrls && record.photoUrls.length > 0) ? record.photoUrls.length : 1;
     const result = await Swal.fire({
       title: "Xác nhận xóa phiếu giao nhận?",
-      text: `Bạn có chắc muốn xóa phiếu giao ${record.totalDelivered} suất ngày ${formatDate(record.deliveryDate)} (Người nhận: ${record.receiverName})?`,
+      text: `Bạn có chắc muốn xóa phiếu giao ${record.totalDelivered} suất ngày ${formatDate(record.deliveryDate)} (Người nhận: ${record.receiverName}, gồm ${photoCount} ảnh)?`,
       icon: "warning",
       showCancelButton: true,
       confirmButtonColor: "#dc2626",
@@ -319,6 +355,21 @@ export default function MealDeliveryPage() {
     }
   };
 
+  // Mở Lightbox Gallery cho một phiếu
+  const handleOpenGallery = (record: DeliveryRecord, initialIndex: number = 0) => {
+    setGalleryRecord(record);
+    setActivePhotoIndex(initialIndex);
+  };
+
+  const getRecordPhotos = (record: DeliveryRecord): string[] => {
+    if (record.photoUrls && record.photoUrls.length > 0) {
+      return record.photoUrls;
+    }
+    return record.photoUrl ? [record.photoUrl] : [];
+  };
+
+  const activeGalleryPhotos = galleryRecord ? getRecordPhotos(galleryRecord) : [];
+
   return (
     <div className="container mx-auto p-4 sm:p-6 max-w-5xl space-y-6">
       {/* Header */}
@@ -333,7 +384,7 @@ export default function MealDeliveryPage() {
                 Giao Nhận Suất Cơm Bán Trú
               </h1>
               <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
-                Nhập số suất thực tế đã giao, chụp ảnh phiếu ký nhận và lưu trữ đối soát
+                Nhập số suất thực tế đã giao, chụp ảnh phiếu ký nhận (tối đa 20 ảnh) và lưu trữ đối soát
               </p>
             </div>
           </div>
@@ -551,16 +602,22 @@ export default function MealDeliveryPage() {
               </CardContent>
             </Card>
 
-            {/* Card 4: Chụp ảnh & Nén ảnh ký nhận */}
+            {/* Card 4: Chụp ảnh & Nén ảnh ký nhận (Hỗ trợ tối đa 20 ảnh) */}
             <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
-              <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800/60">
-                <CardTitle className="text-base font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                  <Camera className="h-4 w-4 text-blue-600" />
-                  4. Chụp Ảnh Phiếu Ký Nhận <span className="text-rose-500">*</span>
-                </CardTitle>
-                <CardDescription>
-                  Chụp ảnh biên bản có chữ ký của người nhận cơm (hệ thống sẽ tự động nén nhẹ nhưng đảm bảo nét chữ ký)
-                </CardDescription>
+              <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800/60 flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="text-base font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                    <Camera className="h-4 w-4 text-blue-600" />
+                    4. Chụp Ảnh Biên Bản Ký Nhận <span className="text-rose-500">*</span>
+                  </CardTitle>
+                  <CardDescription>
+                    Hỗ trợ chụp hoặc tải nhiều ảnh cùng lúc (tối đa {MAX_PHOTOS} ảnh). Hệ thống tự động nén nhẹ nhưng đảm bảo nét chữ ký.
+                  </CardDescription>
+                </div>
+
+                <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                  {compressedPhotos.length} / {MAX_PHOTOS} ảnh
+                </Badge>
               </CardHeader>
               <CardContent className="pt-4 space-y-4">
                 {/* Inputs ẩn */}
@@ -569,85 +626,105 @@ export default function MealDeliveryPage() {
                   type="file"
                   accept="image/*"
                   capture="environment"
+                  multiple
                   className="hidden"
-                  onChange={handleFileChange}
+                  onChange={(e) => e.target.files && handleProcessFiles(e.target.files)}
                 />
                 <input
                   ref={fileInputRef}
                   type="file"
                   accept="image/*"
+                  multiple
                   className="hidden"
-                  onChange={handleFileChange}
+                  onChange={(e) => e.target.files && handleProcessFiles(e.target.files)}
                 />
 
-                {!compressedResult ? (
+                {/* Các nút bấm chụp / tải ảnh */}
+                {compressedPhotos.length < MAX_PHOTOS && (
                   <div className="flex flex-col sm:flex-row gap-3">
                     <Button
                       type="button"
                       onClick={() => cameraInputRef.current?.click()}
-                      className="flex-1 py-6 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-base flex items-center justify-center gap-2 cursor-pointer shadow-md rounded-xl"
-                      disabled={compressing}
+                      className="flex-1 py-5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm sm:text-base flex items-center justify-center gap-2 cursor-pointer shadow-sm rounded-xl"
+                      disabled={!!compressingProgress}
                     >
-                      {compressing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Camera className="h-5 w-5" />}
-                      <span>Chụp Ảnh Bằng Camera</span>
+                      {compressingProgress ? <Loader2 className="h-5 w-5 animate-spin" /> : <Camera className="h-5 w-5" />}
+                      <span>{compressedPhotos.length === 0 ? "Chụp Ảnh Ký Nhận (Camera)" : "Chụp Thêm Ảnh Mới"}</span>
                     </Button>
 
                     <Button
                       type="button"
                       variant="outline"
                       onClick={() => fileInputRef.current?.click()}
-                      className="py-6 border-slate-300 font-medium text-slate-700 dark:text-slate-300 flex items-center justify-center gap-2 cursor-pointer rounded-xl"
-                      disabled={compressing}
+                      className="py-5 border-slate-300 font-medium text-slate-700 dark:text-slate-300 flex items-center justify-center gap-2 cursor-pointer rounded-xl"
+                      disabled={!!compressingProgress}
                     >
                       <Upload className="h-4 w-4" />
-                      <span>Chọn Ảnh Từ Thư Viện</span>
+                      <span>{compressedPhotos.length === 0 ? "Chọn Nhiều Ảnh Từ Thư Viện" : "Tải Thêm Từ Thư Viện"}</span>
                     </Button>
                   </div>
-                ) : (
-                  <div className="space-y-3">
-                    {/* Bản xem trước */}
-                    <div className="relative rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 max-w-md mx-auto bg-slate-950">
-                      <img
-                        src={compressedResult.dataUrl}
-                        alt="Ảnh phiếu ký nhận"
-                        className="w-full max-h-72 object-contain mx-auto"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedFile(null);
-                          setCompressedResult(null);
-                        }}
-                        className="absolute top-2 right-2 p-1.5 bg-rose-600 text-white rounded-full hover:bg-rose-700 shadow-md cursor-pointer"
-                        title="Xóa ảnh và chụp lại"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
+                )}
 
-                    {/* Thông số nén */}
-                    <div className="p-3 bg-emerald-50 dark:bg-emerald-950/30 rounded-lg border border-emerald-200 dark:border-emerald-900/60 text-xs text-emerald-800 dark:text-emerald-300 flex items-center justify-between flex-wrap gap-2">
+                {/* Thanh trạng thái tiến trình nén */}
+                {compressingProgress && (
+                  <div className="p-3 bg-blue-50 dark:bg-blue-950/40 rounded-xl border border-blue-200 flex items-center gap-3 text-xs text-blue-800 dark:text-blue-300 animate-pulse">
+                    <Loader2 className="h-4 w-4 animate-spin text-blue-600 shrink-0" />
+                    <span>Đang nén tối ưu ảnh <b>{compressingProgress.current} / {compressingProgress.total}</b>... Vui lòng đợi trong giây lát.</span>
+                  </div>
+                )}
+
+                {/* Danh sách lưới ảnh đã chụp / nén */}
+                {compressedPhotos.length > 0 && (
+                  <div className="space-y-3">
+                    {/* Thống kê dung lượng */}
+                    <div className="p-3 bg-emerald-50 dark:bg-emerald-950/30 rounded-xl border border-emerald-200 dark:border-emerald-900/60 text-xs text-emerald-800 dark:text-emerald-300 flex items-center justify-between flex-wrap gap-2">
                       <div className="flex items-center gap-1.5 font-medium">
                         <CheckCircle className="h-4 w-4 text-emerald-600 shrink-0" />
-                        <span>Ảnh đã được nén tối ưu: <b>{compressedResult.compressedSizeKb} KB</b> (Gốc: {compressedResult.originalSizeKb} KB)</span>
+                        <span>
+                          Đã chọn <b>{compressedPhotos.length} ảnh</b> • Tổng dung lượng sau nén: <b>{(totalCompressedSizeKb / 1024).toFixed(2)} MB</b> (Gốc: {(totalOriginalSizeKb / 1024).toFixed(1)} MB)
+                        </span>
                       </div>
                       <Badge className="bg-emerald-600 text-white font-bold text-[11px]">
-                        Giảm {compressedResult.compressionRatioPercent}% dung lượng
+                        Tiết kiệm {overallCompressionRatio}% dung lượng
                       </Badge>
                     </div>
 
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => cameraInputRef.current?.click()}
-                        className="text-xs cursor-pointer"
-                      >
-                        <Camera className="h-3.5 w-3.5 mr-1" />
-                        Chụp lại
-                      </Button>
+                    {/* Lưới ảnh thu nhỏ (Grid) */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-3 pt-1">
+                      {compressedPhotos.map((item, index) => (
+                        <div
+                          key={index}
+                          className="group relative rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-950 aspect-square flex items-center justify-center shadow-xs"
+                        >
+                          <img
+                            src={item.dataUrl}
+                            alt={`Ảnh ký nhận ${index + 1}`}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                          />
+
+                          {/* Nhãn số thứ tự */}
+                          <span className="absolute bottom-1.5 left-1.5 bg-black/70 text-white text-[10px] font-mono px-1.5 py-0.5 rounded">
+                            #{index + 1} ({item.compressedSizeKb}KB)
+                          </span>
+
+                          {/* Nút xóa ảnh */}
+                          <button
+                            type="button"
+                            onClick={() => handleRemovePhoto(index)}
+                            className="absolute top-1.5 right-1.5 p-1 bg-rose-600 text-white rounded-full hover:bg-rose-700 shadow-md cursor-pointer transition-transform hover:scale-110"
+                            title="Xóa ảnh này"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
                     </div>
+
+                    {compressedPhotos.length < MAX_PHOTOS && (
+                      <p className="text-[11px] text-slate-400 italic">
+                        * Bạn có thể bấm chụp hoặc chọn thêm để tải thêm ảnh (còn {MAX_PHOTOS - compressedPhotos.length} ảnh nữa).
+                      </p>
+                    )}
                   </div>
                 )}
               </CardContent>
@@ -656,18 +733,18 @@ export default function MealDeliveryPage() {
             {/* Nút gửi */}
             <Button
               type="submit"
-              disabled={submitting || totalDelivered <= 0 || !receiverName.trim() || !selectedFile}
+              disabled={submitting || totalDelivered <= 0 || !receiverName.trim() || compressedPhotos.length === 0 || !!compressingProgress}
               className="w-full py-6 text-base font-bold bg-green-600 hover:bg-green-700 text-white shadow-lg rounded-xl cursor-pointer disabled:opacity-50"
             >
               {submitting ? (
                 <>
                   <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-                  <span>Đang lưu phiếu & tải ảnh lên...</span>
+                  <span>Đang lưu phiếu & tải {compressedPhotos.length} ảnh lên máy chủ...</span>
                 </>
               ) : (
                 <>
                   <Send className="h-5 w-5 mr-2" />
-                  <span>Xác Nhận & Hoàn Tất Giao Nhận ({totalDelivered} suất)</span>
+                  <span>Xác Nhận & Hoàn Tất Giao Nhận ({totalDelivered} suất • {compressedPhotos.length} ảnh)</span>
                 </>
               )}
             </Button>
@@ -730,130 +807,191 @@ export default function MealDeliveryPage() {
             </Card>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {records.map((r) => (
-                <Card key={r.id} className="border-slate-200 dark:border-slate-800 shadow-xs hover:border-blue-300 dark:hover:border-blue-800 transition-all">
-                  <CardHeader className="pb-2.5 border-b border-slate-100 dark:border-slate-800/60 flex flex-row items-center justify-between">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-slate-900 dark:text-slate-100 font-mono text-base">
-                          {formatDate(r.deliveryDate)}
-                        </span>
-                        <Badge variant="outline" className="text-xs bg-slate-50 text-slate-700">
-                          {r.shift === "TIET_4" ? "Ca Tiết 4" : r.shift === "TIET_5" ? "Ca Tiết 5" : "Cả ngày"}
-                        </Badge>
-                      </div>
-                      <p className="text-xs text-slate-400 mt-0.5">
-                        Giao bởi: <b>{r.deliveredBy?.fullName || r.deliveredBy?.username || "Nhân viên"}</b> • {new Date(r.createdAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
-                      </p>
-                    </div>
-
-                    {(isAdmin || r.deliveredBy?.id === session?.user?.id) && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDeleteRecord(r)}
-                        className="text-rose-500 hover:text-rose-700 hover:bg-rose-50 h-8 w-8 p-0 cursor-pointer"
-                        title="Xóa phiếu"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </CardHeader>
-                  <CardContent className="pt-3 space-y-3">
-                    {/* Người nhận */}
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-slate-500">Người ký nhận:</span>
-                      <span className="font-bold text-slate-800 dark:text-slate-200">
-                        {r.receiverName} {r.receiverPhone ? `(${r.receiverPhone})` : ""}
-                      </span>
-                    </div>
-
-                    {/* Thống kê suất */}
-                    <div className="grid grid-cols-4 gap-1.5 text-center p-2 rounded-lg bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 text-xs">
+              {records.map((r) => {
+                const photos = getRecordPhotos(r);
+                return (
+                  <Card key={r.id} className="border-slate-200 dark:border-slate-800 shadow-xs hover:border-blue-300 dark:hover:border-blue-800 transition-all">
+                    <CardHeader className="pb-2.5 border-b border-slate-100 dark:border-slate-800/60 flex flex-row items-center justify-between">
                       <div>
-                        <div className="text-slate-400 text-[10px]">Mặn</div>
-                        <div className="font-bold text-slate-700 dark:text-slate-300">{r.deliveredMan}</div>
-                      </div>
-                      <div>
-                        <div className="text-emerald-600 text-[10px]">Chay</div>
-                        <div className="font-bold text-emerald-600">{r.deliveredChay}</div>
-                      </div>
-                      <div>
-                        <div className="text-amber-600 text-[10px]">Cháo</div>
-                        <div className="font-bold text-amber-600">{r.deliveredChao}</div>
-                      </div>
-                      <div className="border-l border-slate-200 dark:border-slate-700 pl-1">
-                        <div className="text-blue-600 text-[10px] font-semibold">TỔNG</div>
-                        <div className="font-extrabold text-blue-700 dark:text-blue-400 text-sm">{r.totalDelivered}</div>
-                      </div>
-                    </div>
-
-                    {r.note && (
-                      <p className="text-xs text-slate-600 dark:text-slate-400 bg-amber-50/60 dark:bg-amber-950/20 p-2 rounded border border-amber-100 dark:border-amber-900/40 italic">
-                        "{r.note}"
-                      </p>
-                    )}
-
-                    {/* Ảnh ký nhận */}
-                    {r.photoUrl && (
-                      <div className="pt-1 flex items-center justify-between">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setViewingPhotoUrl(r.photoUrl);
-                            setViewingRecord(r);
-                          }}
-                          className="flex items-center gap-2 text-xs text-blue-600 hover:text-blue-800 font-medium group cursor-pointer"
-                        >
-                          <img
-                            src={r.photoUrl}
-                            alt="Ảnh ký nhận thumbnail"
-                            className="w-12 h-12 object-cover rounded-md border border-slate-200 group-hover:scale-105 transition-transform"
-                          />
-                          <span className="flex items-center gap-1 group-hover:underline">
-                            <ZoomIn className="h-3.5 w-3.5" />
-                            Xem ảnh ký nhận {r.photoSizeKb ? `(${r.photoSizeKb} KB)` : ""}
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-slate-900 dark:text-slate-100 font-mono text-base">
+                            {formatDate(r.deliveryDate)}
                           </span>
-                        </button>
+                          <Badge variant="outline" className="text-xs bg-slate-50 text-slate-700">
+                            {r.shift === "TIET_4" ? "Ca Tiết 4" : r.shift === "TIET_5" ? "Ca Tiết 5" : "Cả ngày"}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          Giao bởi: <b>{r.deliveredBy?.fullName || r.deliveredBy?.username || "Nhân viên"}</b> • {new Date(r.createdAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
+                        </p>
                       </div>
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
+
+                      {(isAdmin || r.deliveredBy?.id === session?.user?.id) && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeleteRecord(r)}
+                          className="text-rose-500 hover:text-rose-700 hover:bg-rose-50 h-8 w-8 p-0 cursor-pointer"
+                          title="Xóa phiếu"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </CardHeader>
+                    <CardContent className="pt-3 space-y-3">
+                      {/* Người nhận */}
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-500">Người ký nhận:</span>
+                        <span className="font-bold text-slate-800 dark:text-slate-200">
+                          {r.receiverName} {r.receiverPhone ? `(${r.receiverPhone})` : ""}
+                        </span>
+                      </div>
+
+                      {/* Thống kê suất */}
+                      <div className="grid grid-cols-4 gap-1.5 text-center p-2 rounded-lg bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 text-xs">
+                        <div>
+                          <div className="text-slate-400 text-[10px]">Mặn</div>
+                          <div className="font-bold text-slate-700 dark:text-slate-300">{r.deliveredMan}</div>
+                        </div>
+                        <div>
+                          <div className="text-emerald-600 text-[10px]">Chay</div>
+                          <div className="font-bold text-emerald-600">{r.deliveredChay}</div>
+                        </div>
+                        <div>
+                          <div className="text-amber-600 text-[10px]">Cháo</div>
+                          <div className="font-bold text-amber-600">{r.deliveredChao}</div>
+                        </div>
+                        <div className="border-l border-slate-200 dark:border-slate-700 pl-1">
+                          <div className="text-blue-600 text-[10px] font-semibold">TỔNG</div>
+                          <div className="font-extrabold text-blue-700 dark:text-blue-400 text-sm">{r.totalDelivered}</div>
+                        </div>
+                      </div>
+
+                      {r.note && (
+                        <p className="text-xs text-slate-600 dark:text-slate-400 bg-amber-50/60 dark:bg-amber-950/20 p-2 rounded border border-amber-100 dark:border-amber-900/40 italic">
+                          "{r.note}"
+                        </p>
+                      )}
+
+                      {/* Danh sách ảnh ký nhận */}
+                      {photos.length > 0 && (
+                        <div className="pt-1 space-y-1.5">
+                          <div className="flex items-center justify-between text-xs text-slate-500">
+                            <span className="flex items-center gap-1 font-medium text-slate-700 dark:text-slate-300">
+                              <Images className="h-3.5 w-3.5 text-blue-600" />
+                              Biên bản ký nhận ({photos.length} ảnh):
+                            </span>
+                            <span className="text-[11px] text-slate-400">
+                              {r.photoSizeKb ? `Tổng ~${r.photoSizeKb} KB` : ""}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                            {photos.map((pUrl, pIdx) => (
+                              <button
+                                key={pIdx}
+                                type="button"
+                                onClick={() => handleOpenGallery(r, pIdx)}
+                                className="relative shrink-0 w-14 h-14 rounded-lg overflow-hidden border border-slate-200 hover:border-blue-500 hover:shadow-md transition-all group cursor-pointer"
+                              >
+                                <img
+                                  src={pUrl}
+                                  alt={`Ảnh ${pIdx + 1}`}
+                                  className="w-full h-full object-cover group-hover:scale-110 transition-transform"
+                                />
+                                <span className="absolute bottom-0 right-0 bg-black/70 text-white text-[9px] px-1 rounded-tl">
+                                  #{pIdx + 1}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           )}
         </TabsContent>
       </Tabs>
 
-      {/* Modal Lightbox Phóng to ảnh ký nhận */}
-      <Dialog open={!!viewingPhotoUrl} onOpenChange={(open) => !open && setViewingPhotoUrl(null)}>
-        <DialogContent className="max-w-3xl w-[95vw] p-4 bg-slate-950 text-white border-slate-800 shadow-2xl">
+      {/* Modal Lightbox Gallery Phóng to ảnh ký nhận (Hỗ trợ duyệt nhiều ảnh qua lại) */}
+      <Dialog open={!!galleryRecord} onOpenChange={(open) => !open && setGalleryRecord(null)}>
+        <DialogContent className="max-w-4xl w-[96vw] p-4 bg-slate-950 text-white border-slate-800 shadow-2xl">
           <DialogHeader className="text-left space-y-1 pb-2 border-b border-slate-800">
-            <DialogTitle className="text-base text-slate-100 flex items-center justify-between">
+            <DialogTitle className="text-base text-slate-100 flex items-center justify-between flex-wrap gap-2">
               <span>Ảnh Biên Bản Ký Nhận Suất Cơm</span>
-              {viewingRecord && (
-                <Badge variant="outline" className="text-xs bg-slate-800 text-slate-300 border-slate-700">
-                  {formatDate(viewingRecord.deliveryDate)} • {viewingRecord.receiverName} ({viewingRecord.totalDelivered} suất)
-                </Badge>
+              {galleryRecord && (
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="text-xs bg-slate-800 text-slate-300 border-slate-700">
+                    {formatDate(galleryRecord.deliveryDate)} • {galleryRecord.receiverName} ({galleryRecord.totalDelivered} suất)
+                  </Badge>
+                  <Badge className="bg-blue-600 text-white text-xs">
+                    Ảnh {activePhotoIndex + 1} / {activeGalleryPhotos.length}
+                  </Badge>
+                </div>
               )}
             </DialogTitle>
           </DialogHeader>
 
-          {viewingPhotoUrl && (
+          {activeGalleryPhotos.length > 0 && (
             <div className="py-2 flex flex-col items-center justify-center space-y-3">
-              <div className="max-h-[75vh] overflow-auto rounded-lg border border-slate-800 bg-black flex items-center justify-center">
+              <div className="relative w-full max-h-[72vh] overflow-hidden rounded-xl border border-slate-800 bg-black flex items-center justify-center">
                 <img
-                  src={viewingPhotoUrl}
-                  alt="Ảnh ký nhận phóng to"
-                  className="max-h-[70vh] w-auto object-contain"
+                  src={activeGalleryPhotos[activePhotoIndex]}
+                  alt={`Ảnh ký nhận ${activePhotoIndex + 1}`}
+                  className="max-h-[70vh] w-auto max-w-full object-contain mx-auto transition-all"
                 />
+
+                {/* Nút Prev */}
+                {activeGalleryPhotos.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setActivePhotoIndex((prev) => (prev > 0 ? prev - 1 : activeGalleryPhotos.length - 1))}
+                    className="absolute left-2 top-1/2 -translate-y-1/2 p-2.5 bg-black/60 hover:bg-black/90 text-white rounded-full backdrop-blur-sm cursor-pointer transition-transform hover:scale-110"
+                    title="Ảnh trước đó (←)"
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                  </button>
+                )}
+
+                {/* Nút Next */}
+                {activeGalleryPhotos.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setActivePhotoIndex((prev) => (prev < activeGalleryPhotos.length - 1 ? prev + 1 : 0))}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-2.5 bg-black/60 hover:bg-black/90 text-white rounded-full backdrop-blur-sm cursor-pointer transition-transform hover:scale-110"
+                    title="Ảnh tiếp theo (→)"
+                  >
+                    <ChevronRight className="h-5 w-5" />
+                  </button>
+                )}
               </div>
 
+              {/* Dải thumbnail bên dưới modal */}
+              {activeGalleryPhotos.length > 1 && (
+                <div className="flex items-center gap-1.5 max-w-full overflow-x-auto py-1 px-2">
+                  {activeGalleryPhotos.map((thumbUrl, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setActivePhotoIndex(idx)}
+                      className={`relative shrink-0 w-12 h-12 rounded-md overflow-hidden border-2 transition-all cursor-pointer ${
+                        activePhotoIndex === idx ? "border-blue-500 scale-105 shadow-md" : "border-slate-700 opacity-60 hover:opacity-100"
+                      }`}
+                    >
+                      <img src={thumbUrl} alt={`Thumb ${idx + 1}`} className="w-full h-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              )}
+
               <div className="flex items-center justify-between w-full text-xs text-slate-400 pt-1">
-                <span>Nhấn đúp hoặc chạm để phóng to chi tiết chữ ký</span>
+                <span>Dùng phím mũi tên hoặc nút bấm để chuyển ảnh</span>
                 <a
-                  href={viewingPhotoUrl}
+                  href={activeGalleryPhotos[activePhotoIndex]}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-blue-400 hover:text-blue-300 underline font-medium"

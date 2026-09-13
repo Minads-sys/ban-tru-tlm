@@ -685,31 +685,25 @@ export function DailyEntryForm({
                 {/* 2. Stepper Inputs: Mặn, Chay, Cháo */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {/* MẶN */}
-                  <div className="bg-amber-500/5 p-3.5 sm:p-4 rounded-2xl border-2 border-amber-500/30 flex flex-col justify-between">
+                  <div className="bg-amber-500/5 p-3.5 sm:p-4 rounded-2xl border-2 border-amber-500/30 flex flex-col justify-between overflow-hidden">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-base sm:text-xl font-black text-amber-700 dark:text-amber-300 uppercase tracking-wide">
+                      <span className="text-base sm:text-xl font-black text-amber-700 dark:text-amber-300 uppercase tracking-wide truncate">
                         {val.manMealType === "NUOC" ? "🍜 Mặn Nước" : "🍚 Suất Mặn"}
                       </span>
                     </div>
-                    <div className="flex items-center justify-center gap-1.5 sm:gap-2">
-                      <button
-                        type="button"
-                        disabled={isLocked}
-                        onClick={() => adjustNumber(branch.branchId, "servingsMan", -10)}
-                        className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 active:scale-95 text-amber-800 dark:text-amber-200 font-black text-xs sm:text-sm flex items-center justify-center transition cursor-pointer shrink-0 disabled:opacity-40"
-                        title="Giảm 10 suất"
-                      >
-                        -10
-                      </button>
+
+                    {/* Hàng 1: Nút -1, Ô nhập số to, Nút +1 */}
+                    <div className="flex items-center justify-center gap-2 w-full">
                       <button
                         type="button"
                         disabled={isLocked}
                         onClick={() => adjustNumber(branch.branchId, "servingsMan", -1)}
-                        className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 active:scale-95 text-amber-800 dark:text-amber-200 font-black text-xs sm:text-sm flex items-center justify-center transition cursor-pointer shrink-0 disabled:opacity-40"
+                        className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 active:scale-95 text-amber-800 dark:text-amber-200 font-black flex items-center justify-center transition cursor-pointer shrink-0 disabled:opacity-40"
                         title="Giảm 1 suất"
                       >
-                        <Minus className="w-4 h-4 sm:w-5 sm:h-5" />
+                        <Minus className="w-5 h-5" />
                       </button>
+
                       <input
                         type="number"
                         min="0"
@@ -747,22 +741,36 @@ export function DailyEntryForm({
                             );
                           }
                         }}
-                        className="w-24 sm:w-36 text-center font-black text-3xl sm:text-4xl py-2 sm:py-2.5 rounded-xl border-2 border-amber-400 dark:border-amber-600 bg-white dark:bg-slate-800 text-amber-600 dark:text-amber-400 focus:outline-none focus:ring-4 focus:ring-amber-500/30 transition shadow-inner"
+                        className="flex-1 w-full min-w-0 max-w-[140px] text-center font-black text-3xl sm:text-4xl py-2 rounded-xl border-2 border-amber-400 dark:border-amber-600 bg-white dark:bg-slate-800 text-amber-600 dark:text-amber-400 focus:outline-none focus:ring-4 focus:ring-amber-500/30 transition shadow-inner"
                       />
+
                       <button
                         type="button"
                         disabled={isLocked}
                         onClick={() => adjustNumber(branch.branchId, "servingsMan", 1)}
-                        className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 active:scale-95 text-amber-800 dark:text-amber-200 font-black text-xs sm:text-sm flex items-center justify-center transition cursor-pointer shrink-0 disabled:opacity-40"
+                        className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 active:scale-95 text-amber-800 dark:text-amber-200 font-black flex items-center justify-center transition cursor-pointer shrink-0 disabled:opacity-40"
                         title="Tăng 1 suất"
                       >
-                        <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
+                        <Plus className="w-5 h-5" />
+                      </button>
+                    </div>
+
+                    {/* Hàng 2: Nút nhảy nhanh -10 và +10 */}
+                    <div className="flex items-center justify-center gap-2 mt-2 w-full">
+                      <button
+                        type="button"
+                        disabled={isLocked}
+                        onClick={() => adjustNumber(branch.branchId, "servingsMan", -10)}
+                        className="flex-1 py-1.5 px-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 active:scale-95 text-amber-800 dark:text-amber-200 font-extrabold text-xs sm:text-sm border border-amber-500/25 transition cursor-pointer disabled:opacity-40 text-center"
+                        title="Giảm 10 suất"
+                      >
+                        -10
                       </button>
                       <button
                         type="button"
                         disabled={isLocked}
                         onClick={() => adjustNumber(branch.branchId, "servingsMan", 10)}
-                        className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 active:scale-95 text-amber-800 dark:text-amber-200 font-black text-xs sm:text-sm flex items-center justify-center transition cursor-pointer shrink-0 disabled:opacity-40"
+                        className="flex-1 py-1.5 px-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 active:scale-95 text-amber-800 dark:text-amber-200 font-extrabold text-xs sm:text-sm border border-amber-500/25 transition cursor-pointer disabled:opacity-40 text-center"
                         title="Tăng 10 suất"
                       >
                         +10
@@ -771,31 +779,25 @@ export function DailyEntryForm({
                   </div>
 
                   {/* CHAY */}
-                  <div className="bg-emerald-500/5 p-3.5 sm:p-4 rounded-2xl border-2 border-emerald-500/30 flex flex-col justify-between">
+                  <div className="bg-emerald-500/5 p-3.5 sm:p-4 rounded-2xl border-2 border-emerald-500/30 flex flex-col justify-between overflow-hidden">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-base sm:text-xl font-black text-emerald-700 dark:text-emerald-300 uppercase tracking-wide">
+                      <span className="text-base sm:text-xl font-black text-emerald-700 dark:text-emerald-300 uppercase tracking-wide truncate">
                         🥬 Suất Chay
                       </span>
                     </div>
-                    <div className="flex items-center justify-center gap-1.5 sm:gap-2">
-                      <button
-                        type="button"
-                        disabled={isLocked}
-                        onClick={() => adjustNumber(branch.branchId, "servingsChay", -10)}
-                        className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 active:scale-95 text-emerald-800 dark:text-emerald-200 font-black text-xs sm:text-sm flex items-center justify-center transition cursor-pointer shrink-0 disabled:opacity-40"
-                        title="Giảm 10 suất"
-                      >
-                        -10
-                      </button>
+
+                    {/* Hàng 1: Nút -1, Ô nhập số to, Nút +1 */}
+                    <div className="flex items-center justify-center gap-2 w-full">
                       <button
                         type="button"
                         disabled={isLocked}
                         onClick={() => adjustNumber(branch.branchId, "servingsChay", -1)}
-                        className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 active:scale-95 text-emerald-800 dark:text-emerald-200 font-black text-xs sm:text-sm flex items-center justify-center transition cursor-pointer shrink-0 disabled:opacity-40"
+                        className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 active:scale-95 text-emerald-800 dark:text-emerald-200 font-black flex items-center justify-center transition cursor-pointer shrink-0 disabled:opacity-40"
                         title="Giảm 1 suất"
                       >
-                        <Minus className="w-4 h-4 sm:w-5 sm:h-5" />
+                        <Minus className="w-5 h-5" />
                       </button>
+
                       <input
                         type="number"
                         min="0"
@@ -833,22 +835,36 @@ export function DailyEntryForm({
                             );
                           }
                         }}
-                        className="w-24 sm:w-36 text-center font-black text-3xl sm:text-4xl py-2 sm:py-2.5 rounded-xl border-2 border-emerald-400 dark:border-emerald-600 bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 focus:outline-none focus:ring-4 focus:ring-emerald-500/30 transition shadow-inner"
+                        className="flex-1 w-full min-w-0 max-w-[140px] text-center font-black text-3xl sm:text-4xl py-2 rounded-xl border-2 border-emerald-400 dark:border-emerald-600 bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 focus:outline-none focus:ring-4 focus:ring-emerald-500/30 transition shadow-inner"
                       />
+
                       <button
                         type="button"
                         disabled={isLocked}
                         onClick={() => adjustNumber(branch.branchId, "servingsChay", 1)}
-                        className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 active:scale-95 text-emerald-800 dark:text-emerald-200 font-black text-xs sm:text-sm flex items-center justify-center transition cursor-pointer shrink-0 disabled:opacity-40"
+                        className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 active:scale-95 text-emerald-800 dark:text-emerald-200 font-black flex items-center justify-center transition cursor-pointer shrink-0 disabled:opacity-40"
                         title="Tăng 1 suất"
                       >
-                        <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
+                        <Plus className="w-5 h-5" />
+                      </button>
+                    </div>
+
+                    {/* Hàng 2: Nút nhảy nhanh -10 và +10 */}
+                    <div className="flex items-center justify-center gap-2 mt-2 w-full">
+                      <button
+                        type="button"
+                        disabled={isLocked}
+                        onClick={() => adjustNumber(branch.branchId, "servingsChay", -10)}
+                        className="flex-1 py-1.5 px-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 active:scale-95 text-emerald-800 dark:text-emerald-200 font-extrabold text-xs sm:text-sm border border-emerald-500/25 transition cursor-pointer disabled:opacity-40 text-center"
+                        title="Giảm 10 suất"
+                      >
+                        -10
                       </button>
                       <button
                         type="button"
                         disabled={isLocked}
                         onClick={() => adjustNumber(branch.branchId, "servingsChay", 10)}
-                        className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 active:scale-95 text-emerald-800 dark:text-emerald-200 font-black text-xs sm:text-sm flex items-center justify-center transition cursor-pointer shrink-0 disabled:opacity-40"
+                        className="flex-1 py-1.5 px-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 active:scale-95 text-emerald-800 dark:text-emerald-200 font-extrabold text-xs sm:text-sm border border-emerald-500/25 transition cursor-pointer disabled:opacity-40 text-center"
                         title="Tăng 10 suất"
                       >
                         +10
@@ -857,31 +873,25 @@ export function DailyEntryForm({
                   </div>
 
                   {/* CHÁO */}
-                  <div className="bg-cyan-500/5 p-3.5 sm:p-4 rounded-2xl border-2 border-cyan-500/30 flex flex-col justify-between">
+                  <div className="bg-cyan-500/5 p-3.5 sm:p-4 rounded-2xl border-2 border-cyan-500/30 flex flex-col justify-between overflow-hidden">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-base sm:text-xl font-black text-cyan-700 dark:text-cyan-300 uppercase tracking-wide">
+                      <span className="text-base sm:text-xl font-black text-cyan-700 dark:text-cyan-300 uppercase tracking-wide truncate">
                         🍲 Suất Cháo
                       </span>
                     </div>
-                    <div className="flex items-center justify-center gap-1.5 sm:gap-2">
-                      <button
-                        type="button"
-                        disabled={isLocked}
-                        onClick={() => adjustNumber(branch.branchId, "servingsChao", -10)}
-                        className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 active:scale-95 text-cyan-800 dark:text-cyan-200 font-black text-xs sm:text-sm flex items-center justify-center transition cursor-pointer shrink-0 disabled:opacity-40"
-                        title="Giảm 10 suất"
-                      >
-                        -10
-                      </button>
+
+                    {/* Hàng 1: Nút -1, Ô nhập số to, Nút +1 */}
+                    <div className="flex items-center justify-center gap-2 w-full">
                       <button
                         type="button"
                         disabled={isLocked}
                         onClick={() => adjustNumber(branch.branchId, "servingsChao", -1)}
-                        className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 active:scale-95 text-cyan-800 dark:text-cyan-200 font-black text-xs sm:text-sm flex items-center justify-center transition cursor-pointer shrink-0 disabled:opacity-40"
+                        className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 active:scale-95 text-cyan-800 dark:text-cyan-200 font-black flex items-center justify-center transition cursor-pointer shrink-0 disabled:opacity-40"
                         title="Giảm 1 suất"
                       >
-                        <Minus className="w-4 h-4 sm:w-5 sm:h-5" />
+                        <Minus className="w-5 h-5" />
                       </button>
+
                       <input
                         type="number"
                         min="0"
@@ -919,22 +929,36 @@ export function DailyEntryForm({
                             );
                           }
                         }}
-                        className="w-24 sm:w-36 text-center font-black text-3xl sm:text-4xl py-2 sm:py-2.5 rounded-xl border-2 border-cyan-400 dark:border-cyan-600 bg-white dark:bg-slate-800 text-cyan-600 dark:text-cyan-400 focus:outline-none focus:ring-4 focus:ring-cyan-500/30 transition shadow-inner"
+                        className="flex-1 w-full min-w-0 max-w-[140px] text-center font-black text-3xl sm:text-4xl py-2 rounded-xl border-2 border-cyan-400 dark:border-cyan-600 bg-white dark:bg-slate-800 text-cyan-600 dark:text-cyan-400 focus:outline-none focus:ring-4 focus:ring-cyan-500/30 transition shadow-inner"
                       />
+
                       <button
                         type="button"
                         disabled={isLocked}
                         onClick={() => adjustNumber(branch.branchId, "servingsChao", 1)}
-                        className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 active:scale-95 text-cyan-800 dark:text-cyan-200 font-black text-xs sm:text-sm flex items-center justify-center transition cursor-pointer shrink-0 disabled:opacity-40"
+                        className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 active:scale-95 text-cyan-800 dark:text-cyan-200 font-black flex items-center justify-center transition cursor-pointer shrink-0 disabled:opacity-40"
                         title="Tăng 1 suất"
                       >
-                        <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
+                        <Plus className="w-5 h-5" />
+                      </button>
+                    </div>
+
+                    {/* Hàng 2: Nút nhảy nhanh -10 và +10 */}
+                    <div className="flex items-center justify-center gap-2 mt-2 w-full">
+                      <button
+                        type="button"
+                        disabled={isLocked}
+                        onClick={() => adjustNumber(branch.branchId, "servingsChao", -10)}
+                        className="flex-1 py-1.5 px-2 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 active:scale-95 text-cyan-800 dark:text-cyan-200 font-extrabold text-xs sm:text-sm border border-cyan-500/25 transition cursor-pointer disabled:opacity-40 text-center"
+                        title="Giảm 10 suất"
+                      >
+                        -10
                       </button>
                       <button
                         type="button"
                         disabled={isLocked}
                         onClick={() => adjustNumber(branch.branchId, "servingsChao", 10)}
-                        className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 active:scale-95 text-cyan-800 dark:text-cyan-200 font-black text-xs sm:text-sm flex items-center justify-center transition cursor-pointer shrink-0 disabled:opacity-40"
+                        className="flex-1 py-1.5 px-2 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 active:scale-95 text-cyan-800 dark:text-cyan-200 font-extrabold text-xs sm:text-sm border border-cyan-500/25 transition cursor-pointer disabled:opacity-40 text-center"
                         title="Tăng 10 suất"
                       >
                         +10

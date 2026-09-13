@@ -161,7 +161,9 @@ export async function POST(request: NextRequest) {
       ? parseInt(formData.get("expectedTotal") as string)
       : null;
 
-    const file = formData.get("photo") as File | null;
+    const rawFiles = formData.getAll("photos") as File[];
+    const singleFile = formData.get("photo") as File | null;
+    const files: File[] = rawFiles.length > 0 ? rawFiles : singleFile ? [singleFile] : [];
 
     if (!deliveryDateStr) {
       return NextResponse.json({ error: "Vui lòng chọn ngày giao nhận" }, { status: 400 });
@@ -175,19 +177,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Tổng số suất cơm giao phải lớn hơn 0" }, { status: 400 });
     }
 
-    if (!file || typeof file === "string") {
-      return NextResponse.json({ error: "Vui lòng chụp ảnh hoặc tải lên phiếu ký nhận" }, { status: 400 });
+    if (files.length === 0) {
+      return NextResponse.json({ error: "Vui lòng chụp ảnh hoặc tải lên ít nhất 1 ảnh phiếu ký nhận" }, { status: 400 });
+    }
+
+    if (files.length > 20) {
+      return NextResponse.json({ error: "Tối đa chỉ được tải lên 20 ảnh cho một phiếu giao nhận" }, { status: 400 });
     }
 
     // Kiểm tra định dạng ảnh cho phép
     const allowedTypes = ["image/webp", "image/jpeg", "image/png", "image/jpg"];
-    if (!allowedTypes.includes(file.type)) {
-      return NextResponse.json({ error: "Định dạng file không hợp lệ (chỉ chấp nhận ảnh WebP, JPEG, PNG)" }, { status: 400 });
-    }
-
-    // Giới hạn dung lượng tối đa 5MB (ảnh sau nén ở client chỉ khoảng 150-300KB)
-    if (file.size > 5 * 1024 * 1024) {
-      return NextResponse.json({ error: "File ảnh vượt quá 5MB. Vui lòng nén lại trước khi gửi." }, { status: 400 });
+    for (const f of files) {
+      if (!allowedTypes.includes(f.type)) {
+        return NextResponse.json({ error: `File "${f.name}" không hợp lệ (chỉ chấp nhận ảnh WebP, JPEG, PNG)` }, { status: 400 });
+      }
+      if (f.size > 5 * 1024 * 1024) {
+        return NextResponse.json({ error: `File ảnh "${f.name}" vượt quá 5MB. Vui lòng nén lại trước khi gửi.` }, { status: 400 });
+      }
     }
 
     // Chuẩn bị thư mục lưu trữ: public/uploads/delivery-receipts/YYYY-MM/
@@ -197,19 +203,23 @@ export async function POST(request: NextRequest) {
 
     await fs.mkdir(uploadDir, { recursive: true });
 
-    // Tạo tên file an toàn
-    const ext = file.type === "image/webp" ? "webp" : file.type === "image/png" ? "png" : "jpg";
-    const randomSuffix = crypto.randomBytes(6).toString("hex");
-    const fileName = `receipt_${yearStr}${monthStr}${dayStr}_${Date.now()}_${randomSuffix}.${ext}`;
-    const filePath = path.join(uploadDir, fileName);
+    // Lưu tuần tự từng file ảnh đã nén xuống ổ cứng (mỗi file chỉ ~150-200KB)
+    const photoUrls: string[] = [];
+    let totalPhotoSizeKb = 0;
 
-    // Ghi file xuống đĩa máy chủ (tiêu tốn < 1MB RAM trong tích tắc)
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    await fs.writeFile(filePath, buffer);
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      const ext = f.type === "image/webp" ? "webp" : f.type === "image/png" ? "png" : "jpg";
+      const randomSuffix = crypto.randomBytes(6).toString("hex");
+      const fileName = `receipt_${yearStr}${monthStr}${dayStr}_${Date.now()}_${i + 1}_${randomSuffix}.${ext}`;
+      const filePath = path.join(uploadDir, fileName);
 
-    const photoUrl = `/uploads/delivery-receipts/${subFolder}/${fileName}`;
-    const photoSizeKb = Math.round(file.size / 1024);
+      const arrayBuffer = await f.arrayBuffer();
+      await fs.writeFile(filePath, Buffer.from(arrayBuffer));
+
+      photoUrls.push(`/uploads/delivery-receipts/${subFolder}/${fileName}`);
+      totalPhotoSizeKb += Math.round(f.size / 1024);
+    }
 
     // Lưu bản ghi vào CSDL
     const [y, m, d] = deliveryDateStr.split("-").map(Number);
@@ -226,8 +236,9 @@ export async function POST(request: NextRequest) {
         deliveredChao,
         totalDelivered,
         expectedTotal,
-        photoUrl,
-        photoSizeKb,
+        photoUrl: photoUrls[0],
+        photoUrls,
+        photoSizeKb: totalPhotoSizeKb,
         deliveredById: session.user.id,
         note: note || null,
       },
@@ -288,13 +299,16 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Bạn không có quyền xóa phiếu giao nhận này" }, { status: 403 });
     }
 
-    // Xóa file ảnh trên đĩa nếu tồn tại
-    if (record.photoUrl && record.photoUrl.startsWith("/uploads/")) {
-      try {
-        const fullLocalPath = path.join(process.cwd(), "public", record.photoUrl);
-        await fs.unlink(fullLocalPath);
-      } catch (e) {
-        // Bỏ qua lỗi nếu file không tồn tại trên đĩa
+    // Xóa tất cả file ảnh trên đĩa nếu tồn tại
+    const urlsToDelete = Array.from(new Set([...(record.photoUrls || []), record.photoUrl].filter(Boolean)));
+    for (const url of urlsToDelete) {
+      if (url.startsWith("/uploads/")) {
+        try {
+          const fullLocalPath = path.join(process.cwd(), "public", url);
+          await fs.unlink(fullLocalPath);
+        } catch (e) {
+          // Bỏ qua lỗi nếu file không tồn tại trên đĩa
+        }
       }
     }
 

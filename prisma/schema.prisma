@@ -590,6 +590,7 @@ model MealDeliveryRecord {
   totalDelivered Int      @default(0) @map("total_delivered")
   expectedTotal  Int?     @map("expected_total")
   photoUrl       String   @map("photo_url")
+  photoUrls      String[] @default([]) @map("photo_urls")
   photoSizeKb    Int?     @map("photo_size_kb")
   deliveredById  String   @map("delivered_by_id")
   note           String?
