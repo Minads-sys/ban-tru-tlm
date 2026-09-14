@@ -5,8 +5,9 @@ import { auth } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 const DEFAULT_INGREDIENTS = [
-  // Gạo (chỉ 1 định lượng chuẩn 150g, không phân biệt loại gạo)
-  { code: "GAO_CHUAN", name: "Gạo", category: "GAO", unit: "g", quantityPerServing: 150, sortOrder: 1 },
+  // Gạo nấu cơm & gạo nấu cháo
+  { code: "GAO_CHUAN", name: "Gạo nấu cơm", category: "GAO", unit: "g", quantityPerServing: 150, sortOrder: 1 },
+  { code: "GAO_CHAO", name: "Gạo nấu cháo", category: "GAO", unit: "g", quantityPerServing: 50, sortOrder: 2 },
   
   // Món nước (bún, phở...)
   { code: "BANH_PHO", name: "Bánh phở", category: "MON_NUOC", unit: "g", quantityPerServing: 200, sortOrder: 1 },
@@ -49,6 +50,35 @@ export async function GET(request: NextRequest) {
             sortOrder: item.sortOrder,
             isActive: true,
           },
+        });
+      }
+    } else {
+      // Ensure GAO_CHAO exists
+      const chaoExists = await prisma.centralKitchenIngredient.findUnique({
+        where: { code: "GAO_CHAO" },
+      });
+      if (!chaoExists) {
+        await prisma.centralKitchenIngredient.create({
+          data: {
+            code: "GAO_CHAO",
+            name: "Gạo nấu cháo",
+            category: "GAO",
+            unit: "g",
+            quantityPerServing: 50,
+            sortOrder: 2,
+            isActive: true,
+          },
+        });
+      }
+
+      // Rename legacy "Gạo" -> "Gạo nấu cơm" if needed
+      const gaoChuan = await prisma.centralKitchenIngredient.findUnique({
+        where: { code: "GAO_CHUAN" },
+      });
+      if (gaoChuan && gaoChuan.name === "Gạo") {
+        await prisma.centralKitchenIngredient.update({
+          where: { code: "GAO_CHUAN" },
+          data: { name: "Gạo nấu cơm" },
         });
       }
     }

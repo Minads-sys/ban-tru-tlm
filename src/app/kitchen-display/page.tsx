@@ -71,6 +71,7 @@ export default function StandaloneKitchenDisplayPage() {
     };
     ingredients: {
       ricePortionG: number;
+      chaoPortionG?: number;
       rice: any;
       noodles: any[];
       fruits: any[];
@@ -94,6 +95,7 @@ export default function StandaloneKitchenDisplayPage() {
     },
     ingredients: {
       ricePortionG: 150,
+      chaoPortionG: 50,
       rice: null,
       noodles: [],
       fruits: [],
@@ -455,6 +457,7 @@ export default function StandaloneKitchenDisplayPage() {
             await fetchData();
           }}
           ricePortionG={dailyData.ingredients?.ricePortionG || 150}
+          chaoPortionG={dailyData.ingredients?.chaoPortionG || 50}
           hideDateControls={true}
           mealLockTime={dailyData.config?.mealLockTime || "08:00"}
           isStandalone={true}

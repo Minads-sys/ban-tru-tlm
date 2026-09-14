@@ -57,6 +57,7 @@ interface DailyEntryFormProps {
   branches: BranchCardData[];
   ingredients: {
     ricePortionG: number;
+    chaoPortionG?: number;
     rice: IngredientOption | null;
     noodles: IngredientOption[];
     fruits: IngredientOption[];
@@ -499,6 +500,7 @@ export function DailyEntryForm({
 
           // Material calculations
           const ricePortion = ingredients.ricePortionG || 150;
+          const chaoPortion = ingredients.chaoPortionG || 50;
           const selectedNoodle = ingredients.noodles.find(
             (n) => n.id === val.noodleId
           );
@@ -509,15 +511,17 @@ export function DailyEntryForm({
           const fruitPortion = selectedFruit?.quantityPerServing || 150;
 
           // Quy tắc tính gạo:
-          // - Mặn Cơm (COM): tính gạo cho suất Mặn
-          // - Mặn Nước: Mặn không tính gạo (tính noodleKg)
-          // - Suất Chay: chỉ tính gạo nếu chọn Cơm chay (isChayRice !== false)
-          // - Suất Cháo: KHÔNG tính gạo
+          // - Mặn Cơm (COM): tính gạo cho suất Mặn theo ricePortion
+          // - Mặn Nước: Mặn không tính gạo
+          // - Suất Chay: nếu chọn Cơm chay (isChayRice !== false) thì tính gạo theo ricePortion
+          // - Suất Cháo: tính gạo theo chaoPortion
           const isChayRice = val.isChayRice !== false;
-          const riceServings =
+          const mealRiceServings =
             (val.manMealType === "COM" ? manServings : 0) +
             (isChayRice ? chayServings : 0);
-          const riceKg = (riceServings * ricePortion) / 1000;
+          const mealRiceKg = (mealRiceServings * ricePortion) / 1000;
+          const chaoRiceKg = (chaoServings * chaoPortion) / 1000;
+          const riceKg = mealRiceKg + chaoRiceKg;
 
           let noodleKg = 0;
           const noodleServings =
@@ -909,7 +913,7 @@ export function DailyEntryForm({
                         🍲 Suất Cháo
                       </span>
                       <span className="text-[11px] font-semibold text-cyan-700 dark:text-cyan-300 bg-cyan-500/10 px-2 py-0.5 rounded-full border border-cyan-500/20 shrink-0">
-                        Không tính gạo
+                        {chaoPortion}g gạo/suất
                       </span>
                     </div>
 
@@ -1048,13 +1052,7 @@ export function DailyEntryForm({
                     {/* GẠO */}
                     <div className="flex items-center gap-1.5">
                       <span className="text-slate-600 dark:text-slate-400">
-                        {val.manMealType === "COM"
-                          ? isChayRice && chayServings > 0
-                            ? "🌾 Gạo (Mặn+Chay):"
-                            : "🌾 Gạo (Mặn):"
-                          : isChayRice && chayServings > 0
-                          ? "🌾 Gạo (Chay):"
-                          : "🌾 Gạo:"}
+                        🌾 Tổng gạo:
                       </span>
                       <span className="font-black text-amber-600 dark:text-amber-400 text-sm sm:text-base">
                         {riceKg.toFixed(1)} kg

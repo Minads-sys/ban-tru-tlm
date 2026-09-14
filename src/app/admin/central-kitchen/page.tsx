@@ -134,6 +134,7 @@ export default function CentralKitchenPage() {
     };
     ingredients: {
       ricePortionG: number;
+      chaoPortionG?: number;
       rice: any;
       noodles: any[];
       fruits: any[];
@@ -151,6 +152,7 @@ export default function CentralKitchenPage() {
     },
     ingredients: {
       ricePortionG: 150,
+      chaoPortionG: 50,
       rice: null,
       noodles: [],
       fruits: [],
@@ -435,6 +437,7 @@ export default function CentralKitchenPage() {
               summary={dailyData.summary}
               refreshData={fetchData}
               ricePortionG={dailyData.ingredients.ricePortionG}
+              chaoPortionG={(dailyData.ingredients as any).chaoPortionG || 50}
               mealLockTime={(dailyData as any).config?.mealLockTime || "08:00"}
             />
           </div>

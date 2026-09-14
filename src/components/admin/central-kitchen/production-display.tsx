@@ -80,6 +80,7 @@ interface ProductionDisplayProps {
   summary: DailySummary;
   refreshData: () => Promise<void>;
   ricePortionG?: number;
+  chaoPortionG?: number;
   hideDateControls?: boolean;
   mealLockTime?: string; // Mốc giờ chốt ăn cài đặt (mặc định "08:00")
   isStandalone?: boolean;
@@ -122,6 +123,7 @@ export function ProductionDisplay({
   summary,
   refreshData,
   ricePortionG = 150,
+  chaoPortionG = 50,
   hideDateControls = false,
   mealLockTime = "08:00",
   isStandalone = false,
@@ -207,11 +209,13 @@ export function ProductionDisplay({
       totalChay += dChay;
       totalChao += dChao;
 
-      // Gạo
+      // Gạo: Gạo nấu cơm (Mặn Cơm + Cơm chay) + Gạo nấu cháo
       const isChayRice = b.isChayRice !== false;
-      const riceServings =
+      const mealRiceServings =
         (b.manMealType === "COM" ? dMan : 0) + (isChayRice ? dChay : 0);
-      totalRiceKg += (riceServings * ricePortionG) / 1000;
+      const mealRiceKg = (mealRiceServings * ricePortionG) / 1000;
+      const chaoRiceKg = (dChao * chaoPortionG) / 1000;
+      totalRiceKg += mealRiceKg + chaoRiceKg;
 
       // Món Nước
       if (b.manMealType === "NUOC") {
@@ -595,10 +599,12 @@ export function ProductionDisplay({
             : 0;
 
           const isChayRice = branch.isChayRice !== false;
-          const displayedRiceServings =
+          const displayedMealRiceServings =
             (branch.manMealType === "COM" ? displayedMan : 0) +
             (isChayRice ? displayedChay : 0);
-          const displayedRiceKg = (displayedRiceServings * ricePortionG) / 1000;
+          const displayedMealRiceKg = (displayedMealRiceServings * ricePortionG) / 1000;
+          const displayedChaoRiceKg = (displayedChao * chaoPortionG) / 1000;
+          const displayedRiceKg = displayedMealRiceKg + displayedChaoRiceKg;
           const displayedNoodleServings =
             branch.manMealType === "NUOC"
               ? displayedMan + (!isChayRice ? displayedChay : 0)
@@ -802,11 +808,6 @@ export function ProductionDisplay({
                           >
                             🌾 Gạo
                           </span>
-                          <span className="text-[11px] sm:text-xs font-semibold text-slate-300">
-                            ({ricePortionG}g ×{" "}
-                            {displayedRiceServings.toLocaleString("vi-VN")}{" "}
-                            suất)
-                          </span>
                         </div>
                         <div className="flex items-baseline gap-1">
                           <span
@@ -821,7 +822,7 @@ export function ProductionDisplay({
                         </div>
                       </div>
                     ) : (
-                      /* If Mặn Nước: Noodle box + Chay rice box */
+                      /* If Mặn Nước: Noodle box + Rice box if any */
                       <>
                         <div className="bg-black/25 rounded-xl p-2 sm:p-2.5 border-l-4 border-amber-400 min-h-0 flex flex-col justify-center">
                           <div className="flex items-baseline gap-1.5 flex-wrap mb-0.5">
@@ -850,27 +851,24 @@ export function ProductionDisplay({
                           </div>
                         </div>
 
-                        {displayedChay > 0 && isChayRice && (
-                          <div className="bg-black/25 rounded-lg sm:rounded-xl p-1.5 border-l-4 border-emerald-400 min-h-0 flex flex-col justify-center">
+                        {displayedRiceKg > 0 && (
+                          <div className="bg-black/25 rounded-lg sm:rounded-xl p-1.5 border-l-4 border-amber-400 min-h-0 flex flex-col justify-center">
                             <div className="flex items-baseline gap-1 flex-wrap">
                               <span
                                 className="font-black text-white"
                                 style={{ fontSize: "clamp(13px, 1.8vh, 20px)" }}
                               >
-                                🌾 Gạo Chay
-                              </span>
-                              <span className="text-[10px] sm:text-xs font-semibold text-slate-300">
-                                ({ricePortionG}g × {displayedChay})
+                                🌾 Gạo
                               </span>
                             </div>
                             <div className="flex items-baseline gap-1">
                               <span
-                                className="font-black text-emerald-200 leading-none"
+                                className="font-black text-amber-200 leading-none"
                                 style={{ fontSize: "clamp(20px, 3vh, 32px)" }}
                               >
-                                {((displayedChay * ricePortionG) / 1000).toFixed(1)}
+                                {displayedRiceKg.toFixed(1)}
                               </span>
-                              <span className="text-xs sm:text-sm font-bold text-emerald-300">
+                              <span className="text-xs sm:text-sm font-bold text-amber-300">
                                 kg
                               </span>
                             </div>

@@ -152,9 +152,21 @@ export async function GET(request: NextRequest) {
       }),
     ]);
 
-    // Standard rice portion (default 150g)
-    const standardRice = ingredients.find((i) => i.category === "GAO");
+    // Standard rice portion (default 150g) and Porridge rice portion (default 50g)
+    const standardRice =
+      ingredients.find(
+        (i) =>
+          i.category === "GAO" &&
+          (i.code === "GAO_CHUAN" || i.name.toLowerCase().includes("cơm"))
+      ) || ingredients.find((i) => i.category === "GAO");
     const ricePortionG = standardRice ? Number(standardRice.quantityPerServing) : 150;
+
+    const chaoRice = ingredients.find(
+      (i) =>
+        i.category === "GAO" &&
+        (i.code === "GAO_CHAO" || i.name.toLowerCase().includes("cháo"))
+    );
+    const chaoPortionG = chaoRice ? Number(chaoRice.quantityPerServing) : 50;
 
     // Build branch-entry map
     const entryMap = new Map<string, (typeof entries)[0]>();
@@ -211,13 +223,16 @@ export async function GET(request: NextRequest) {
 
       if (!isHoliday) {
         // Quy tắc tính gạo:
-        // - Món mặn chính: ăn Mặn Cơm (COM) thì tính gạo cho Mặn
-        // - Suất Chay: chỉ tính gạo nếu chọn "Cơm chay" (isChayRice = true)
-        // - Suất Cháo: KHÔNG tính gạo
-        const riceServings =
+        // - Món mặn chính: ăn Mặn Cơm (COM) thì tính gạo cơm cho Mặn
+        // - Suất Chay: nếu chọn "Cơm chay" (isChayRice = true) thì tính gạo cơm cho Chay
+        // - Suất Cháo: tính theo định lượng Gạo nấu cháo (chaoPortionG)
+        // -> Tổng gạo xuất kho = Gạo nấu cơm + Gạo nấu cháo
+        const mealRiceServings =
           (manMealType === "COM" ? servingsMan : 0) +
           (isChayRice ? servingsChay : 0);
-        branchRiceKg = (riceServings * ricePortionG) / 1000;
+        const mealRiceKg = (mealRiceServings * ricePortionG) / 1000;
+        const chaoRiceKg = (servingsChao * chaoPortionG) / 1000;
+        branchRiceKg = mealRiceKg + chaoRiceKg;
 
         if (manMealType === "NUOC") {
           // Mặn Nước/Món khác: Nếu không chọn Cơm chay (!isChayRice), suất Chay cũng ăn Món Nước
@@ -351,7 +366,9 @@ export async function GET(request: NextRequest) {
       })),
       ingredients: {
         ricePortionG,
+        chaoPortionG,
         rice: standardRice,
+        chaoRice,
         noodles: ingredients.filter((i) => i.category === "MON_NUOC"),
         fruits: ingredients.filter((i) => i.category === "TRAI_CAY"),
       },

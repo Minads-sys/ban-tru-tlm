@@ -164,16 +164,19 @@ export function IngredientManager({
           <div>
             <p className="font-bold mb-0.5">Quy ước tính Gạo:</p>
             <p>
-              • Chỉ cần 1 định lượng gạo chuẩn (mặc định 150g/suất, cho phép nhập số thập phân), không phân biệt loại gạo.
+              • Danh mục Gạo gồm: <strong>Gạo nấu cơm</strong> (mặc định 150g/suất) và <strong>Gạo nấu cháo</strong> (mặc định 50g/suất, cho phép nhập số thập phân tùy chỉnh).
             </p>
             <p>
-              • Với chi nhánh ăn <strong>Mặn Cơm</strong>: Gạo = Suất Mặn + (nếu chọn &ldquo;Cơm chay&rdquo; thì tính thêm Suất Chay) × Định lượng Gạo.
+              • Với chi nhánh ăn <strong>Mặn Cơm</strong>: Gạo cơm = Suất Mặn + (nếu chọn &ldquo;Cơm chay&rdquo; thì tính thêm Suất Chay) × Định lượng Gạo nấu cơm.
             </p>
             <p>
-              • Với chi nhánh ăn <strong>Mặn Nước/Món khác</strong>: Mặn không tính gạo. Suất Chay nếu chọn &ldquo;Cơm chay&rdquo; thì tính gạo riêng cho Chay; nếu không chọn &ldquo;Cơm chay&rdquo; thì suất Chay được tính chung vào nguyên liệu Món Nước (Bún/Phở) cùng suất Mặn.
+              • Với chi nhánh ăn <strong>Mặn Nước/Món khác</strong>: Mặn không tính gạo. Suất Chay nếu chọn &ldquo;Cơm chay&rdquo; thì tính theo Gạo nấu cơm; nếu không chọn &ldquo;Cơm chay&rdquo; thì suất Chay được tính chung vào nguyên liệu Món Nước (Bún/Phở) cùng suất Mặn.
             </p>
             <p>
-              • <strong>Suất Cháo</strong> hoàn toàn không tính gạo.
+              • <strong>Suất Cháo</strong>: Luôn được tính gạo theo định lượng <strong>Gạo nấu cháo</strong>.
+            </p>
+            <p>
+              • Tất cả số gạo trên được tự động <strong>cộng gộp vào Tổng Gạo</strong> xuất kho toàn hệ thống.
             </p>
           </div>
         </div>
