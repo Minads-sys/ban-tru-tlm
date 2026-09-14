@@ -220,8 +220,9 @@ export async function GET(request: NextRequest) {
         branchRiceKg = (riceServings * ricePortionG) / 1000;
 
         if (manMealType === "NUOC") {
-          // Mặn Nước/Món khác: Bún / Phở / Nui = Mặn * định lượng món nước / 1000
-          branchNoodleKg = (servingsMan * noodlePortionG) / 1000;
+          // Mặn Nước/Món khác: Nếu không chọn Cơm chay (!isChayRice), suất Chay cũng ăn Món Nước
+          const noodleServings = servingsMan + (!isChayRice ? servingsChay : 0);
+          branchNoodleKg = (noodleServings * noodlePortionG) / 1000;
         }
 
         // Trái cây = Tổng suất * định lượng trái cây / 1000
@@ -234,17 +235,20 @@ export async function GET(request: NextRequest) {
         grandTotalChay += servingsChay;
         grandTotalRiceKg += branchRiceKg;
 
-        if (manMealType === "NUOC" && servingsMan > 0) {
-          if (!noodleTotals[noodleName]) {
-            noodleTotals[noodleName] = {
-              noodleId: entry?.noodleId,
-              noodleName,
-              totalKg: 0,
-              servingsMan: 0,
-            };
+        if (manMealType === "NUOC") {
+          const noodleServings = servingsMan + (!isChayRice ? servingsChay : 0);
+          if (noodleServings > 0) {
+            if (!noodleTotals[noodleName]) {
+              noodleTotals[noodleName] = {
+                noodleId: entry?.noodleId,
+                noodleName,
+                totalKg: 0,
+                servingsMan: 0,
+              };
+            }
+            noodleTotals[noodleName].totalKg += branchNoodleKg;
+            noodleTotals[noodleName].servingsMan += noodleServings;
           }
-          noodleTotals[noodleName].totalKg += branchNoodleKg;
-          noodleTotals[noodleName].servingsMan += servingsMan;
         }
 
         if (totalServings > 0 && entry?.fruitId) {

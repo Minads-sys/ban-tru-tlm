@@ -214,19 +214,22 @@ export function ProductionDisplay({
       totalRiceKg += (riceServings * ricePortionG) / 1000;
 
       // Món Nước
-      if (b.manMealType === "NUOC" && dMan > 0) {
-        const nName =
-          b.noodleName &&
-          b.noodleName !== "Món nước" &&
-          b.noodleName !== "Món Nước"
-            ? b.noodleName
-            : "Bánh phở";
-        const nPortion = b.noodlePortionG || 200;
-        const nKg = (dMan * nPortion) / 1000;
-        if (!noodleTotalsMap[nName]) {
-          noodleTotalsMap[nName] = { noodleName: nName, totalKg: 0 };
+      if (b.manMealType === "NUOC") {
+        const noodleServings = dMan + (!isChayRice ? dChay : 0);
+        if (noodleServings > 0) {
+          const nName =
+            b.noodleName &&
+            b.noodleName !== "Món nước" &&
+            b.noodleName !== "Món Nước"
+              ? b.noodleName
+              : "Bánh phở";
+          const nPortion = b.noodlePortionG || 200;
+          const nKg = (noodleServings * nPortion) / 1000;
+          if (!noodleTotalsMap[nName]) {
+            noodleTotalsMap[nName] = { noodleName: nName, totalKg: 0 };
+          }
+          noodleTotalsMap[nName].totalKg += nKg;
         }
-        noodleTotalsMap[nName].totalKg += nKg;
       }
 
       // Trái cây
@@ -596,9 +599,13 @@ export function ProductionDisplay({
             (branch.manMealType === "COM" ? displayedMan : 0) +
             (isChayRice ? displayedChay : 0);
           const displayedRiceKg = (displayedRiceServings * ricePortionG) / 1000;
+          const displayedNoodleServings =
+            branch.manMealType === "NUOC"
+              ? displayedMan + (!isChayRice ? displayedChay : 0)
+              : 0;
           const displayedNoodleKg =
             branch.manMealType === "NUOC"
-              ? (displayedMan * (branch.noodlePortionG || 200)) / 1000
+              ? (displayedNoodleServings * (branch.noodlePortionG || 200)) / 1000
               : 0;
           const displayedFruitKg =
             (displayedTotal * (branch.fruitPortionG || 150)) / 1000;
@@ -826,7 +833,8 @@ export function ProductionDisplay({
                             </span>
                             <span className="text-[11px] sm:text-xs font-semibold text-slate-300">
                               ({branch.noodlePortionG || 200}g ×{" "}
-                              {displayedMan.toLocaleString("vi-VN")} suất)
+                              {displayedNoodleServings.toLocaleString("vi-VN")} suất
+                              {!isChayRice && displayedChay > 0 ? " [gồm Chay]" : ""})
                             </span>
                           </div>
                           <div className="flex items-baseline gap-1">

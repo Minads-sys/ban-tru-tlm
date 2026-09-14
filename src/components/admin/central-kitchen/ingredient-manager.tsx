@@ -170,7 +170,7 @@ export function IngredientManager({
               • Với chi nhánh ăn <strong>Mặn Cơm</strong>: Gạo = Suất Mặn + (nếu chọn &ldquo;Cơm chay&rdquo; thì tính thêm Suất Chay) × Định lượng Gạo.
             </p>
             <p>
-              • Với chi nhánh ăn <strong>Mặn Nước/Món khác</strong>: Mặn không tính gạo. Gạo chỉ tính cho suất Chay nếu chọn &ldquo;Cơm chay&rdquo;.
+              • Với chi nhánh ăn <strong>Mặn Nước/Món khác</strong>: Mặn không tính gạo. Suất Chay nếu chọn &ldquo;Cơm chay&rdquo; thì tính gạo riêng cho Chay; nếu không chọn &ldquo;Cơm chay&rdquo; thì suất Chay được tính chung vào nguyên liệu Món Nước (Bún/Phở) cùng suất Mặn.
             </p>
             <p>
               • <strong>Suất Cháo</strong> hoàn toàn không tính gạo.

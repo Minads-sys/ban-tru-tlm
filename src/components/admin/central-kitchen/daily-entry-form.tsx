@@ -520,8 +520,12 @@ export function DailyEntryForm({
           const riceKg = (riceServings * ricePortion) / 1000;
 
           let noodleKg = 0;
+          const noodleServings =
+            val.manMealType === "NUOC"
+              ? manServings + (!isChayRice ? chayServings : 0)
+              : 0;
           if (val.manMealType === "NUOC") {
-            noodleKg = (manServings * noodlePortion) / 1000;
+            noodleKg = (noodleServings * noodlePortion) / 1000;
           }
           const fruitKg = (totalServings * fruitPortion) / 1000;
 
@@ -1059,13 +1063,18 @@ export function DailyEntryForm({
 
                     {/* MÓN NƯỚC (if NUOC) */}
                     {val.manMealType === "NUOC" && (
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="text-slate-600 dark:text-slate-400">
                           🍜 {selectedNoodle?.name || (val.noodleName && val.noodleName !== "Món nước" && val.noodleName !== "Món Nước" ? val.noodleName : "Bánh phở")}:
                         </span>
                         <span className="font-black text-blue-600 dark:text-blue-400 text-sm sm:text-base">
                           {noodleKg.toFixed(1)} kg
                         </span>
+                        {!isChayRice && chayServings > 0 && (
+                          <span className="text-[11px] font-bold text-blue-600 dark:text-blue-400">
+                            (gồm {chayServings} suất chay)
+                          </span>
+                        )}
                       </div>
                     )}
 
