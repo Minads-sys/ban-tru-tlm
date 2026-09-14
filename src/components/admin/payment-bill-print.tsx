@@ -50,14 +50,26 @@ interface Props {
 
 export function PaymentBillPrint({ data, onClose, defaultFormat = "K80" }: Props) {
   const [printFormat, setPrintFormat] = useState<"K80" | "A5">(defaultFormat);
+  const [sysSettings, setSysSettings] = useState<Record<string, string>>({});
+
+  React.useEffect(() => {
+    if (!data.schoolName) {
+      fetch("/api/settings")
+        .then((res) => res.json())
+        .then((s) => {
+          if (s && typeof s === "object") setSysSettings(s);
+        })
+        .catch(() => {});
+    }
+  }, [data.schoolName]);
 
   const handlePrint = () => {
     window.print();
   };
 
-  const schoolName = data.schoolName || "TRƯỜNG BÁN TRÚ TIỂU HỌC & THCS THĂNG LONG";
-  const schoolAddress = data.schoolAddress || "Hà Nội";
-  const schoolPhone = data.schoolPhone || "(024) 3888.xxxx";
+  const schoolName = data.schoolName || sysSettings.SCHOOL_NAME || "TRƯỜNG BÁN TRÚ";
+  const schoolAddress = data.schoolAddress || sysSettings.SCHOOL_ADDRESS || "";
+  const schoolPhone = data.schoolPhone || sysSettings.SCHOOL_PHONE || "";
 
   const bankName = data.bankInfo?.bankName || "BIDV";
   const accountNo = data.bankInfo?.accountNo || "96247BANTRUTLM08";

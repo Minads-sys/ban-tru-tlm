@@ -435,7 +435,12 @@ export function CashPos({ currentUser }: { currentUser: any }) {
       const data = await res.json();
       if (res.ok && data.success) {
         // Mở popup in phiếu thu ngay lập tức
-        setPrintReceiptData(data.receipt);
+        setPrintReceiptData({
+          ...data.receipt,
+          schoolName: data.receipt?.schoolName || settings.SCHOOL_NAME || "",
+          schoolAddress: data.receipt?.schoolAddress || settings.SCHOOL_ADDRESS || "",
+          schoolPhone: data.receipt?.schoolPhone || settings.SCHOOL_PHONE || "",
+        });
         setOpenPrintModal(true);
 
         // Tải lại dữ liệu hóa đơn của học sinh, danh sách phiếu thu hôm nay và danh sách chờ quyết toán
@@ -470,6 +475,9 @@ export function CashPos({ currentUser }: { currentUser: any }) {
       amount: receiptItem.amount,
       note: receiptItem.note,
       cashierName: receiptItem.cashierName,
+      schoolName: receiptItem.schoolName || settings.SCHOOL_NAME || "",
+      schoolAddress: receiptItem.schoolAddress || settings.SCHOOL_ADDRESS || "",
+      schoolPhone: receiptItem.schoolPhone || settings.SCHOOL_PHONE || "",
       student: {
         fullName: receiptItem.student?.fullName || "",
         studentCode: receiptItem.student?.studentCode || "", // Đã che CCCD 4 số cuối

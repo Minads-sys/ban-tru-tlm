@@ -147,6 +147,16 @@ export async function POST(request: NextRequest) {
     const isFullAdmin = session.user.role === "ADMIN";
     const maskedCode = isFullAdmin ? bill.student.studentCode : maskStudentCode(bill.student.studentCode);
 
+    const schoolSettings = await prisma.systemSetting.findMany({
+      where: {
+        key: { in: ["SCHOOL_NAME", "SCHOOL_ADDRESS", "SCHOOL_PHONE"] },
+      },
+    });
+    const sMap: Record<string, string> = {};
+    schoolSettings.forEach((s) => {
+      sMap[s.key] = s.value;
+    });
+
     return NextResponse.json({
       success: true,
       message: `Đã lập phiếu thu tiền mặt ${receiptNumber} thành công!`,
@@ -159,6 +169,9 @@ export async function POST(request: NextRequest) {
         changeAmount: Math.max(0, paidByCustomer - payAmount),
         note,
         cashierName,
+        schoolName: sMap["SCHOOL_NAME"] || "",
+        schoolAddress: sMap["SCHOOL_ADDRESS"] || "",
+        schoolPhone: sMap["SCHOOL_PHONE"] || "",
         bill: {
           id: bill.id,
           month: bill.month,
@@ -280,6 +293,16 @@ export async function GET(request: NextRequest) {
 
     const isFullAdmin = session.user.role === "ADMIN";
 
+    const schoolSettings = await prisma.systemSetting.findMany({
+      where: {
+        key: { in: ["SCHOOL_NAME", "SCHOOL_ADDRESS", "SCHOOL_PHONE"] },
+      },
+    });
+    const sMap: Record<string, string> = {};
+    schoolSettings.forEach((s) => {
+      sMap[s.key] = s.value;
+    });
+
     // Format kết quả: ÁP DỤNG CHE MÃ HỌC SINH (CCCD) NẾU LÀ THU NGÂN
     const data = transactions.map((t) => {
       const originalCode = t.student?.studentCode || "";
@@ -288,6 +311,9 @@ export async function GET(request: NextRequest) {
       return {
         id: t.id,
         receiptNumber: t.receiptNumber,
+        schoolName: sMap["SCHOOL_NAME"] || "",
+        schoolAddress: sMap["SCHOOL_ADDRESS"] || "",
+        schoolPhone: sMap["SCHOOL_PHONE"] || "",
         amount: Number(t.amount),
         transDate: t.transDate,
         content: t.content,

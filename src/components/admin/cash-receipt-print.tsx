@@ -36,14 +36,26 @@ interface Props {
 
 export function CashReceiptPrint({ data, onClose, format = "K80" }: Props) {
   const [printFormat, setPrintFormat] = React.useState<"K80" | "A5">(format);
+  const [sysSettings, setSysSettings] = React.useState<Record<string, string>>({});
+
+  React.useEffect(() => {
+    if (!data.schoolName) {
+      fetch("/api/settings")
+        .then((res) => res.json())
+        .then((s) => {
+          if (s && typeof s === "object") setSysSettings(s);
+        })
+        .catch(() => {});
+    }
+  }, [data.schoolName]);
 
   const handlePrint = () => {
     window.print();
   };
 
-  const schoolName = data.schoolName || "TRƯỜNG BÁN TRÚ TIỂU HỌC & THCS THĂNG LONG";
-  const schoolAddress = data.schoolAddress || "Hà Nội";
-  const schoolPhone = data.schoolPhone || "(024) 3888.xxxx";
+  const schoolName = data.schoolName || sysSettings.SCHOOL_NAME || "TRƯỜNG BÁN TRÚ";
+  const schoolAddress = data.schoolAddress || sysSettings.SCHOOL_ADDRESS || "";
+  const schoolPhone = data.schoolPhone || sysSettings.SCHOOL_PHONE || "";
 
   const customerPaid = data.customerPaid ?? data.amount;
   const changeAmount = data.changeAmount ?? Math.max(0, customerPaid - data.amount);
@@ -113,8 +125,8 @@ export function CashReceiptPrint({ data, onClose, format = "K80" }: Props) {
           >
             <div className="text-center pb-2 border-b border-dashed border-slate-400">
               <div className="font-extrabold text-[13px] uppercase">{schoolName}</div>
-              <div className="text-[11px] text-slate-600 mt-0.5">{schoolAddress}</div>
-              <div className="text-[11px] text-slate-600">ĐT: {schoolPhone}</div>
+              {schoolAddress && <div className="text-[11px] text-slate-600 mt-0.5">{schoolAddress}</div>}
+              {schoolPhone && <div className="text-[11px] text-slate-600">ĐT: {schoolPhone}</div>}
               <div className="font-black text-[16px] mt-2 text-slate-900 tracking-wide">PHIẾU THU TIỀN MẶT</div>
               <div className="text-[11px] font-bold text-slate-700 mt-0.5">Số: {data.receiptNumber}</div>
               <div className="text-[10px] text-slate-500 mt-0.5">{formattedDate}</div>
@@ -175,13 +187,12 @@ export function CashReceiptPrint({ data, onClose, format = "K80" }: Props) {
               <div className="w-1/2">
                 <div className="font-bold">Người nộp tiền</div>
                 <div className="text-[10px] text-slate-500 italic">(Ký, họ tên)</div>
-                <div className="h-10"></div>
+                <div className="h-12"></div>
               </div>
               <div className="w-1/2">
                 <div className="font-bold">Người thu tiền</div>
                 <div className="text-[10px] text-slate-500 italic">(Ký, họ tên)</div>
-                <div className="h-10"></div>
-                <div className="font-semibold text-slate-800">{data.cashierName}</div>
+                <div className="h-12"></div>
               </div>
             </div>
 
@@ -199,8 +210,11 @@ export function CashReceiptPrint({ data, onClose, format = "K80" }: Props) {
             <div className="flex justify-between items-start border-b pb-3">
               <div>
                 <div className="font-extrabold text-sm uppercase text-slate-900">{schoolName}</div>
-                <div className="text-xs text-slate-600">{schoolAddress} - ĐT: {schoolPhone}</div>
-                <div className="text-xs text-slate-600">TỔ QUẢN LÝ BÁN TRÚ</div>
+                <div className="text-xs text-slate-600">
+                  {schoolAddress}
+                  {schoolPhone ? ` - ĐT: ${schoolPhone}` : ""}
+                </div>
+                <div className="text-xs text-slate-600 font-semibold mt-0.5">TỔ QUẢN LÝ BÁN TRÚ</div>
               </div>
               <div className="text-right">
                 <div className="text-xs font-semibold text-slate-700">Mẫu số: C40-BB</div>
@@ -268,10 +282,9 @@ export function CashReceiptPrint({ data, onClose, format = "K80" }: Props) {
                 <div className="h-16"></div>
               </div>
               <div>
-                <div className="font-bold">Người lập phiếu (Thu ngân)</div>
+                <div className="font-bold">Người thu tiền</div>
                 <div className="text-[11px] text-slate-500 italic">(Ký, ghi rõ họ tên)</div>
                 <div className="h-16"></div>
-                <div className="font-semibold text-slate-900">{data.cashierName}</div>
               </div>
             </div>
           </div>

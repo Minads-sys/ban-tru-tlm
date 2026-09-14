@@ -66,9 +66,11 @@ export function CashClosingManager({ currentUser }: { currentUser: any }) {
   const [historyClosings, setHistoryClosings] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
-  // Modal in Biên bản A4
+  // Modal in Biên bản A4 & Giấy kiểm đếm
   const [handoverPrintData, setHandoverPrintData] = useState<CashHandoverClosingData | null>(null);
   const [openPrintModal, setOpenPrintModal] = useState(false);
+  const [defaultPrintMode, setDefaultPrintMode] = useState<"handover" | "counting">("handover");
+  const [settings, setSettings] = useState<Record<string, string>>({});
 
   // TAB 3: Quản lý Hủy phiếu (Chỉ Kế toán / Admin)
   const isAccountantOrAdmin =
@@ -117,12 +119,48 @@ export function CashClosingManager({ currentUser }: { currentUser: any }) {
   }, []);
 
   useEffect(() => {
+    fetch("/api/settings")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && typeof data === "object") setSettings(data);
+      })
+      .catch((err) => console.error(err));
+  }, []);
+
+  useEffect(() => {
     if (activeTab === "closing-today") {
       fetchUnclosed();
     } else if (activeTab === "history") {
       fetchHistory();
     }
   }, [activeTab, fetchUnclosed, fetchHistory]);
+
+  // In Giấy kiểm đếm tiền mặt độc lập
+  const handlePrintCountSheet = () => {
+    if (countedTotal === 0 && unclosedData.totalAmount === 0) {
+      Swal.fire("Thông báo", "Vui lòng nhập số tờ kiểm đếm trước khi in giấy kiểm đếm!", "info");
+      return;
+    }
+    const todayStr = getVietnamTodayString();
+    const tempClosingData: CashHandoverClosingData = {
+      id: "TEMP_COUNTING",
+      code: `KD-${todayStr.replace(/-/g, "")}`,
+      closingDate: new Date(),
+      startTime: new Date(),
+      endTime: new Date(),
+      totalTransactions: unclosedData.count,
+      totalAmount: countedTotal > 0 ? countedTotal : unclosedData.totalAmount,
+      denominationData: JSON.stringify(denomCounts),
+      status: "PENDING",
+      note: closingNote || "Kiểm đếm tiền mặt két",
+      cashier: currentUser ? { fullName: currentUser.fullName || currentUser.username || "Thu ngân", username: currentUser.username || "" } : null,
+      accountant: null,
+      transactions: [],
+    };
+    setHandoverPrintData(tempClosingData);
+    setDefaultPrintMode("counting");
+    setOpenPrintModal(true);
+  };
 
   // Tính tổng tiền kiểm đếm từ bảng kê mệnh giá
   const countedTotal = DENOMINATIONS.reduce((sum, d) => sum + (denomCounts[d] || 0) * d, 0);
@@ -203,6 +241,7 @@ export function CashClosingManager({ currentUser }: { currentUser: any }) {
       const res = await fetch(`/api/billing/cash-closing?mode=detail&id=${closingId}`);
       const data = await res.json();
       if (data.success && data.closing) {
+        setDefaultPrintMode("handover");
         setHandoverPrintData(data.closing);
         setOpenPrintModal(true);
       } else {
@@ -369,7 +408,7 @@ export function CashClosingManager({ currentUser }: { currentUser: any }) {
             <div className="lg:col-span-7 space-y-6">
               <Card className="border-slate-200 shadow-xs">
                 <CardHeader className="pb-3 border-b bg-slate-50/80">
-                  <div className="flex justify-between items-center">
+                  <div className="flex flex-wrap justify-between items-center gap-2">
                     <div>
                       <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
                         <Banknote className="h-5 w-5 text-emerald-600" />
@@ -379,6 +418,16 @@ export function CashClosingManager({ currentUser }: { currentUser: any }) {
                         Thu ngân kiểm đếm két và nhập số tờ của từng loại mệnh giá
                       </CardDescription>
                     </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handlePrintCountSheet}
+                      className="text-xs font-semibold text-emerald-700 border-emerald-300 hover:bg-emerald-50 shadow-2xs"
+                    >
+                      <Printer className="h-3.5 w-3.5 mr-1.5" />
+                      In Giấy Kiểm Đếm Tiền
+                    </Button>
                   </div>
                 </CardHeader>
                 <CardContent className="p-0">
@@ -707,6 +756,10 @@ export function CashClosingManager({ currentUser }: { currentUser: any }) {
           {handoverPrintData && (
             <CashHandoverPrint
               data={handoverPrintData}
+              defaultMode={defaultPrintMode}
+              schoolName={settings.SCHOOL_NAME}
+              schoolAddress={settings.SCHOOL_ADDRESS}
+              schoolPhone={settings.SCHOOL_PHONE}
               onClose={() => setOpenPrintModal(false)}
             />
           )}

@@ -8,6 +8,8 @@ export async function GET() {
     const settings = await prisma.systemSetting.findMany();
     const settingsMap: Record<string, string> = {
       SCHOOL_NAME: '',
+      SCHOOL_ADDRESS: '',
+      SCHOOL_PHONE: '',
       MEAL_UNIT_PRICE: '35000',
       CUTOFF_TIME: '07:30',
       SCHOOL_YEAR: '2025-2026',

@@ -35,12 +35,13 @@ import {
   Wrench,
   Eye,
   History,
-  Receipt,
+  Phone,
 } from 'lucide-react';
 
 interface SettingsFormState {
   SCHOOL_NAME: string;
   SCHOOL_ADDRESS: string;
+  SCHOOL_PHONE: string;
   MEAL_UNIT_PRICE: string;
   CUTOFF_TIME: string; // Có thể giữ lại hoặc thay thế bằng MEAL_LOCK_TIME_2
   MEAL_LOCK_TIME_1: string;
@@ -103,6 +104,7 @@ export default function AdminSettingsPage() {
   const [formData, setFormData] = useState<SettingsFormState>({
     SCHOOL_NAME: '',
     SCHOOL_ADDRESS: '',
+    SCHOOL_PHONE: '',
     MEAL_UNIT_PRICE: '30000',
     CUTOFF_TIME: '16:30',
     MEAL_LOCK_TIME_1: '16:00',
@@ -379,6 +381,22 @@ export default function AdminSettingsPage() {
                     placeholder="VD: 123 Đường Thăng Long Mới, Phường X, Quận Y, Hà Nội"
                     value={formData.SCHOOL_ADDRESS}
                     onChange={(e) => handleChange('SCHOOL_ADDRESS', e.target.value)}
+                    className="h-10"
+                  />
+                </div>
+
+                {/* Số điện thoại / Hotline trường */}
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="SCHOOL_PHONE" className="flex items-center gap-2 text-sm font-medium">
+                    <Phone className="h-4 w-4 text-slate-500" />
+                    Số Điện Thoại / Hotline (SCHOOL_PHONE)
+                  </Label>
+                  <Input
+                    id="SCHOOL_PHONE"
+                    type="text"
+                    placeholder="VD: (028) 3822.xxxx hoặc 090xxxxxxx"
+                    value={formData.SCHOOL_PHONE}
+                    onChange={(e) => handleChange('SCHOOL_PHONE', e.target.value)}
                     className="h-10"
                   />
                 </div>
