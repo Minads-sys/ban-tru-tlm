@@ -913,10 +913,10 @@ export function DiningCourtTab({ cutoffTime, schoolName }: DiningCourtTabProps) 
                           <TableHeader className="bg-slate-50 sticky top-0">
                             <TableRow>
                               <TableHead className="w-8 text-center p-1">#</TableHead>
-                              <TableHead className="p-1 w-20">Mã bán trú</TableHead>
                               <TableHead className="p-1">Họ và đệm</TableHead>
                               <TableHead className="p-1 font-bold text-slate-900 w-24">Tên</TableHead>
                               <TableHead className="w-14 text-center p-1">Lớp</TableHead>
+                              <TableHead className="w-24 text-center p-1">Điện thoại</TableHead>
                               <TableHead className="w-14 text-center p-1">Suất</TableHead>
                             </TableRow>
                           </TableHeader>
@@ -932,9 +932,6 @@ export function DiningCourtTab({ cutoffTime, schoolName }: DiningCourtTabProps) 
                                   <TableCell className="text-center font-medium text-slate-500 p-1">
                                     {sIdx + 1}
                                   </TableCell>
-                                  <TableCell className="p-1 text-blue-700 font-semibold font-mono text-[11px]">
-                                    {st.boardingCode || "—"}
-                                  </TableCell>
                                   <TableCell className="p-1 text-slate-700">
                                     {lastName}
                                   </TableCell>
@@ -943,6 +940,9 @@ export function DiningCourtTab({ cutoffTime, schoolName }: DiningCourtTabProps) 
                                   </TableCell>
                                   <TableCell className="text-center p-1 font-medium text-slate-700">
                                     {st.className}
+                                  </TableCell>
+                                  <TableCell className="text-center p-1 font-mono text-slate-600 text-[11px]">
+                                    {st.phone || "—"}
                                   </TableCell>
                                   <TableCell className="text-center p-1 font-semibold">
                                     {st.mealType === 'CHAY' ? (

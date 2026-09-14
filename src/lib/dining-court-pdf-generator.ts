@@ -187,16 +187,16 @@ export async function generateDiningCourtsPdfBuffer(
     });
 
     // 4. Bảng danh sách học sinh
-    // 4. Bảng danh sách học sinh (Tách riêng cột Họ và đệm + Tên)
+    // 4. Bảng danh sách học sinh (Tách riêng cột Họ và đệm + Tên, bỏ mã bán trú, thêm SĐT, thu hẹp điểm danh)
     const tableBody: any[] = [
       [
         { text: "STT", bold: true, alignment: "center", fillColor: "#f1f5f9" },
-        { text: "Mã bán trú", bold: true, alignment: "center", fillColor: "#f1f5f9" },
         { text: "Họ và đệm", bold: true, alignment: "left", fillColor: "#f1f5f9" },
         { text: "Tên", bold: true, alignment: "left", fillColor: "#f1f5f9" },
         { text: "Lớp", bold: true, alignment: "center", fillColor: "#f1f5f9" },
+        { text: "Điện thoại", bold: true, alignment: "center", fillColor: "#f1f5f9" },
         { text: "Suất ăn", bold: true, alignment: "center", fillColor: "#f1f5f9" },
-        { text: "Điểm danh nhận cơm", bold: true, alignment: "center", fillColor: "#f1f5f9" },
+        { text: "Điểm danh", bold: true, alignment: "center", fillColor: "#f1f5f9" },
         { text: "Ghi chú", bold: true, alignment: "center", fillColor: "#f1f5f9" },
       ],
     ];
@@ -219,10 +219,10 @@ export async function generateDiningCourtsPdfBuffer(
 
       tableBody.push([
         { text: String(sIdx + 1), alignment: "center", fontSize: 9 },
-        { text: student.boardingCode || "—", alignment: "center", fontSize: 8.5, bold: true, color: "#1d4ed8" },
         { text: lastName, alignment: "left", fontSize: 9 },
         { text: firstName, alignment: "left", bold: true, fontSize: 9.5, color: "#0f172a" },
         { text: student.className, alignment: "center", fontSize: 9 },
+        { text: student.phone || "—", alignment: "center", fontSize: 8.5, color: "#334155" },
         { text: mealText, alignment: "center", bold: student.mealType !== "MAN", color: mealColor, fontSize: 9 },
         { text: "[    ]", alignment: "center", fontSize: 10, color: "#64748b" }, // Ô điểm danh cho GV tích
         { text: "", alignment: "center", fontSize: 8.5 },
@@ -232,7 +232,7 @@ export async function generateDiningCourtsPdfBuffer(
     content.push({
       table: {
         headerRows: 1,
-        widths: [22, 60, "*", 52, 42, 48, 75, 50],
+        widths: [22, "*", 52, 40, 70, 44, 48, 50],
         body: tableBody,
       },
       margin: [0, 0, 0, 15],

@@ -6,6 +6,7 @@ export interface StudentMealInfo {
   id: string;
   studentCode: string;
   boardingCode: string;
+  phone?: string;
   fullName: string;
   lastName?: string; // Họ và tên đệm (VD: "ĐÀO QUỐC")
   firstName?: string; // Tên chính (VD: "ANH")
@@ -615,6 +616,7 @@ export async function getDayMealClasses(dateStr: string) {
         id: s.id,
         studentCode: s.studentCode,
         boardingCode: s.boardingCode || "—",
+        phone: s.parentPhone || "",
         fullName,
         lastName,
         firstName,
@@ -677,6 +679,7 @@ export async function getDayMealClasses(dateStr: string) {
       id: student.id,
       studentCode: student.studentCode,
       boardingCode: student.boardingCode || "—",
+      phone: student.parentPhone || "",
       fullName,
       lastName,
       firstName,
