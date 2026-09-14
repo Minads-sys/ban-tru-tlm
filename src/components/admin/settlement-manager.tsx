@@ -56,7 +56,13 @@ export function SettlementManager({ currentUser, onSelectStudentToCollect }: Pro
   const [loading, setLoading] = useState(false);
   const [pendingCollections, setPendingCollections] = useState<any[]>([]);
   const [pendingRefunds, setPendingRefunds] = useState<any[]>([]);
+  const [settledStudents, setSettledStudents] = useState<any[]>([]);
+  const [allCancelledStudents, setAllCancelledStudents] = useState<any[]>([]);
+  const [statusFilter, setStatusFilter] = useState<"ALL" | "PENDING" | "SETTLED">("ALL");
   const [stats, setStats] = useState({
+    totalCancelledCount: 0,
+    pendingCount: 0,
+    settledCount: 0,
     collectionCount: 0,
     totalPendingDebt: 0,
     refundCount: 0,
@@ -66,7 +72,7 @@ export function SettlementManager({ currentUser, onSelectStudentToCollect }: Pro
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedClass, setSelectedClass] = useState("all");
   const [classes, setClasses] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<"collections" | "refunds">("collections");
+  const [activeTab, setActiveTab] = useState<"all" | "collections" | "refunds" | "settled">("collections");
 
   // Modal Xác nhận hoàn tiền (Chỉ Kế toán/Admin)
   const [selectedRefundItem, setSelectedRefundItem] = useState<any | null>(null);
@@ -115,10 +121,15 @@ export function SettlementManager({ currentUser, onSelectStudentToCollect }: Pro
       if (data.success) {
         setPendingCollections(data.pendingCollections || []);
         setPendingRefunds(data.pendingRefunds || []);
+        setSettledStudents(data.settledStudents || []);
+        setAllCancelledStudents(data.allCancelledStudents || []);
         setStats(data.stats || {
-          collectionCount: 0,
+          totalCancelledCount: (data.allCancelledStudents || []).length,
+          pendingCount: (data.pendingCollections || []).length + (data.pendingRefunds || []).length,
+          settledCount: (data.settledStudents || []).length,
+          collectionCount: (data.pendingCollections || []).length,
           totalPendingDebt: 0,
-          refundCount: 0,
+          refundCount: (data.pendingRefunds || []).length,
           totalPendingRefund: 0,
         });
       } else {
@@ -246,8 +257,73 @@ export function SettlementManager({ currentUser, onSelectStudentToCollect }: Pro
         });
       });
 
+      // Sheet 3: Đã quyết toán xong
+      const wsSettled = workbook.addWorksheet("3. Đã Quyết Toán");
+      wsSettled.columns = [
+        { header: "STT", key: "stt", width: 6 },
+        { header: "Họ và tên", key: "fullName", width: 25 },
+        { header: "Lớp", key: "className", width: 10 },
+        { header: "Mã Bán Trú", key: "boardingCode", width: 15 },
+        { header: "CCCD", key: "studentCode", width: 18 },
+        { header: "Ngày ngừng ăn", key: "boardingCancelledAt", width: 15 },
+        { header: "Hình thức", key: "settledType", width: 18 },
+        { header: "Ngày quyết toán", key: "settlementDate", width: 15 },
+        { header: "Ghi chú quyết toán", key: "note", width: 35 },
+      ];
+
+      settledStudents.forEach((item, index) => {
+        wsSettled.addRow({
+          stt: index + 1,
+          fullName: item.fullName,
+          className: item.className,
+          boardingCode: item.boardingCode || "",
+          studentCode: item.studentCode,
+          boardingCancelledAt: item.boardingCancelledAt ? formatDate(item.boardingCancelledAt) : "",
+          settledType: item.settledType || "Đã hoàn tất",
+          settlementDate: item.settlementRecord?.settlementDate ? formatDate(item.settlementRecord.settlementDate) : "—",
+          note: item.settlementRecord?.note || "",
+        });
+      });
+
+      // Sheet 4: Toàn bộ học sinh đã hủy ăn
+      const wsAll = workbook.addWorksheet("4. Toàn Bộ Hủy Ăn");
+      wsAll.columns = [
+        { header: "STT", key: "stt", width: 6 },
+        { header: "Họ và tên", key: "fullName", width: 25 },
+        { header: "Lớp", key: "className", width: 10 },
+        { header: "Mã Bán Trú", key: "boardingCode", width: 15 },
+        { header: "CCCD", key: "studentCode", width: 18 },
+        { header: "Ngày ngừng ăn", key: "boardingCancelledAt", width: 15 },
+        { header: "Trạng thái quyết toán", key: "status", width: 20 },
+        { header: "Tiền nợ (đ)", key: "debt", width: 15 },
+        { header: "Tiền hoàn (đ)", key: "refund", width: 15 },
+        { header: "Ghi chú", key: "note", width: 35 },
+      ];
+
+      allCancelledStudents.forEach((item, index) => {
+        const statusText =
+          item.settlementStatus === "PENDING_DEBT"
+            ? "Chờ thu nợ"
+            : item.settlementStatus === "PENDING_REFUND"
+            ? "Chờ hoàn tiền"
+            : "Đã quyết toán";
+
+        wsAll.addRow({
+          stt: index + 1,
+          fullName: item.fullName,
+          className: item.className,
+          boardingCode: item.boardingCode || "",
+          studentCode: item.studentCode,
+          boardingCancelledAt: item.boardingCancelledAt ? formatDate(item.boardingCancelledAt) : "",
+          status: statusText,
+          debt: item.totalRemainingDebt || 0,
+          refund: item.pendingRefundAmount || 0,
+          note: item.settlementRecord?.note || "",
+        });
+      });
+
       // Định dạng Header các sheet
-      [wsCollect, wsRefund].forEach((sheet) => {
+      [wsCollect, wsRefund, wsSettled, wsAll].forEach((sheet) => {
         sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
         sheet.getRow(1).fill = {
           type: "pattern",
@@ -264,7 +340,7 @@ export function SettlementManager({ currentUser, onSelectStudentToCollect }: Pro
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `Danh_Sach_Huy_Ban_Tru_Cho_Quyet_Toan_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      a.download = `Danh_Sach_Huy_Ban_Tru_Quyet_Toan_${new Date().toISOString().slice(0, 10)}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
@@ -378,16 +454,25 @@ export function SettlementManager({ currentUser, onSelectStudentToCollect }: Pro
     <div className="space-y-6">
       {/* 1. THẺ THỐNG KÊ TỔNG QUAN */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="border-blue-200 bg-blue-50/50 shadow-xs">
+        <Card
+          className="border-blue-200 bg-blue-50/50 shadow-xs cursor-pointer hover:border-blue-400 hover:shadow-sm transition-all"
+          onClick={() => {
+            setActiveTab("all");
+            setStatusFilter("ALL");
+          }}
+          title="Bấm để xem tất cả học sinh đã hủy ăn"
+        >
           <CardContent className="p-4 flex items-center justify-between">
             <div>
               <p className="text-xs text-blue-700 font-semibold uppercase tracking-wider">
-                Tổng HS Chờ Quyết Toán
+                Tổng HS Đã Hủy Ăn
               </p>
               <p className="text-2xl font-black text-blue-900 mt-1">
-                {stats.collectionCount + stats.refundCount}
+                {stats.totalCancelledCount || (allCancelledStudents.length || (stats.collectionCount + stats.refundCount + stats.settledCount))}
               </p>
-              <p className="text-[11px] text-blue-600 mt-0.5">Đã ngừng ăn bán trú</p>
+              <p className="text-[11px] text-blue-600 mt-0.5">
+                Chưa Xong: <b>{stats.pendingCount || (stats.collectionCount + stats.refundCount)}</b> | Đã Xong: <b>{stats.settledCount || settledStudents.length}</b>
+              </p>
             </div>
             <div className="w-11 h-11 rounded-full bg-blue-200/70 flex items-center justify-center text-blue-700">
               <Scale className="h-6 w-6" />
@@ -395,7 +480,14 @@ export function SettlementManager({ currentUser, onSelectStudentToCollect }: Pro
           </CardContent>
         </Card>
 
-        <Card className="border-rose-200 bg-rose-50/50 shadow-xs">
+        <Card
+          className="border-rose-200 bg-rose-50/50 shadow-xs cursor-pointer hover:border-rose-400 hover:shadow-sm transition-all"
+          onClick={() => {
+            setActiveTab("collections");
+            setStatusFilter("PENDING");
+          }}
+          title="Bấm để xem danh sách chờ thu nợ"
+        >
           <CardContent className="p-4 flex items-center justify-between">
             <div>
               <p className="text-xs text-rose-700 font-semibold uppercase tracking-wider">
@@ -414,7 +506,14 @@ export function SettlementManager({ currentUser, onSelectStudentToCollect }: Pro
           </CardContent>
         </Card>
 
-        <Card className="border-amber-200 bg-amber-50/50 shadow-xs">
+        <Card
+          className="border-amber-200 bg-amber-50/50 shadow-xs cursor-pointer hover:border-amber-400 hover:shadow-sm transition-all"
+          onClick={() => {
+            setActiveTab("refunds");
+            setStatusFilter("PENDING");
+          }}
+          title="Bấm để xem danh sách chờ hoàn tiền"
+        >
           <CardContent className="p-4 flex items-center justify-between">
             <div>
               <p className="text-xs text-amber-700 font-semibold uppercase tracking-wider">
@@ -433,16 +532,28 @@ export function SettlementManager({ currentUser, onSelectStudentToCollect }: Pro
           </CardContent>
         </Card>
 
-        <Card className="border-slate-200 bg-slate-50/70 shadow-xs">
-          <CardContent className="p-4 flex flex-col justify-between h-full">
+        <Card
+          className="border-emerald-200 bg-emerald-50/50 shadow-xs cursor-pointer hover:border-emerald-400 hover:shadow-sm transition-all"
+          onClick={() => {
+            setActiveTab("settled");
+            setStatusFilter("SETTLED");
+          }}
+          title="Bấm để xem danh sách đã hoàn tất quyết toán"
+        >
+          <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-xs text-slate-600 font-semibold uppercase tracking-wider">
-                Quy Trình Phân Quyền
+              <p className="text-xs text-emerald-700 font-semibold uppercase tracking-wider">
+                Đã Quyết Toán Xong
               </p>
-              <p className="text-[11px] text-slate-600 mt-1.5 leading-relaxed">
-                • <b>Thu ngân:</b> Chỉ thu tiền nợ, không chi tiền.<br />
-                • <b>Kế toán:</b> Duy nhất phụ trách chi hoàn tiền thừa.
+              <p className="text-2xl font-black text-emerald-900 mt-1">
+                {stats.settledCount || settledStudents.length} <span className="text-xs font-normal">học sinh</span>
               </p>
+              <p className="text-[11px] text-emerald-700 font-medium mt-0.5">
+                Đã thanh toán / hoàn tất 100%
+              </p>
+            </div>
+            <div className="w-11 h-11 rounded-full bg-emerald-200/70 flex items-center justify-center text-emerald-700">
+              <CheckCircle2 className="h-6 w-6" />
             </div>
           </CardContent>
         </Card>
@@ -451,9 +562,9 @@ export function SettlementManager({ currentUser, onSelectStudentToCollect }: Pro
       {/* 2. BỘ LỌC VÀ NÚT THAO TÁC */}
       <Card className="border-slate-200 shadow-xs">
         <CardContent className="p-4">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div className="flex flex-1 items-center gap-3 w-full">
-              <div className="relative flex-1 max-w-sm">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-3">
+            <div className="flex flex-1 flex-wrap items-center gap-3 w-full">
+              <div className="relative flex-1 min-w-[200px] max-w-sm">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                 <Input
                   placeholder="Tìm theo tên, lớp, mã BT, CCCD..."
@@ -463,7 +574,8 @@ export function SettlementManager({ currentUser, onSelectStudentToCollect }: Pro
                 />
               </div>
 
-              <div className="w-40">
+              {/* Bộ lọc lớp */}
+              <div className="w-36">
                 <Select value={selectedClass} onValueChange={setSelectedClass}>
                   <SelectTrigger className="text-xs h-9">
                     <SelectValue placeholder="Tất cả các lớp" />
@@ -479,12 +591,46 @@ export function SettlementManager({ currentUser, onSelectStudentToCollect }: Pro
                 </Select>
               </div>
 
+              {/* Bộ lọc trạng thái quyết toán (MỚI) */}
+              <div className="w-48">
+                <Select
+                  value={statusFilter}
+                  onValueChange={(val: "ALL" | "PENDING" | "SETTLED") => {
+                    setStatusFilter(val);
+                    if (val === "SETTLED") {
+                      setActiveTab("settled");
+                    } else if (val === "PENDING") {
+                      if (activeTab === "settled" || activeTab === "all") {
+                        setActiveTab(pendingCollections.length > 0 ? "collections" : "refunds");
+                      }
+                    } else if (val === "ALL") {
+                      setActiveTab("all");
+                    }
+                  }}
+                >
+                  <SelectTrigger className="text-xs h-9 font-medium">
+                    <SelectValue placeholder="Trạng thái quyết toán" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">
+                      Tất cả trạng thái ({stats.totalCancelledCount || allCancelledStudents.length})
+                    </SelectItem>
+                    <SelectItem value="PENDING">
+                      Chưa quyết toán ({stats.pendingCount || (pendingCollections.length + pendingRefunds.length)})
+                    </SelectItem>
+                    <SelectItem value="SETTLED">
+                      Đã quyết toán ({stats.settledCount || settledStudents.length})
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
               <Button
                 variant="outline"
                 size="sm"
                 onClick={fetchPendingData}
                 disabled={loading}
-                className="h-9 px-3 text-xs gap-1.5"
+                className="h-9 px-3 text-xs gap-1.5 cursor-pointer"
                 title="Làm mới dữ liệu"
               >
                 <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
@@ -496,7 +642,8 @@ export function SettlementManager({ currentUser, onSelectStudentToCollect }: Pro
               variant="outline"
               size="sm"
               onClick={handleExportExcel}
-              className="h-9 px-3.5 text-xs gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 font-semibold shrink-0"
+              className="h-9 px-3.5 text-xs gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 font-semibold shrink-0 cursor-pointer"
+              title="Xuất file Excel đầy đủ các danh sách quyết toán"
             >
               <FileDown className="h-4 w-4 text-emerald-600" />
               <span>Xuất File Excel</span>
@@ -506,21 +653,44 @@ export function SettlementManager({ currentUser, onSelectStudentToCollect }: Pro
       </Card>
 
       {/* 3. BẢNG DỮ LIỆU CHUYÊN BIỆT THEO TAB */}
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
-        <TabsList className="grid grid-cols-2 max-w-md h-auto p-1 bg-slate-100 border border-slate-200 rounded-xl">
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => {
+          const tabVal = v as "all" | "collections" | "refunds" | "settled";
+          setActiveTab(tabVal);
+          if (tabVal === "settled") setStatusFilter("SETTLED");
+          else if (tabVal === "collections" || tabVal === "refunds") setStatusFilter("PENDING");
+          else if (tabVal === "all") setStatusFilter("ALL");
+        }}
+      >
+        <TabsList className="grid grid-cols-2 md:grid-cols-4 max-w-2xl h-auto p-1 bg-slate-100 border border-slate-200 rounded-xl">
           <TabsTrigger
             value="collections"
-            className="flex items-center justify-center gap-2 py-2 font-bold text-xs data-[state=active]:bg-rose-600 data-[state=active]:text-white data-[state=active]:shadow-sm"
+            className="flex items-center justify-center gap-1.5 py-2 font-bold text-xs data-[state=active]:bg-rose-600 data-[state=active]:text-white data-[state=active]:shadow-sm cursor-pointer"
           >
             <ArrowDownLeft className="h-3.5 w-3.5" />
             <span>1. Chờ Thu Nợ ({pendingCollections.length})</span>
           </TabsTrigger>
           <TabsTrigger
             value="refunds"
-            className="flex items-center justify-center gap-2 py-2 font-bold text-xs data-[state=active]:bg-amber-600 data-[state=active]:text-white data-[state=active]:shadow-sm"
+            className="flex items-center justify-center gap-1.5 py-2 font-bold text-xs data-[state=active]:bg-amber-600 data-[state=active]:text-white data-[state=active]:shadow-sm cursor-pointer"
           >
             <ArrowUpRight className="h-3.5 w-3.5" />
-            <span>2. Chờ Kế Toán Hoàn Tiền ({pendingRefunds.length})</span>
+            <span>2. Chờ Hoàn Tiền ({pendingRefunds.length})</span>
+          </TabsTrigger>
+          <TabsTrigger
+            value="settled"
+            className="flex items-center justify-center gap-1.5 py-2 font-bold text-xs data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm cursor-pointer"
+          >
+            <CheckCircle2 className="h-3.5 w-3.5" />
+            <span>3. Đã Quyết Toán ({settledStudents.length})</span>
+          </TabsTrigger>
+          <TabsTrigger
+            value="all"
+            className="flex items-center justify-center gap-1.5 py-2 font-bold text-xs data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-sm cursor-pointer"
+          >
+            <Scale className="h-3.5 w-3.5" />
+            <span>4. Tất Cả Đã Hủy ({allCancelledStudents.length})</span>
           </TabsTrigger>
         </TabsList>
 
@@ -717,6 +887,234 @@ export function SettlementManager({ currentUser, onSelectStudentToCollect }: Pro
                           </TableCell>
                         </TableRow>
                       ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* TAB 3: DANH SÁCH ĐÃ QUYẾT TOÁN XONG */}
+        <TabsContent value="settled" className="pt-3">
+          <Card className="border-slate-200 shadow-xs">
+            <CardHeader className="pb-3 border-b bg-slate-50/60">
+              <div className="flex justify-between items-center">
+                <div>
+                  <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                    Danh Sách Học Sinh Hủy Bán Trú Đã Hoàn Tất Quyết Toán
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    Các học sinh đã đóng đủ công nợ, đã nhận tiền hoàn trả hoặc không phát sinh chênh lệch tiền ăn.
+                  </CardDescription>
+                </div>
+                <Badge className="bg-emerald-100 text-emerald-800 text-xs font-bold border-emerald-300">
+                  Đã xong: {settledStudents.length} học sinh
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              {loading ? (
+                <div className="py-12 text-center text-slate-500 text-xs">
+                  <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2 text-emerald-600" />
+                  Đang tải danh sách đã quyết toán...
+                </div>
+              ) : settledStudents.length === 0 ? (
+                <div className="py-12 text-center text-slate-500 text-xs space-y-1">
+                  <p className="font-semibold text-slate-700">Chưa có học sinh nào hoàn tất quyết toán.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <tr className="bg-slate-50 text-[11px]">
+                        <TableHead className="w-12 text-center">STT</TableHead>
+                        <TableHead>Họ và tên</TableHead>
+                        <TableHead className="text-center">Lớp</TableHead>
+                        <TableHead>Mã Bán Trú</TableHead>
+                        <TableHead>CCCD</TableHead>
+                        <TableHead>Ngày ngừng ăn</TableHead>
+                        <TableHead>Hình thức</TableHead>
+                        <TableHead>Ngày quyết toán</TableHead>
+                        <TableHead>Ghi chú</TableHead>
+                        <TableHead className="text-center">Trạng thái</TableHead>
+                      </tr>
+                    </TableHeader>
+                    <TableBody>
+                      {settledStudents.map((item, index) => (
+                        <TableRow key={item.studentId} className="hover:bg-slate-50 text-xs">
+                          <TableCell className="text-center font-medium text-slate-500">
+                            {index + 1}
+                          </TableCell>
+                          <TableCell className="font-bold text-slate-900 uppercase">
+                            {item.fullName}
+                          </TableCell>
+                          <TableCell className="text-center font-bold text-blue-700">
+                            {item.className}
+                          </TableCell>
+                          <TableCell className="font-mono font-semibold text-slate-800">
+                            {item.boardingCode || "—"}
+                          </TableCell>
+                          <TableCell className="font-mono text-slate-600">
+                            {maskStudentCode(item.studentCode)}
+                          </TableCell>
+                          <TableCell className="text-slate-600">
+                            {item.boardingCancelledAt ? formatDate(item.boardingCancelledAt) : "—"}
+                          </TableCell>
+                          <TableCell className="font-medium text-slate-700">
+                            <Badge variant="outline" className="text-[11px] bg-slate-50">
+                              {item.settledType}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-slate-600">
+                            {item.settlementRecord?.settlementDate ? formatDate(item.settlementRecord.settlementDate) : "—"}
+                          </TableCell>
+                          <TableCell className="text-[11px] text-slate-500 max-w-xs truncate" title={item.settlementRecord?.note || ""}>
+                            {item.settlementRecord?.note || "—"}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 font-semibold text-[10px]">
+                              ĐÃ QUYẾT TOÁN
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* TAB 4: TOÀN BỘ DANH SÁCH HỦY ĂN */}
+        <TabsContent value="all" className="pt-3">
+          <Card className="border-slate-200 shadow-xs">
+            <CardHeader className="pb-3 border-b bg-slate-50/60">
+              <div className="flex justify-between items-center">
+                <div>
+                  <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <Scale className="h-4 w-4 text-blue-600" />
+                    Toàn Bộ Danh Sách Học Sinh Đã Hủy Ăn Bán Trú
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    Tổng hợp toàn bộ học sinh đã ngừng ăn bán trú (gồm cả chưa quyết toán và đã quyết toán xong).
+                  </CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge className="bg-blue-100 text-blue-800 text-xs font-bold border-blue-300">
+                    Tổng: {allCancelledStudents.length} học sinh
+                  </Badge>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              {loading ? (
+                <div className="py-12 text-center text-slate-500 text-xs">
+                  <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2 text-blue-600" />
+                  Đang tải danh sách...
+                </div>
+              ) : allCancelledStudents.length === 0 ? (
+                <div className="py-12 text-center text-slate-500 text-xs space-y-1">
+                  <p className="font-semibold text-slate-700">Không tìm thấy học sinh hủy ăn nào phù hợp.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <tr className="bg-slate-50 text-[11px]">
+                        <TableHead className="w-12 text-center">STT</TableHead>
+                        <TableHead>Họ và tên</TableHead>
+                        <TableHead className="text-center">Lớp</TableHead>
+                        <TableHead>Mã Bán Trú</TableHead>
+                        <TableHead>CCCD</TableHead>
+                        <TableHead>Ngày ngừng ăn</TableHead>
+                        <TableHead className="text-center">Trạng thái</TableHead>
+                        <TableHead className="text-right">Số tiền nợ / hoàn</TableHead>
+                        <TableHead className="text-right">Thao tác</TableHead>
+                      </tr>
+                    </TableHeader>
+                    <TableBody>
+                      {allCancelledStudents.map((item, index) => {
+                        const isDebt = item.settlementStatus === "PENDING_DEBT";
+                        const isRefund = item.settlementStatus === "PENDING_REFUND";
+
+                        return (
+                          <TableRow key={item.studentId} className="hover:bg-slate-50 text-xs">
+                            <TableCell className="text-center font-medium text-slate-500">
+                              {index + 1}
+                            </TableCell>
+                            <TableCell className="font-bold text-slate-900 uppercase">
+                              {item.fullName}
+                            </TableCell>
+                            <TableCell className="text-center font-bold text-blue-700">
+                              {item.className}
+                            </TableCell>
+                            <TableCell className="font-mono font-semibold text-slate-800">
+                              {item.boardingCode || "—"}
+                            </TableCell>
+                            <TableCell className="font-mono text-slate-600">
+                              {maskStudentCode(item.studentCode)}
+                            </TableCell>
+                            <TableCell className="text-slate-600">
+                              {item.boardingCancelledAt ? formatDate(item.boardingCancelledAt) : "—"}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              {isDebt ? (
+                                <Badge className="bg-rose-100 text-rose-800 border-rose-300 text-[10px] font-bold">
+                                  Chờ thu nợ
+                                </Badge>
+                              ) : isRefund ? (
+                                <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-[10px] font-bold">
+                                  Chờ hoàn tiền
+                                </Badge>
+                              ) : (
+                                <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-[10px] font-bold">
+                                  Đã quyết toán
+                                </Badge>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right font-bold">
+                              {isDebt ? (
+                                <span className="text-rose-600">Nợ: {formatCurrency(item.totalRemainingDebt)}</span>
+                              ) : isRefund ? (
+                                <span className="text-amber-700">Hoàn: {formatCurrency(item.pendingRefundAmount)}</span>
+                              ) : (
+                                <span className="text-slate-400 font-normal">0 đ</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {isDebt ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleCollectMoney(item)}
+                                  className="h-7 text-xs font-semibold text-blue-700 border-blue-300 hover:bg-blue-50"
+                                >
+                                  Thu tiền <QrCode className="h-3.5 w-3.5 ml-1" />
+                                </Button>
+                              ) : isRefund && isAccountantOrAdmin ? (
+                                <Button
+                                  size="sm"
+                                  onClick={() =>
+                                    handleOpenRefundModal({
+                                      ...item,
+                                      settlementId: item.settlementRecord?.id,
+                                      refundAmount: item.pendingRefundAmount,
+                                    })
+                                  }
+                                  className="h-7 text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white"
+                                >
+                                  Hoàn tiền
+                                </Button>
+                              ) : (
+                                <span className="text-[11px] text-slate-400 font-medium">Hoàn tất</span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </div>

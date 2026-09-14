@@ -61,6 +61,8 @@ export async function GET(request: NextRequest) {
 
     const pendingCollections: any[] = [];
     const pendingRefunds: any[] = [];
+    const settledStudents: any[] = [];
+    const allCancelledStudents: any[] = [];
 
     for (const st of cancelledStudents) {
       // Lọc tìm kiếm nếu có từ khóa
@@ -103,38 +105,57 @@ export async function GET(request: NextRequest) {
         };
       }).filter((b) => b.remainingDebt > 0);
 
-      // Nếu còn nợ tiền -> Đưa vào danh sách Chờ Thu Nợ (Thu ngân & Kế toán)
-      if (totalRemainingDebt > 0) {
+      const isPendingDebt = totalRemainingDebt > 0;
+      const isPendingRefund = Boolean(
+        latestSettlement &&
+        latestSettlement.settlementType === SettlementType.REFUND &&
+        !latestSettlement.isRefunded &&
+        Number(latestSettlement.refundOrDebt) > 0
+      );
+      const isSettled = !isPendingDebt && !isPendingRefund;
+
+      let settlementStatus: "PENDING_DEBT" | "PENDING_REFUND" | "SETTLED" = "SETTLED";
+      if (isPendingDebt) {
+        settlementStatus = "PENDING_DEBT";
+      } else if (isPendingRefund) {
+        settlementStatus = "PENDING_REFUND";
+      }
+
+      const formattedSettlement = latestSettlement
+        ? {
+            id: latestSettlement.id,
+            settlementType: latestSettlement.settlementType,
+            actualUsedAmount: Number(latestSettlement.actualUsedAmount),
+            totalPaid: Number(latestSettlement.totalPaid),
+            refundOrDebt: Number(latestSettlement.refundOrDebt),
+            isRefunded: latestSettlement.isRefunded,
+            refundedAt: latestSettlement.refundedAt,
+            refundMethod: latestSettlement.refundMethod,
+            refundNote: latestSettlement.refundNote,
+            note: latestSettlement.note,
+            settlementDate: latestSettlement.settlementDate,
+            createdBy: latestSettlement.createdBy,
+          }
+        : null;
+
+      // 1. Nếu còn nợ tiền -> Đưa vào danh sách Chờ Thu Nợ (Thu ngân & Kế toán)
+      if (isPendingDebt) {
         pendingCollections.push({
           studentId: st.id,
           fullName: st.user?.fullName || "",
           studentCode: st.studentCode,
           boardingCode: st.boardingCode,
           className: st.class?.name || st.classId,
+          parentPhone: st.parentPhone,
           boardingCancelledAt: st.boardingCancelledAt,
           totalRemainingDebt,
           unpaidBills: formattedUnpaidBills,
-          settlementRecord: latestSettlement
-            ? {
-                id: latestSettlement.id,
-                settlementType: latestSettlement.settlementType,
-                actualUsedAmount: Number(latestSettlement.actualUsedAmount),
-                totalPaid: Number(latestSettlement.totalPaid),
-                refundOrDebt: Number(latestSettlement.refundOrDebt),
-                note: latestSettlement.note,
-                settlementDate: latestSettlement.settlementDate,
-              }
-            : null,
+          settlementRecord: formattedSettlement,
         });
       }
 
       // 2. Kiểm tra nếu có phiếu quyết toán REFUND chưa hoàn tiền -> Đưa vào danh sách Chờ Kế Toán Hoàn Tiền
-      if (
-        latestSettlement &&
-        latestSettlement.settlementType === SettlementType.REFUND &&
-        !latestSettlement.isRefunded &&
-        Number(latestSettlement.refundOrDebt) > 0
-      ) {
+      if (isPendingRefund && latestSettlement) {
         pendingRefunds.push({
           studentId: st.id,
           settlementId: latestSettlement.id,
@@ -150,8 +171,47 @@ export async function GET(request: NextRequest) {
           totalPaid: Number(latestSettlement.totalPaid),
           note: latestSettlement.note,
           createdBy: latestSettlement.createdBy,
+          settlementRecord: formattedSettlement,
         });
       }
+
+      // 3. Học sinh đã quyết toán xong (công nợ = 0 và không có hoàn tiền pending)
+      if (isSettled) {
+        settledStudents.push({
+          studentId: st.id,
+          fullName: st.user?.fullName || "",
+          studentCode: st.studentCode,
+          boardingCode: st.boardingCode,
+          className: st.class?.name || st.classId,
+          parentPhone: st.parentPhone,
+          boardingCancelledAt: st.boardingCancelledAt,
+          totalRemainingDebt: 0,
+          settlementRecord: formattedSettlement,
+          settledType: latestSettlement
+            ? latestSettlement.settlementType === SettlementType.REFUND && latestSettlement.isRefunded
+              ? "Đã hoàn tiền"
+              : latestSettlement.settlementType === SettlementType.BALANCED
+              ? "Cân bằng (0đ)"
+              : "Đã thu đủ nợ"
+            : "Đã thanh toán đủ",
+        });
+      }
+
+      // 4. Danh sách tổng hợp toàn bộ học sinh đã hủy ăn
+      allCancelledStudents.push({
+        studentId: st.id,
+        fullName: st.user?.fullName || "",
+        studentCode: st.studentCode,
+        boardingCode: st.boardingCode,
+        className: st.class?.name || st.classId,
+        parentPhone: st.parentPhone,
+        boardingCancelledAt: st.boardingCancelledAt,
+        settlementStatus, // "PENDING_DEBT" | "PENDING_REFUND" | "SETTLED"
+        totalRemainingDebt,
+        pendingRefundAmount: isPendingRefund && latestSettlement ? Number(latestSettlement.refundOrDebt) : 0,
+        unpaidBills: formattedUnpaidBills,
+        settlementRecord: formattedSettlement,
+      });
     }
 
     const totalPendingDebt = pendingCollections.reduce((sum, item) => sum + item.totalRemainingDebt, 0);
@@ -161,7 +221,12 @@ export async function GET(request: NextRequest) {
       success: true,
       pendingCollections,
       pendingRefunds,
+      settledStudents,
+      allCancelledStudents,
       stats: {
+        totalCancelledCount: allCancelledStudents.length,
+        pendingCount: pendingCollections.length + pendingRefunds.length,
+        settledCount: settledStudents.length,
         collectionCount: pendingCollections.length,
         totalPendingDebt,
         refundCount: pendingRefunds.length,
