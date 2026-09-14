@@ -40,6 +40,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
+import StatsChartsView from "./StatsChartsView";
 
 export default function ReportsPage() {
   const [loading, setLoading] = useState(false);
@@ -237,8 +238,15 @@ export default function ReportsPage() {
         Báo cáo & Thống kê
       </h1>
 
-      <Tabs defaultValue="daily" className="no-print">
+      <Tabs defaultValue="charts" className="no-print">
         <TabsList className="mb-4 bg-slate-100 p-1.5 rounded-xl border border-slate-200 shadow-2xs h-auto">
+          <TabsTrigger
+            value="charts"
+            className="py-2 px-3.5 font-semibold cursor-pointer transition-all duration-150 text-slate-700 hover:text-slate-900 hover:bg-slate-200/80 data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-sm group"
+          >
+            <BarChart3 className="h-4 w-4 mr-1.5 text-slate-600 group-data-[state=active]:text-white" />
+            Biểu đồ thống kê
+          </TabsTrigger>
           <TabsTrigger
             value="daily"
             className="py-2 px-3.5 font-semibold cursor-pointer transition-all duration-150 text-slate-700 hover:text-slate-900 hover:bg-slate-200/80 data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-sm group"
@@ -261,6 +269,11 @@ export default function ReportsPage() {
             Nợ quá hạn
           </TabsTrigger>
         </TabsList>
+
+        {/* ============ TAB BIỂU ĐỒ THỐNG KÊ ============ */}
+        <TabsContent value="charts" className="space-y-4">
+          <StatsChartsView />
+        </TabsContent>
 
         {/* ============ BÁO CÁO SUẤT ĂN HÀNG NGÀY ============ */}
         <TabsContent value="daily">

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { getWeekNumber } from "@/lib/utils";
+import { extractSpecialScheduleName } from "@/lib/dining-court-service";
 
 export const dynamic = "force-dynamic";
 
@@ -258,22 +259,31 @@ export async function GET(request: NextRequest) {
       if (hasMeal && shift && dayCourts.length > 0) {
         let matchedCourt: (typeof dayCourts)[0] | undefined;
 
-        if (mealCategory === "SPECIAL") {
-          // Lớp ảo đặc biệt: tìm sân có chứa scheduleName và shift
-          matchedCourt = dayCourts.find(
-            (c) =>
-              c.shift === shift &&
-              c.classIds.some(
-                (cid) =>
-                  cid.startsWith(`SPECIAL::${scheduleName}::${shift}`) ||
-                  cid.includes(scheduleName)
-              )
-          );
-        } else {
-          // Lớp thường: tìm sân chứa mã lớp gốc
-          matchedCourt = dayCourts.find(
-            (c) => c.shift === shift && c.classIds.includes(student.classId)
-          );
+        // 1. Ưu tiên cao nhất: Khớp trực tiếp studentId trong specialStudentIds của sân
+        matchedCourt = dayCourts.find(
+          (c) => c.shift === shift && c.specialStudentIds && c.specialStudentIds.includes(student.id)
+        );
+
+        // 2. Nếu chưa tìm thấy theo ID, tìm theo lớp ảo đặc biệt hoặc lớp thường
+        if (!matchedCourt) {
+          if (mealCategory === "SPECIAL") {
+            // Lớp ảo đặc biệt: tìm sân có chứa scheduleName và shift
+            matchedCourt = dayCourts.find(
+              (c) =>
+                c.shift === shift &&
+                c.classIds.some(
+                  (cid) =>
+                    cid.startsWith(`SPECIAL::${scheduleName}::${shift}`) ||
+                    cid.includes(scheduleName) ||
+                    (cid.startsWith("SPECIAL::") && extractSpecialScheduleName(cid) === scheduleName)
+                )
+            );
+          } else {
+            // Lớp thường: tìm sân chứa mã lớp gốc
+            matchedCourt = dayCourts.find(
+              (c) => c.shift === shift && c.classIds.includes(student.classId)
+            );
+          }
         }
 
         if (matchedCourt) {
@@ -394,18 +404,27 @@ export async function GET(request: NextRequest) {
 
         let tCourtInfo: any = null;
         if (tHasMeal && tShift && tCourts.length > 0) {
-          const matched =
-            tCategory === "SPECIAL"
-              ? tCourts.find(
-                  (c) =>
-                    c.shift === tShift &&
-                    c.classIds.some(
-                      (cid) =>
-                        cid.startsWith(`SPECIAL::${tSchedName}::${tShift}`) ||
-                        cid.includes(tSchedName)
-                    )
-                )
-              : tCourts.find((c) => c.shift === tShift && c.classIds.includes(student.classId));
+          // 1. Ưu tiên cao nhất: Khớp trực tiếp theo studentId trong specialStudentIds của sân
+          let matched = tCourts.find(
+            (c) => c.shift === tShift && c.specialStudentIds && c.specialStudentIds.includes(student.id)
+          );
+
+          // 2. Nếu chưa có, kiểm tra theo mã lớp ảo hoặc mã lớp thường
+          if (!matched) {
+            matched =
+              tCategory === "SPECIAL"
+                ? tCourts.find(
+                    (c) =>
+                      c.shift === tShift &&
+                      c.classIds.some(
+                        (cid) =>
+                          cid.startsWith(`SPECIAL::${tSchedName}::${tShift}`) ||
+                          cid.includes(tSchedName) ||
+                          (cid.startsWith("SPECIAL::") && extractSpecialScheduleName(cid) === tSchedName)
+                      )
+                  )
+                : tCourts.find((c) => c.shift === tShift && c.classIds.includes(student.classId));
+          }
 
           if (matched) {
             const cartNum = matched.cartNumber || Math.ceil(matched.courtNumber / 2);
