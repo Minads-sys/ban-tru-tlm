@@ -45,7 +45,7 @@ import Swal from "sweetalert2";
 import { compressImage, CompressedImageResult } from "@/lib/image-compressor";
 import { formatDate } from "@/lib/utils";
 
-const MAX_PHOTOS = 20;
+const MAX_PHOTOS = 40;
 
 interface DeliveryRecord {
   id: string;
@@ -100,7 +100,7 @@ export default function MealDeliveryPage() {
   const [expectedSummary, setExpectedSummary] = useState<ExpectedSummary | null>(null);
   const [loadingExpected, setLoadingExpected] = useState<boolean>(false);
 
-  // Quản lý nhiều ảnh & Nén ảnh (Tối đa 20 ảnh)
+  // Quản lý nhiều ảnh & Nén ảnh (Tối đa 40 ảnh)
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [compressedPhotos, setCompressedPhotos] = useState<CompressedImageResult[]>([]);
@@ -275,7 +275,7 @@ export default function MealDeliveryPage() {
       }
       formData.append("note", note.trim());
 
-      // Gửi từng file ảnh đã nén (tối đa 20 file)
+      // Gửi từng file ảnh đã nén (tối đa 40 file)
       for (const item of compressedPhotos) {
         formData.append("photos", item.file);
       }
@@ -384,7 +384,7 @@ export default function MealDeliveryPage() {
                 Giao Nhận Suất Cơm Bán Trú
               </h1>
               <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
-                Nhập số suất thực tế đã giao, chụp ảnh phiếu ký nhận (tối đa 20 ảnh) và lưu trữ đối soát
+                Nhập số suất thực tế đã giao, chụp ảnh phiếu ký nhận (tối đa 40 ảnh) và lưu trữ đối soát
               </p>
             </div>
           </div>
@@ -602,7 +602,7 @@ export default function MealDeliveryPage() {
               </CardContent>
             </Card>
 
-            {/* Card 4: Chụp ảnh & Nén ảnh ký nhận (Hỗ trợ tối đa 20 ảnh) */}
+            {/* Card 4: Chụp ảnh & Nén ảnh ký nhận (Hỗ trợ tối đa 40 ảnh) */}
             <Card className="border-slate-200 dark:border-slate-800 shadow-xs">
               <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800/60 flex flex-row items-center justify-between">
                 <div>

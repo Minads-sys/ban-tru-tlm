@@ -449,8 +449,13 @@ export async function parseStudentExcel(
 
   sheet.eachRow((row, rowNumber) => {
     if (rowNumber <= headerRowNum) return;
-    const maHS = String(row.getCell(2).value || "").trim().toUpperCase();
+    let maHS = String(row.getCell(2).value || "").trim().toUpperCase();
     if (!maHS) return;
+
+    // Chuẩn hóa CCCD: Nếu là chuỗi số có từ 1 đến 11 chữ số, tự động thêm số 0 ở đầu để đủ 12 số
+    if (/^\d{1,11}$/.test(maHS)) {
+      maHS = maHS.padStart(12, '0');
+    }
 
     const hoTen = String(row.getCell(3).value || "").trim();
     const gioiTinh = String(row.getCell(4).value || "NAM").trim().toUpperCase();

@@ -78,6 +78,8 @@ model Class {
   students         Student[]
   weeklySchedules  ClassWeeklySchedule[]
   dailySummaries   DailyMealSummary[]
+  transfersFrom    StudentClassTransfer[] @relation("TransfersFrom")
+  transfersTo      StudentClassTransfer[] @relation("TransfersTo")
 
   @@map("classes")
 }
@@ -125,10 +127,36 @@ model Student {
   monthlyBills      MonthlyBill[]
   settlementRecords SettlementRecord[]
   paymentTransactions PaymentTransaction[]
+  classTransfers   StudentClassTransfer[]
 
   @@index([classId])
   @@index([boardingStatus])
   @@map("students")
+}
+
+// ==================== LỊCH SỬ CHUYỂN LỚP ====================
+
+model StudentClassTransfer {
+  id             String   @id @default(cuid())
+  studentId      String   @map("student_id")
+  fromClassId    String   @map("from_class_id")
+  toClassId      String   @map("to_class_id")
+  effectiveDate  DateTime @map("effective_date") @db.Date
+  reason         String?
+  oldDaysCount   Int      @default(0) @map("old_days_count")
+  newDaysCount   Int      @default(0) @map("new_days_count")
+  deltaDays      Int      @default(0) @map("delta_days")
+  billAction     String   @default("NONE") @map("bill_action") // "UPDATED_UNPAID" | "CARRY_FORWARD_NEXT_MONTH" | "NO_BILL"
+  createdById    String?  @map("created_by_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  fromClass Class   @relation("TransfersFrom", fields: [fromClassId], references: [id])
+  toClass   Class   @relation("TransfersTo", fields: [toClassId], references: [id])
+
+  @@index([studentId])
+  @@index([effectiveDate])
+  @@map("student_class_transfers")
 }
 
 // ==================== THỜI KHÓA BIỂU THEO TUẦN ====================

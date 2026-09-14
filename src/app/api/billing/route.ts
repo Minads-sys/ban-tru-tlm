@@ -610,6 +610,8 @@ export async function POST(request: NextRequest) {
     const prevClassActualDaysMap = new Map<string, number>();
     // Map lưu số ngày ăn đặc biệt thực tế tháng trước của từng học sinh (Scenario 4)
     const prevSpecialDaysMap = new Map<string, number>();
+    // Map lưu độ lệch ngày ăn do chuyển lớp tháng trước (Scenario Chuyển lớp)
+    const prevTransferDeltaMap = new Map<string, number>();
 
     if (!isStartOfSchoolYear) {
       // 4.1 Lấy các yêu cầu cắt suất đã duyệt trong tháng trước
@@ -695,6 +697,19 @@ export async function POST(request: NextRequest) {
           (prevSpecialDaysMap.get(sm.studentId) || 0) + 1
         );
       }
+
+      // 4.5 Lấy các trường hợp chuyển lớp tháng trước cần bù trừ sang tháng này (CARRY_FORWARD_NEXT_MONTH)
+      const prevTransfers = await prisma.studentClassTransfer.findMany({
+        where: {
+          studentId: { in: studentsWithSchedule.map((s) => s.id) },
+          effectiveDate: { gte: prevMonthStart, lte: prevMonthEnd },
+          billAction: "CARRY_FORWARD_NEXT_MONTH",
+        },
+      });
+
+      prevTransfers.forEach((t) => {
+        prevTransferDeltaMap.set(t.studentId, (prevTransferDeltaMap.get(t.studentId) || 0) + t.deltaDays);
+      });
     }
 
     // 5. Kiểm tra và bảo vệ hóa đơn đã thanh toán (PAID hoặc PARTIAL)
@@ -745,6 +760,17 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Lấy các lần chuyển lớp trong tháng hiện tại của các học sinh cần xử lý
+    const transfersInMonth = await prisma.studentClassTransfer.findMany({
+      where: {
+        studentId: { in: studentsToProcess.map((s) => s.id) },
+        effectiveDate: { gte: monthStart, lte: monthEnd },
+      },
+      orderBy: { effectiveDate: 'asc' },
+    });
+    const transferInMonthMap = new Map<string, (typeof transfersInMonth)[0]>();
+    transfersInMonth.forEach((t) => transferInMonthMap.set(t.studentId, t));
+
     // 6. Tạo/Cập nhật hóa đơn cho các học sinh chưa thanh toán - dùng Prisma transaction
     let generatedCount = 0;
     const BATCH_SIZE = 30;
@@ -755,7 +781,10 @@ export async function POST(request: NextRequest) {
       await prisma.$transaction(
         batch.map((student) => {
           let scheduleMealDays = currentClassMealDays.get(student.classId) || 0;
-          if (student.mealStartDate) {
+          const transferRecord = transferInMonthMap.get(student.id);
+          if (transferRecord) {
+            scheduleMealDays = transferRecord.oldDaysCount + transferRecord.newDaysCount;
+          } else if (student.mealStartDate) {
             scheduleMealDays = calculateScheduleDaysForMonth(student.classId, month, year, student.mealStartDate);
           }
           // Cộng thêm số ngày ăn lịch đặc biệt trong tháng (không trùng TKB lớp)
@@ -787,6 +816,14 @@ export async function POST(request: NextRequest) {
                 extraMealDays = 0;
                 scheduleReducedDays = Math.abs(delta);
               }
+            }
+
+            // Cộng thêm chênh lệch chuyển lớp tháng trước (nếu có)
+            const transferDelta = prevTransferDeltaMap.get(student.id) || 0;
+            if (transferDelta > 0) {
+              extraMealDays += transferDelta;
+            } else if (transferDelta < 0) {
+              scheduleReducedDays += Math.abs(transferDelta);
             }
           }
 

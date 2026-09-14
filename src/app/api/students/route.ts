@@ -167,9 +167,21 @@ export async function POST(request: NextRequest) {
       }
       const finalClassId = classObj.id;
 
-      // Check existing studentCode
-      const existing = await prisma.student.findUnique({
-        where: { studentCode },
+      // Chuẩn hóa mã CCCD về chuẩn 12 chữ số
+      let cleanStudentCode = studentCode.trim();
+      if (/^\d{1,11}$/.test(cleanStudentCode)) {
+        cleanStudentCode = cleanStudentCode.padStart(12, '0');
+      }
+      const unpaddedCode = cleanStudentCode.replace(/^0+/, '');
+
+      // Check existing studentCode (khớp cả dạng 12 số và dạng thiếu số 0)
+      const existing = await prisma.student.findFirst({
+        where: {
+          OR: [
+            { studentCode: cleanStudentCode },
+            { studentCode: unpaddedCode },
+          ],
+        },
       });
       if (existing) {
         return NextResponse.json({ error: "Số CCCD đã tồn tại trên hệ thống" }, { status: 400 });
@@ -250,7 +262,7 @@ export async function POST(request: NextRequest) {
       // Create User
       const user = await prisma.user.create({
         data: {
-          username: studentCode.toLowerCase(),
+          username: cleanStudentCode.toLowerCase(),
           passwordHash,
           fullName: fullName.trim(),
           role: "STUDENT",
@@ -261,7 +273,7 @@ export async function POST(request: NextRequest) {
       // Create Student
       const newStudent = await prisma.student.create({
         data: {
-          studentCode: studentCode.trim(),
+          studentCode: cleanStudentCode,
           boardingCode: finalBoardingCode,
           userId: user.id,
           classId: finalClassId,
@@ -624,6 +636,185 @@ async function calculateStudentSettlement({
   };
 }
 
+async function getScheduleDaysBetweenDates(
+  classId: string,
+  startDate: Date,
+  endDate: Date,
+  studentMealStartDate?: Date | null
+): Promise<{ count: number; dates: string[] }> {
+  if (startDate > endDate) return { count: 0, dates: [] };
+
+  const targetYear = startDate.getUTCFullYear();
+  const schedules = await prisma.classWeeklySchedule.findMany({
+    where: {
+      classId,
+      year: targetYear,
+    },
+  });
+
+  const dayFieldMap: Record<number, "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday"> = {
+    1: "monday",
+    2: "tuesday",
+    3: "wednesday",
+    4: "thursday",
+    5: "friday",
+    6: "saturday",
+  };
+
+  const startOfYear = new Date(Date.UTC(targetYear, 0, 1));
+  const getWeekNum = (d: Date): number => {
+    return Math.ceil(
+      ((d.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getUTCDay() + 1) / 7
+    );
+  };
+
+  let count = 0;
+  const dates: string[] = [];
+  const cur = new Date(startDate);
+
+  while (cur <= endDate) {
+    if (studentMealStartDate) {
+      const mDate = new Date(studentMealStartDate);
+      const studentStartUTC = new Date(Date.UTC(mDate.getUTCFullYear(), mDate.getUTCMonth(), mDate.getUTCDate()));
+      if (cur < studentStartUTC) {
+        cur.setUTCDate(cur.getUTCDate() + 1);
+        continue;
+      }
+    }
+
+    const dayOfWeek = cur.getUTCDay();
+    if (dayOfWeek >= 1 && dayOfWeek <= 6) {
+      const dayField = dayFieldMap[dayOfWeek];
+      const weekNum = getWeekNum(cur);
+      const sched = schedules.find((s) => s.weekNumber === weekNum);
+      if (sched && sched[dayField] && sched[dayField] !== "NONE") {
+        count++;
+        dates.push(cur.toISOString().slice(0, 10));
+      }
+    }
+    cur.setUTCDate(cur.getUTCDate() + 1);
+  }
+
+  return { count, dates };
+}
+
+async function calculateTransferImpact({
+  studentId,
+  currentClassId,
+  toClassId,
+  effectiveDateStr,
+}: {
+  studentId: string;
+  currentClassId: string;
+  toClassId: string;
+  effectiveDateStr: string;
+}) {
+  const [y, m, d] = effectiveDateStr.split("-").map(Number);
+  const targetYear = y;
+  const targetMonth = m;
+  const effectiveDate = new Date(Date.UTC(y, m - 1, d));
+
+  const monthStart = new Date(Date.UTC(y, m - 1, 1));
+  const monthEnd = new Date(Date.UTC(y, m, 0, 23, 59, 59, 999));
+
+  // Giai đoạn lớp cũ: từ đầu tháng đến trước ngày chuyển lớp
+  const dayBeforeEffective = new Date(effectiveDate);
+  dayBeforeEffective.setUTCDate(dayBeforeEffective.getUTCDate() - 1);
+
+  const student = await prisma.student.findUnique({
+    where: { id: studentId },
+    select: { mealStartDate: true, boardingCode: true, studentCode: true, user: { select: { fullName: true } } },
+  });
+
+  const oldClassDaysResult = await getScheduleDaysBetweenDates(
+    currentClassId,
+    monthStart,
+    dayBeforeEffective,
+    student?.mealStartDate
+  );
+
+  // Giai đoạn lớp mới: từ ngày chuyển lớp đến hết tháng
+  const newClassDaysResult = await getScheduleDaysBetweenDates(
+    toClassId,
+    effectiveDate,
+    monthEnd,
+    student?.mealStartDate
+  );
+
+  const newPlannedDays = oldClassDaysResult.count + newClassDaysResult.count;
+
+  // Lấy đơn giá suất ăn
+  const priceSetting = await prisma.systemSetting.findUnique({ where: { key: "MEAL_UNIT_PRICE" } });
+  const defaultUnitPrice = priceSetting ? parseFloat(priceSetting.value) : 35000;
+
+  // Lấy hóa đơn hiện tại trong tháng của học sinh
+  const currentBill = await prisma.monthlyBill.findUnique({
+    where: {
+      studentId_month_year: {
+        studentId,
+        month: targetMonth,
+        year: targetYear,
+      },
+    },
+    include: {
+      transactions: {
+        where: { isVoided: false },
+      },
+    },
+  });
+
+  const unitPrice = currentBill ? Number(currentBill.unitPrice) : defaultUnitPrice;
+  const oldPlannedDays = currentBill ? currentBill.scheduleMealDays : 0;
+  const deltaDays = currentBill ? (newPlannedDays - oldPlannedDays) : 0;
+  const deltaAmount = deltaDays * unitPrice;
+
+  let billAction: "UPDATE_CURRENT_BILL" | "CARRY_FORWARD_NEXT_MONTH" | "NO_BILL" = "NO_BILL";
+  let billStatus: string | null = null;
+  let currentFinalAmount = 0;
+  let newFinalAmount = 0;
+  let paidAmount = 0;
+
+  if (currentBill) {
+    billStatus = currentBill.paymentStatus;
+    currentFinalAmount = Number(currentBill.finalAmount);
+    paidAmount = currentBill.transactions.reduce((sum, t) => sum + Number(t.amount), 0);
+
+    if (currentBill.paymentStatus === "UNPAID") {
+      billAction = "UPDATE_CURRENT_BILL";
+      const totalAmount = newPlannedDays * unitPrice;
+      newFinalAmount = Math.max(0, totalAmount - Number(currentBill.previousDeduction) + Number(currentBill.previousAddition));
+    } else {
+      billAction = "CARRY_FORWARD_NEXT_MONTH";
+      newFinalAmount = currentFinalAmount;
+    }
+  }
+
+  return {
+    studentId,
+    studentName: student?.user?.fullName || student?.studentCode || "",
+    currentClassId,
+    toClassId,
+    effectiveDateStr,
+    effectiveDate,
+    targetMonth,
+    targetYear,
+    unitPrice,
+    oldClassDays: oldClassDaysResult.count,
+    newClassDays: newClassDaysResult.count,
+    newPlannedDays,
+    oldPlannedDays,
+    deltaDays,
+    deltaAmount,
+    hasBill: Boolean(currentBill),
+    billStatus,
+    billAction,
+    currentFinalAmount,
+    newFinalAmount,
+    paidAmount,
+    currentBill,
+  };
+}
+
     if (!studentId) {
       return NextResponse.json(
         { error: "Thiếu studentId" },
@@ -964,8 +1155,245 @@ async function calculateStudentSettlement({
       });
     }
 
+    // ==================== XEM TRƯỚC TÁC ĐỘNG CHUYỂN LỚP ====================
+    if (action === "transfer-preview") {
+      const { toClassId, effectiveDate } = body;
+
+      if (!toClassId) {
+        return NextResponse.json({ error: "Vui lòng chọn lớp chuyển đến" }, { status: 400 });
+      }
+
+      if (toClassId === student.classId) {
+        return NextResponse.json({ error: "Lớp chuyển đến phải khác lớp hiện tại" }, { status: 400 });
+      }
+
+      const toClassObj = await prisma.class.findUnique({ where: { id: toClassId } });
+      if (!toClassObj) {
+        return NextResponse.json({ error: `Không tìm thấy lớp học ${toClassId}` }, { status: 404 });
+      }
+
+      // Kiểm tra giờ chốt suất ngày (MEAL_LOCK_TIME_2 hoặc CUTOFF_TIME, mặc định 07:00)
+      const lockSettings = await prisma.systemSetting.findMany({
+        where: { key: { in: ["MEAL_LOCK_TIME_2", "CUTOFF_TIME"] } }
+      });
+      const lockTime2 = lockSettings.find(s => s.key === "MEAL_LOCK_TIME_2")?.value 
+                     || lockSettings.find(s => s.key === "CUTOFF_TIME")?.value 
+                     || "07:00";
+
+      const localToday = getVietnamTodayUTC();
+      const isPastLock = isPastCutoffTime(lockTime2);
+      const nextDay = new Date(localToday);
+      nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+      const nextDayStr = `${nextDay.getUTCFullYear()}-${String(nextDay.getUTCMonth() + 1).padStart(2, '0')}-${String(nextDay.getUTCDate()).padStart(2, '0')}`;
+
+      // Nếu đã qua giờ chốt hôm nay: ép ngày hiệu lực từ ngày mai
+      let effectiveDateStr = effectiveDate;
+      let forcedNextDay = false;
+      if (isPastLock) {
+        let effDateObj: Date;
+        if (effectiveDate && /^\d{4}-\d{2}-\d{2}$/.test(effectiveDate)) {
+          const [sY, sM, sD] = effectiveDate.split("-").map(Number);
+          effDateObj = new Date(Date.UTC(sY, sM - 1, sD));
+        } else {
+          effDateObj = localToday;
+        }
+
+        if (effDateObj <= localToday) {
+          effectiveDateStr = nextDayStr;
+          forcedNextDay = true;
+        }
+      }
+
+      if (!effectiveDateStr) {
+        effectiveDateStr = isPastLock ? nextDayStr : `${localToday.getUTCFullYear()}-${String(localToday.getUTCMonth() + 1).padStart(2, '0')}-${String(localToday.getUTCDate()).padStart(2, '0')}`;
+      }
+
+      const impact = await calculateTransferImpact({
+        studentId: student.id,
+        currentClassId: student.classId,
+        toClassId,
+        effectiveDateStr,
+      });
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          ...impact,
+          fromClassName: student.class?.name || student.classId,
+          toClassName: toClassObj.name || toClassId,
+          isPastLock,
+          forcedNextDay,
+          lockTime2,
+        },
+      });
+    }
+
+    // ==================== THỰC THI CHUYỂN LỚP ====================
+    if (action === "transfer") {
+      const { toClassId, effectiveDate, reason } = body;
+
+      if (!toClassId) {
+        return NextResponse.json({ error: "Vui lòng chọn lớp chuyển đến" }, { status: 400 });
+      }
+
+      if (toClassId === student.classId) {
+        return NextResponse.json({ error: "Lớp chuyển đến phải khác lớp hiện tại" }, { status: 400 });
+      }
+
+      const toClassObj = await prisma.class.findUnique({ where: { id: toClassId } });
+      if (!toClassObj) {
+        return NextResponse.json({ error: `Không tìm thấy lớp học ${toClassId}` }, { status: 404 });
+      }
+
+      // Kiểm tra giờ chốt suất
+      const lockSettings = await prisma.systemSetting.findMany({
+        where: { key: { in: ["MEAL_LOCK_TIME_2", "CUTOFF_TIME"] } }
+      });
+      const lockTime2 = lockSettings.find(s => s.key === "MEAL_LOCK_TIME_2")?.value 
+                     || lockSettings.find(s => s.key === "CUTOFF_TIME")?.value 
+                     || "07:00";
+
+      const localToday = getVietnamTodayUTC();
+      const isPastLock = isPastCutoffTime(lockTime2);
+      const nextDay = new Date(localToday);
+      nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+      const nextDayStr = `${nextDay.getUTCFullYear()}-${String(nextDay.getUTCMonth() + 1).padStart(2, '0')}-${String(nextDay.getUTCDate()).padStart(2, '0')}`;
+
+      let effectiveDateStr = effectiveDate;
+      let forcedNextDay = false;
+      if (isPastLock) {
+        let effDateObj: Date;
+        if (effectiveDate && /^\d{4}-\d{2}-\d{2}$/.test(effectiveDate)) {
+          const [sY, sM, sD] = effectiveDate.split("-").map(Number);
+          effDateObj = new Date(Date.UTC(sY, sM - 1, sD));
+        } else {
+          effDateObj = localToday;
+        }
+
+        if (effDateObj <= localToday) {
+          effectiveDateStr = nextDayStr;
+          forcedNextDay = true;
+        }
+      }
+
+      if (!effectiveDateStr) {
+        effectiveDateStr = isPastLock ? nextDayStr : `${localToday.getUTCFullYear()}-${String(localToday.getUTCMonth() + 1).padStart(2, '0')}-${String(localToday.getUTCDate()).padStart(2, '0')}`;
+      }
+
+      const impact = await calculateTransferImpact({
+        studentId: student.id,
+        currentClassId: student.classId,
+        toClassId,
+        effectiveDateStr,
+      });
+
+      // 1. Tạo bản ghi lịch sử chuyển lớp
+      const transferRecord = await prisma.studentClassTransfer.create({
+        data: {
+          studentId: student.id,
+          fromClassId: student.classId,
+          toClassId,
+          effectiveDate: impact.effectiveDate,
+          reason: reason || null,
+          oldDaysCount: impact.oldClassDays,
+          newDaysCount: impact.newClassDays,
+          deltaDays: impact.deltaDays,
+          billAction: impact.billAction,
+          createdById: adminId || null,
+        },
+      });
+
+      // 2. Cập nhật lớp cho học sinh
+      await prisma.student.update({
+        where: { id: student.id },
+        data: {
+          classId: toClassId,
+        },
+      });
+
+      // 3. Xử lý hóa đơn nếu có
+      let billUpdated = false;
+      if (impact.billAction === "UPDATE_CURRENT_BILL" && impact.currentBill) {
+        const { generateMealPaymentQR } = require("@/lib/vietqr");
+        const systemSettings = await prisma.systemSetting.findMany({
+          where: { key: { in: ['BANK_NAME', 'BANK_ACCOUNT_NO', 'BANK_ACCOUNT_NAME'] } },
+        });
+        const customBankInfo = {
+          bankName: systemSettings.find(s => s.key === 'BANK_NAME')?.value,
+          accountNo: systemSettings.find(s => s.key === 'BANK_ACCOUNT_NO')?.value,
+          accountName: systemSettings.find(s => s.key === 'BANK_ACCOUNT_NAME')?.value,
+        };
+
+        const newQr = generateMealPaymentQR(
+          student.boardingCode || student.studentCode,
+          impact.targetMonth,
+          impact.targetYear,
+          impact.newFinalAmount,
+          customBankInfo
+        );
+
+        await prisma.monthlyBill.update({
+          where: { id: impact.currentBill.id },
+          data: {
+            scheduleMealDays: impact.newPlannedDays,
+            netPayableDays: impact.newPlannedDays,
+            totalAmount: impact.newPlannedDays * impact.unitPrice,
+            finalAmount: impact.newFinalAmount,
+            qrCodeUrl: newQr,
+          },
+        });
+        billUpdated = true;
+        broadcastChange('monthly_bills', 'UPDATE');
+      }
+
+      broadcastChange('students', 'UPDATE', { id: student.id, classId: toClassId });
+      broadcastChange('daily_meals', 'UPDATE');
+
+      const oldClassName = student.class?.name || student.classId;
+      const newClassName = toClassObj.name || toClassId;
+
+      await logAudit({
+        req: request,
+        userId: adminId,
+        userName: (session?.user as any)?.name || (session?.user as any)?.username || "Quản trị viên",
+        userRole: session?.user?.role,
+        action: AUDIT_ACTIONS.UPDATE,
+        module: AUDIT_MODULES.STUDENTS,
+        description: `Chuyển lớp học sinh ${student.user?.fullName || student.studentCode} từ ${oldClassName} sang ${newClassName} (Hiệu lực: ${effectiveDateStr})`,
+        targetId: student.id,
+        metadata: {
+          fromClassId: student.classId,
+          toClassId,
+          effectiveDateStr,
+          oldClassDays: impact.oldClassDays,
+          newClassDays: impact.newClassDays,
+          deltaDays: impact.deltaDays,
+          billAction: impact.billAction,
+          reason,
+        },
+      });
+
+      let responseMsg = `Chuyển lớp thành công sang ${newClassName} (Hiệu lực từ ${effectiveDateStr}).`;
+      if (billUpdated) {
+        responseMsg += ` Hóa đơn tháng ${impact.targetMonth}/${impact.targetYear} đã được tính lại thành ${impact.newPlannedDays} ngày ăn (${impact.newFinalAmount.toLocaleString('vi-VN')} đ) và tạo lại mã QR.`;
+      } else if (impact.billAction === "CARRY_FORWARD_NEXT_MONTH") {
+        if (impact.deltaDays > 0) {
+          responseMsg += ` Hóa đơn tháng hiện tại đã thanh toán. Chênh lệch +${impact.deltaDays} ngày ăn (+${impact.deltaAmount.toLocaleString('vi-VN')} đ) sẽ tự động bù thu vào hóa đơn tháng sau.`;
+        } else if (impact.deltaDays < 0) {
+          responseMsg += ` Hóa đơn tháng hiện tại đã thanh toán. Chênh lệch ${impact.deltaDays} ngày ăn (${Math.abs(impact.deltaAmount).toLocaleString('vi-VN')} đ) sẽ tự động khấu trừ vào hóa đơn tháng sau.`;
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: responseMsg,
+        transfer: transferRecord,
+        impact,
+      });
+    }
+
     return NextResponse.json(
-      { error: "Action không hợp lệ. Sử dụng: activate, cancel, settlement-preview" },
+      { error: "Action không hợp lệ. Sử dụng: activate, cancel, settlement-preview, transfer-preview, transfer" },
       { status: 400 }
     );
   } catch (error) {
@@ -1000,13 +1428,23 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "Không tìm thấy học sinh" }, { status: 404 });
     }
 
-    const trimmedNewCode = studentCode?.trim();
+    let trimmedNewCode = studentCode?.trim();
+    if (trimmedNewCode && /^\d{1,11}$/.test(trimmedNewCode)) {
+      trimmedNewCode = trimmedNewCode.padStart(12, '0');
+    }
     const trimmedBoardingCode = boardingCode?.trim();
     
     // Kiểm tra trùng CCCD mới
     if (trimmedNewCode && trimmedNewCode !== student.studentCode) {
-      const existing = await prisma.student.findUnique({
-        where: { studentCode: trimmedNewCode },
+      const unpaddedNewCode = trimmedNewCode.replace(/^0+/, '');
+      const existing = await prisma.student.findFirst({
+        where: {
+          id: { not: studentId },
+          OR: [
+            { studentCode: trimmedNewCode },
+            { studentCode: unpaddedNewCode },
+          ],
+        },
       });
       if (existing) {
         return NextResponse.json({ error: "Số CCCD đã tồn tại trên hệ thống" }, { status: 400 });

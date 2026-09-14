@@ -181,8 +181,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Vui lòng chụp ảnh hoặc tải lên ít nhất 1 ảnh phiếu ký nhận" }, { status: 400 });
     }
 
-    if (files.length > 20) {
-      return NextResponse.json({ error: "Tối đa chỉ được tải lên 20 ảnh cho một phiếu giao nhận" }, { status: 400 });
+    if (files.length > 40) {
+      return NextResponse.json({ error: "Tối đa chỉ được tải lên 40 ảnh cho một phiếu giao nhận" }, { status: 400 });
     }
 
     // Kiểm tra định dạng ảnh cho phép

@@ -30,6 +30,7 @@ import {
   Eye,
   Calendar,
   Calculator,
+  ArrowRightLeft,
 } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
@@ -241,6 +242,37 @@ export default function AdminStudentsPage() {
   const [isSubmittingDelete, setIsSubmittingDelete] = useState<boolean>(false);
   const [resettingPasswordStudent, setResettingPasswordStudent] = useState<StudentItem | null>(null);
   const [isSubmittingReset, setIsSubmittingReset] = useState<boolean>(false);
+
+  // Transfer student states
+  const [transferringStudent, setTransferringStudent] = useState<StudentItem | null>(null);
+  const [transferFormData, setTransferFormData] = useState({
+    toClassId: '',
+    effectiveDate: '',
+    reason: '',
+  });
+  const [transferPreview, setTransferPreview] = useState<{
+    oldClassDays: number;
+    newClassDays: number;
+    newPlannedDays: number;
+    oldPlannedDays: number;
+    deltaDays: number;
+    deltaAmount: number;
+    hasBill: boolean;
+    billStatus: string | null;
+    billAction: string;
+    currentFinalAmount: number;
+    newFinalAmount: number;
+    unitPrice: number;
+    fromClassName: string;
+    toClassName: string;
+    targetMonth: number;
+    targetYear: number;
+    isPastLock: boolean;
+    forcedNextDay: boolean;
+    lockTime2: string;
+  } | null>(null);
+  const [isPreviewingTransfer, setIsPreviewingTransfer] = useState(false);
+  const [isSubmittingTransfer, setIsSubmittingTransfer] = useState(false);
 
   // Alerts
   const [statusMessage, setStatusMessage] = useState<{
@@ -738,6 +770,98 @@ export default function AdminStudentsPage() {
       setStatusMessage({ type: 'error', text: err instanceof Error ? err.message : 'Có lỗi xảy ra' });
     } finally {
       setIsSubmittingReset(false);
+    }
+  };
+
+  const loadTransferPreview = useCallback(async (studentId: string, toClassId: string, effectiveDate: string) => {
+    if (!studentId || !toClassId || !effectiveDate) return;
+    setIsPreviewingTransfer(true);
+    try {
+      const res = await fetch('/api/students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'transfer-preview',
+          studentId,
+          toClassId,
+          effectiveDate,
+        }),
+      });
+      const resData = await res.json();
+      if (res.ok && resData.success && resData.data) {
+        setTransferPreview(resData.data);
+      } else {
+        setTransferPreview(null);
+      }
+    } catch (err) {
+      console.error('Failed to load transfer preview:', err);
+      setTransferPreview(null);
+    } finally {
+      setIsPreviewingTransfer(false);
+    }
+  }, []);
+
+  const handleOpenTransferDialog = useCallback((student: StudentItem) => {
+    const defaultDate = isPastCutoffToday ? getTomorrowString() : getTodayString();
+    setTransferringStudent(student);
+    const otherClasses = classOptions.filter(c => c.id !== student.classId);
+    const defaultToClass = otherClasses.length > 0 ? otherClasses[0].id : '';
+    setTransferFormData({
+      toClassId: defaultToClass,
+      effectiveDate: defaultDate,
+      reason: '',
+    });
+    setTransferPreview(null);
+    if (defaultToClass) {
+      loadTransferPreview(student.id, defaultToClass, defaultDate);
+    }
+  }, [isPastCutoffToday, getTomorrowString, getTodayString, classOptions, loadTransferPreview]);
+
+  const handleConfirmTransfer = async () => {
+    if (!transferringStudent || !transferFormData.toClassId) return;
+    setIsSubmittingTransfer(true);
+    setStatusMessage(null);
+
+    try {
+      const res = await fetch('/api/students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'transfer',
+          studentId: transferringStudent.id,
+          toClassId: transferFormData.toClassId,
+          effectiveDate: transferFormData.effectiveDate,
+          reason: transferFormData.reason,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Lỗi khi chuyển lớp học sinh');
+      }
+
+      setTransferringStudent(null);
+      setStatusMessage({ type: 'success', text: data.message || 'Chuyển lớp thành công' });
+      Swal.fire({
+        title: 'Chuyển lớp thành công!',
+        html: `<div class="text-left text-sm space-y-1">
+          <p><b>Học sinh:</b> ${transferringStudent.user.fullName}</p>
+          <p class="text-emerald-700 font-medium">${data.message}</p>
+        </div>`,
+        icon: 'success',
+      });
+      await fetchStudents(selectedClass, selectedStatus);
+    } catch (err: any) {
+      console.error('Transfer student error:', err);
+      const errMsg = err instanceof Error ? err.message : 'Có lỗi xảy ra khi chuyển lớp';
+      setStatusMessage({ type: 'error', text: errMsg });
+      Swal.fire({
+        title: 'Không thể chuyển lớp',
+        text: errMsg,
+        icon: 'error',
+      });
+    } finally {
+      setIsSubmittingTransfer(false);
     }
   };
 
@@ -1241,6 +1365,17 @@ export default function AdminStudentsPage() {
                                 className="h-8 w-8 text-slate-500 hover:text-blue-600 hover:bg-blue-50 border-slate-200 shadow-2xs cursor-pointer shrink-0"
                               >
                                 <Edit className="h-3.5 w-3.5" />
+                              </Button>
+
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="outline"
+                                title="Chuyển lớp học sinh"
+                                onClick={() => handleOpenTransferDialog(student)}
+                                className="h-8 w-8 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 border-slate-200 shadow-2xs cursor-pointer shrink-0"
+                              >
+                                <ArrowRightLeft className="h-3.5 w-3.5" />
                               </Button>
                               
                               <Button
@@ -2308,6 +2443,273 @@ export default function AdminStudentsPage() {
             >
               {isSubmittingReset ? <RefreshCw className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
               <span>Xác nhận khôi phục</span>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ========================================================
+          TRANSFER CLASS DIALOG
+         ======================================================== */}
+      <Dialog
+        open={Boolean(transferringStudent)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setTransferringStudent(null);
+            setTransferPreview(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-xl max-h-[92vh] overflow-y-auto">
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-100 text-indigo-600">
+                <ArrowRightLeft className="h-5 w-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-lg font-bold text-slate-900">
+                  Chuyển Lớp Học Sinh
+                </DialogTitle>
+                <DialogDescription className="text-xs text-slate-500">
+                  Cập nhật lớp học mới, tính toán lại số ngày ăn và đối soát tiền ăn bán trú
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          {transferringStudent && (
+            <div className="space-y-4 py-2">
+              {/* Thông tin học sinh */}
+              <div className="rounded-lg bg-slate-50 p-3 border border-slate-200">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-xs text-slate-500 block">Học sinh</span>
+                    <span className="text-sm font-bold text-slate-900">
+                      {transferringStudent.user.fullName}
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-xs text-slate-500 block">Mã HS / CCCD</span>
+                    <span className="text-xs font-mono font-bold text-slate-700">
+                      {transferringStudent.studentCode}
+                    </span>
+                  </div>
+                </div>
+                <div className="mt-2.5 pt-2.5 border-t border-slate-200 flex items-center gap-2">
+                  <span className="text-xs text-slate-500">Lớp hiện tại:</span>
+                  <Badge variant="outline" className="bg-white font-bold text-slate-800 text-xs">
+                    {transferringStudent.class?.name || transferringStudent.classId}
+                  </Badge>
+                  <ArrowRight className="h-3.5 w-3.5 text-slate-400" />
+                  <span className="text-xs font-semibold text-indigo-600">
+                    Chuyển sang: {classes.find(c => c.id === transferFormData.toClassId)?.name || transferFormData.toClassId || '...'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Form chọn lớp mới & ngày hiệu lực */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700">
+                    Lớp chuyển đến <span className="text-red-500">*</span>
+                  </label>
+                  <Select
+                    value={transferFormData.toClassId}
+                    onValueChange={(val) => {
+                      setTransferFormData(prev => ({ ...prev, toClassId: val }));
+                      loadTransferPreview(transferringStudent.id, val, transferFormData.effectiveDate);
+                    }}
+                  >
+                    <SelectTrigger className="h-10 text-sm">
+                      <SelectValue placeholder="Chọn lớp mới..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {classOptions
+                        .filter(c => c.id !== transferringStudent.classId)
+                        .map((c) => (
+                          <SelectItem key={c.id} value={c.id}>
+                            {c.name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700">
+                    Ngày bắt đầu học lớp mới <span className="text-red-500">*</span>
+                  </label>
+                  <Input
+                    type="date"
+                    value={transferFormData.effectiveDate}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setTransferFormData(prev => ({ ...prev, effectiveDate: val }));
+                      if (transferFormData.toClassId) {
+                        loadTransferPreview(transferringStudent.id, transferFormData.toClassId, val);
+                      }
+                    }}
+                    className="h-10 text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Cảnh báo khi đã qua giờ chốt hôm nay */}
+              {isPastCutoffToday && (
+                <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800">
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+                  <div>
+                    <span className="font-bold block">Đã qua giờ chốt suất ({cutoffTime}) của ngày hôm nay!</span>
+                    <span className="text-[11px] text-amber-700">
+                      Suất ăn hôm nay vẫn thuộc lớp cũ. Ngày bắt đầu ăn theo lịch của lớp mới sẽ tính từ ngày tiếp theo.
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Lý do chuyển lớp */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-700">
+                  Lý do chuyển lớp (tùy chọn)
+                </label>
+                <Input
+                  type="text"
+                  placeholder="VD: Chuyển theo phân ban học tập, yêu cầu của phụ huynh..."
+                  value={transferFormData.reason}
+                  onChange={(e) => setTransferFormData(prev => ({ ...prev, reason: e.target.value }))}
+                  className="h-10 text-sm"
+                />
+              </div>
+
+              {/* Bảng xem trước tác động (Live Preview) */}
+              <div className="rounded-lg border p-3.5 space-y-3 bg-white shadow-2xs">
+                <div className="flex items-center justify-between border-b pb-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                    <Calculator className="h-3.5 w-3.5 text-indigo-600" />
+                    Xem trước tác động số ngày ăn & Hóa đơn
+                  </span>
+                  {isPreviewingTransfer && (
+                    <span className="text-xs text-slate-500 flex items-center gap-1">
+                      <RefreshCw className="h-3 w-3 animate-spin text-indigo-600" />
+                      Đang tính...
+                    </span>
+                  )}
+                </div>
+
+                {transferPreview ? (
+                  <div className="space-y-3 text-xs">
+                    {/* Thống kê ngày ăn */}
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="bg-slate-50 rounded-md p-2 border">
+                        <span className="text-slate-500 block text-[11px]">Lớp cũ ({transferPreview.fromClassName})</span>
+                        <span className="font-bold text-slate-800 text-sm">
+                          {transferPreview.oldClassDays} ngày
+                        </span>
+                        <span className="text-[10px] text-slate-400 block">trước ngày chuyển</span>
+                      </div>
+                      <div className="bg-indigo-50/60 rounded-md p-2 border border-indigo-100">
+                        <span className="text-indigo-600 block text-[11px]">Lớp mới ({transferPreview.toClassName})</span>
+                        <span className="font-bold text-indigo-900 text-sm">
+                          {transferPreview.newClassDays} ngày
+                        </span>
+                        <span className="text-[10px] text-indigo-500 block">từ ngày chuyển</span>
+                      </div>
+                      <div className="bg-slate-50 rounded-md p-2 border">
+                        <span className="text-slate-500 block text-[11px]">Tổng ngày ăn tháng</span>
+                        <span className="font-bold text-emerald-700 text-sm">
+                          {transferPreview.newPlannedDays} ngày
+                        </span>
+                        <span className="text-[10px] text-slate-400 block">
+                          (gốc: {transferPreview.oldPlannedDays} ngày)
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Phân tích xử lý Hóa đơn */}
+                    {transferPreview.billAction === 'UPDATE_CURRENT_BILL' ? (
+                      <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-left">
+                        <div className="flex items-center gap-1.5 text-blue-900 font-bold text-xs mb-1">
+                          <Receipt className="h-4 w-4 text-blue-600" />
+                          Hóa đơn tháng này chưa thanh toán (UNPAID)
+                        </div>
+                        <p className="text-xs text-blue-800 leading-relaxed">
+                          Hệ thống sẽ <strong>tự động tính lại số tiền phải nộp</strong> từ{' '}
+                          <span className="line-through text-slate-500">{formatCurrency(transferPreview.currentFinalAmount)}</span>{' '}
+                          thành <strong className="text-blue-900 text-sm">{formatCurrency(transferPreview.newFinalAmount)}</strong>{' '}
+                          ({transferPreview.newPlannedDays} ngày ăn x {formatCurrency(transferPreview.unitPrice)}) và tạo lại mã VietQR mới.
+                        </p>
+                      </div>
+                    ) : transferPreview.billAction === 'CARRY_FORWARD_NEXT_MONTH' ? (
+                      <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-left">
+                        <div className="flex items-center gap-1.5 text-amber-900 font-bold text-xs mb-1">
+                          <ShieldCheck className="h-4 w-4 text-amber-600" />
+                          Hóa đơn tháng này đã thanh toán ({transferPreview.billStatus})
+                        </div>
+                        <p className="text-xs text-amber-800 leading-relaxed">
+                          Hóa đơn đã đóng ({formatCurrency(transferPreview.currentFinalAmount)}) được giữ nguyên sổ sách.{' '}
+                          {transferPreview.deltaDays > 0 ? (
+                            <>
+                              Lớp mới phát sinh thêm <strong>+{transferPreview.deltaDays} ngày ăn</strong> (+{formatCurrency(transferPreview.deltaAmount)}). Số tiền này sẽ <strong>tự động bù thu vào kỳ hóa đơn tháng sau</strong>.
+                            </>
+                          ) : transferPreview.deltaDays < 0 ? (
+                            <>
+                              Lớp mới có ít hơn <strong>{Math.abs(transferPreview.deltaDays)} ngày ăn</strong> ({formatCurrency(Math.abs(transferPreview.deltaAmount))}). Số tiền thừa này sẽ <strong>tự động khấu trừ vào kỳ hóa đơn tháng sau</strong>.
+                            </>
+                          ) : (
+                            <>Số ngày ăn giữa 2 lớp cân bằng (không phát sinh chênh lệch tiền).</>
+                          )}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="rounded-lg bg-slate-50 border p-3 text-left">
+                        <div className="flex items-center gap-1.5 text-slate-700 font-bold text-xs mb-1">
+                          <FileText className="h-4 w-4 text-slate-500" />
+                          Chưa tạo hóa đơn tháng {transferPreview.targetMonth}/{transferPreview.targetYear}
+                        </div>
+                        <p className="text-xs text-slate-600 leading-relaxed">
+                          Khi Kế toán tạo hóa đơn tháng, hệ thống sẽ tự động tổng hợp {transferPreview.newPlannedDays} ngày ăn (gồm {transferPreview.oldClassDays} ngày lớp cũ + {transferPreview.newClassDays} ngày lớp mới).
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-center py-4 text-xs text-slate-400">
+                    Vui lòng chọn Lớp chuyển đến và Ngày hiệu lực để xem bảng tính
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setTransferringStudent(null);
+                setTransferPreview(null);
+              }}
+              disabled={isSubmittingTransfer}
+            >
+              Hủy bỏ
+            </Button>
+            <Button
+              type="button"
+              onClick={handleConfirmTransfer}
+              disabled={isSubmittingTransfer || !transferFormData.toClassId || isPreviewingTransfer}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold gap-2 cursor-pointer"
+            >
+              {isSubmittingTransfer ? (
+                <>
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  <span>Đang xử lý...</span>
+                </>
+              ) : (
+                <>
+                  <ArrowRightLeft className="h-4 w-4" />
+                  <span>Xác nhận Chuyển lớp</span>
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
