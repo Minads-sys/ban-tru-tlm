@@ -176,6 +176,28 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.studentId = user.studentId;
         token.studentCode = user.studentCode;
         token.requiresPasswordChange = user.requiresPasswordChange;
+      } else if (token?.id) {
+        try {
+          const freshUser = await prisma.user.findUnique({
+            where: { id: token.id as string },
+            select: {
+              role: true,
+              permissions: true,
+              isActive: true,
+              requiresPasswordChange: true,
+            },
+          });
+          if (freshUser && freshUser.isActive) {
+            token.role = freshUser.role;
+            token.permissions = freshUser.permissions;
+            token.requiresPasswordChange = freshUser.requiresPasswordChange;
+          } else if (!freshUser || !freshUser.isActive) {
+            token.role = undefined as any;
+            token.permissions = [];
+          }
+        } catch (e) {
+          console.error("Lỗi khi refresh token từ DB:", e);
+        }
       }
       return token;
     },
