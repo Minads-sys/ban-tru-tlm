@@ -477,13 +477,13 @@ export function ProductionDisplay({
 
         {/* Right: Date & Clock & Action Buttons */}
         <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-3 w-full sm:w-auto">
-          {/* KHỐI 1: TIÊU ĐỀ NGÀY ĂN PHỤC VỤ */}
-          <div className="flex-1 sm:flex-initial flex items-center gap-1.5 bg-white/10 px-2.5 sm:px-3 py-1 rounded-xl border border-white/20 shadow-inner min-w-0">
-            <span className="text-[10px] sm:text-xs font-black text-amber-300 uppercase tracking-wider shrink-0">
+          {/* KHỐI 1: TIÊU ĐỀ NGÀY ĂN PHỤC VỤ (SIZE TO GẤP ĐÔI) */}
+          <div className="flex-1 sm:flex-initial flex items-center gap-2 sm:gap-2.5 bg-gradient-to-r from-white/15 to-white/10 px-3 sm:px-4 py-1 sm:py-1.5 rounded-xl border border-white/25 shadow-md shadow-black/20 min-w-0">
+            <span className="text-xs sm:text-base lg:text-[clamp(14px,2.2vh,24px)] font-black text-amber-300 uppercase tracking-wider shrink-0">
               📅 NGÀY ĂN:
             </span>
             <span
-              className="font-black text-white tracking-tight leading-none text-xs sm:text-lg lg:text-[clamp(18px,2.4vh,30px)] whitespace-nowrap overflow-hidden text-ellipsis"
+              className="font-black text-white tracking-tight leading-none text-base sm:text-2xl lg:text-[clamp(28px,4.8vh,56px)] whitespace-nowrap overflow-hidden text-ellipsis"
               style={{ letterSpacing: "-0.5px" }}
             >
               {servingDateFormatted}
@@ -491,15 +491,15 @@ export function ProductionDisplay({
           </div>
 
           {/* KHỐI 2: ĐỒNG HỒ THỜI GIAN THỰC TẾ HIỆN TẠI */}
-          <div className="flex items-center gap-1.5 bg-white/5 px-2 sm:px-2.5 py-1 rounded-xl border border-white/10 shadow-inner shrink-0">
-            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-sm shadow-emerald-400 shrink-0" />
+          <div className="flex items-center gap-1.5 bg-white/5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl border border-white/10 shadow-inner shrink-0">
+            <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shadow-sm shadow-emerald-400 shrink-0" />
             <div className="flex flex-col text-left">
               <span
-                className="font-extrabold text-emerald-400 tabular-nums leading-none text-xs sm:text-sm lg:text-[clamp(14px,1.8vh,20px)]"
+                className="font-extrabold text-emerald-400 tabular-nums leading-none text-xs sm:text-base lg:text-[clamp(15px,2.0vh,22px)]"
               >
                 {realtimeClock}
               </span>
-              <span className="text-[8px] sm:text-[9px] text-slate-400 font-bold tracking-wider uppercase leading-none mt-0.5 whitespace-nowrap">
+              <span className="text-[9px] sm:text-[10px] text-slate-400 font-bold tracking-wider uppercase leading-none mt-0.5 whitespace-nowrap">
                 Hiện tại ({realtimeDate})
               </span>
             </div>
