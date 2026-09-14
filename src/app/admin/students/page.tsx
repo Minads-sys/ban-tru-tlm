@@ -31,6 +31,8 @@ import {
   Calendar,
   Calculator,
   ArrowRightLeft,
+  ShieldAlert,
+  GitMerge,
 } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
@@ -273,6 +275,13 @@ export default function AdminStudentsPage() {
   } | null>(null);
   const [isPreviewingTransfer, setIsPreviewingTransfer] = useState(false);
   const [isSubmittingTransfer, setIsSubmittingTransfer] = useState(false);
+
+  // Duplicate detection states
+  const [isDuplicateModalOpen, setIsDuplicateModalOpen] = useState<boolean>(false);
+  const [isScanningDuplicates, setIsScanningDuplicates] = useState<boolean>(false);
+  const [duplicateGroups, setDuplicateGroups] = useState<any[]>([]);
+  const [duplicateTotalScanned, setDuplicateTotalScanned] = useState<number>(0);
+  const [isMergingDuplicate, setIsMergingDuplicate] = useState<boolean>(false);
 
   // Alerts
   const [statusMessage, setStatusMessage] = useState<{
@@ -865,6 +874,85 @@ export default function AdminStudentsPage() {
     }
   };
 
+  const fetchDuplicateScan = useCallback(async () => {
+    setIsScanningDuplicates(true);
+    try {
+      const res = await fetch('/api/students/duplicates');
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setDuplicateGroups(data.groups || []);
+        setDuplicateTotalScanned(data.totalStudents || 0);
+      } else {
+        setDuplicateGroups([]);
+      }
+    } catch (err) {
+      console.error('Scan duplicates error:', err);
+      setDuplicateGroups([]);
+    } finally {
+      setIsScanningDuplicates(false);
+    }
+  }, []);
+
+  const handleOpenDuplicateModal = useCallback(() => {
+    setIsDuplicateModalOpen(true);
+    fetchDuplicateScan();
+  }, [fetchDuplicateScan]);
+
+  const handleMergeStudents = async (primaryStudent: any, secondaryStudent: any) => {
+    const result = await Swal.fire({
+      title: 'Xác nhận hợp nhất học sinh?',
+      html: `<div class="text-left text-xs space-y-2">
+        <p>Hồ sơ giữ lại (Chính thức): <strong class="text-blue-700">${primaryStudent.fullName}</strong> (Mã: <strong>${primaryStudent.studentCode}</strong>, Lớp: ${primaryStudent.className})</p>
+        <p>Hồ sơ bị gộp & xóa: <strong class="text-red-700">${secondaryStudent.fullName}</strong> (Mã: <strong>${secondaryStudent.studentCode}</strong>, Lớp: ${secondaryStudent.className})</p>
+        <div class="p-2.5 bg-amber-50 border border-amber-200 rounded text-amber-800 font-medium text-[11px] leading-relaxed">
+          ⚠️ Toàn bộ tiền ăn đã nộp, hóa đơn và lịch sử cắt suất sẽ được chuyển sang hồ sơ chính. Thao tác không thể hoàn tác.
+        </div>
+      </div>`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#2563eb',
+      cancelButtonColor: '#64748b',
+      confirmButtonText: 'Đồng ý hợp nhất',
+      cancelButtonText: 'Hủy bỏ',
+    });
+
+    if (!result.isConfirmed) return;
+
+    setIsMergingDuplicate(true);
+    try {
+      const res = await fetch('/api/students/duplicates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          primaryStudentId: primaryStudent.id,
+          secondaryStudentId: secondaryStudent.id,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Lỗi khi hợp nhất học sinh');
+      }
+
+      Swal.fire({
+        title: 'Hợp nhất thành công!',
+        text: data.message || 'Đã hợp nhất hồ sơ thành công',
+        icon: 'success',
+      });
+
+      await fetchStudents(selectedClass, selectedStatus, false);
+      await fetchDuplicateScan();
+    } catch (err: any) {
+      console.error('Merge error:', err);
+      Swal.fire({
+        title: 'Không thể hợp nhất',
+        text: err.message || 'Có lỗi xảy ra khi hợp nhất',
+        icon: 'error',
+      });
+    } finally {
+      setIsMergingDuplicate(false);
+    }
+  };
+
   // Render Meal Type Badge
   const renderMealTypeBadge = (mealType: string) => {
     switch (mealType) {
@@ -965,16 +1053,28 @@ export default function AdminStudentsPage() {
             <span className="sm:hidden">Excel</span>
           </Button>
           {!isAccountant && (
-            <Button
-              variant="default"
-              size="sm"
-              onClick={handleOpenCreateStudent}
-              className="gap-2 bg-red-600 hover:bg-red-700 text-white shadow-xs cursor-pointer"
-            >
-              <UserPlus className="h-4 w-4" />
-              <span className="hidden sm:inline">Đăng ký mới</span>
-              <span className="sm:hidden">Mới</span>
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleOpenDuplicateModal}
+                className="gap-2 border-amber-500 text-amber-700 hover:bg-amber-50 shadow-xs cursor-pointer bg-white"
+              >
+                <ShieldAlert className="h-4 w-4 text-amber-600" />
+                <span className="hidden sm:inline">Dò trùng lặp</span>
+                <span className="sm:hidden">Dò trùng</span>
+              </Button>
+              <Button
+                variant="default"
+                size="sm"
+                onClick={handleOpenCreateStudent}
+                className="gap-2 bg-red-600 hover:bg-red-700 text-white shadow-xs cursor-pointer"
+              >
+                <UserPlus className="h-4 w-4" />
+                <span className="hidden sm:inline">Đăng ký mới</span>
+                <span className="sm:hidden">Mới</span>
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -2741,6 +2841,202 @@ export default function AdminStudentsPage() {
           <div className="p-4 sm:p-6 lg:p-8">
             {viewingStudent && <StudentPortal forceStudentId={viewingStudent.id} readOnly={true} />}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ========================================================
+          DUPLICATE DETECTION MODAL
+         ======================================================== */}
+      <Dialog
+        open={isDuplicateModalOpen}
+        onOpenChange={(open) => {
+          if (!open) setIsDuplicateModalOpen(false);
+        }}
+      >
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+                  <ShieldAlert className="h-5 w-5" />
+                </div>
+                <div>
+                  <DialogTitle className="text-lg font-bold text-slate-900">
+                    Dò tìm & Xử lý Học sinh Nghi ngờ Trùng lặp
+                  </DialogTitle>
+                  <DialogDescription className="text-xs text-slate-500">
+                    Tự động đối soát toàn bộ CSDL theo 4 tiêu chí: Mã CCCD, Họ tên, Lớp học, Số điện thoại và Ngày sinh
+                  </DialogDescription>
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={fetchDuplicateScan}
+                disabled={isScanningDuplicates}
+                className="gap-1.5 text-xs font-medium cursor-pointer"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${isScanningDuplicates ? 'animate-spin' : ''}`} />
+                <span>Quét lại</span>
+              </Button>
+            </div>
+          </DialogHeader>
+
+          <div className="py-2 space-y-4">
+            {isScanningDuplicates ? (
+              <div className="py-12 flex flex-col items-center justify-center gap-3 text-slate-500">
+                <RefreshCw className="h-8 w-8 animate-spin text-amber-600" />
+                <p className="text-sm font-medium">Đang quét và đối chiếu toàn bộ cơ sở dữ liệu học sinh...</p>
+              </div>
+            ) : duplicateGroups.length === 0 ? (
+              <div className="py-10 px-6 rounded-xl bg-emerald-50/70 border border-emerald-200 text-center flex flex-col items-center justify-center">
+                <div className="h-12 w-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mb-3">
+                  <CheckCircle2 className="h-7 w-7" />
+                </div>
+                <h3 className="text-base font-bold text-emerald-900">
+                  Tuyệt vời! Không phát hiện học sinh nào bị trùng lặp
+                </h3>
+                <p className="text-xs text-emerald-700 max-w-md mt-1 leading-relaxed">
+                  Đã quét qua toàn bộ <strong>{duplicateTotalScanned}</strong> học sinh trong hệ thống. Không có xung đột số CCCD, họ tên, lớp học hay số điện thoại nào.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-start gap-2.5">
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+                  <div>
+                    <span className="font-bold block">
+                      Phát hiện {duplicateGroups.length} nhóm học sinh có khả năng bị trùng lặp!
+                    </span>
+                    <span className="text-[11px] text-amber-700">
+                      Vui lòng xem thông tin so sánh và bấm <strong>"Giữ hồ sơ này (Gộp hồ sơ kia vào)"</strong> để dồn toàn bộ hóa đơn, tiền ăn sang hồ sơ chính và xóa hồ sơ thừa.
+                    </span>
+                  </div>
+                </div>
+
+                {duplicateGroups.map((group, gIdx) => (
+                  <div key={group.groupId || gIdx} className="rounded-xl border border-slate-200 bg-white shadow-2xs overflow-hidden">
+                    {/* Group Header */}
+                    <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Badge
+                          variant="outline"
+                          className={
+                            group.matchType === 'CCCD'
+                              ? 'bg-red-50 text-red-700 border-red-200 font-bold'
+                              : 'bg-amber-50 text-amber-800 border-amber-200 font-bold'
+                          }
+                        >
+                          {group.matchType === 'CCCD' ? 'Trùng CCCD (100%)' : 'Nghi ngờ trùng lặp'}
+                        </Badge>
+                        <span className="text-xs font-semibold text-slate-700">
+                          {group.matchReason}
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-slate-400 font-medium">
+                        Nhóm #{gIdx + 1}
+                      </span>
+                    </div>
+
+                    {/* Compare Cards */}
+                    <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4 divide-y md:divide-y-0 md:divide-x divide-slate-100">
+                      {group.students.map((s: any, sIdx: number) => {
+                        const otherStudent = group.students.find((x: any) => x.id !== s.id) || group.students[1 - sIdx];
+                        const is11Digits = s.studentCode && s.studentCode.length === 11;
+
+                        return (
+                          <div key={s.id} className={`space-y-3 ${sIdx > 0 ? 'pt-4 md:pt-0 md:pl-4' : ''}`}>
+                            <div className="flex items-start justify-between">
+                              <div>
+                                <span className="text-[11px] uppercase tracking-wider text-slate-400 font-bold block">
+                                  Hồ sơ #{sIdx + 1}
+                                </span>
+                                <span className="text-sm font-bold text-slate-900 block">
+                                  {s.fullName}
+                                </span>
+                              </div>
+                              <Badge variant="outline" className="text-xs font-semibold">
+                                Lớp {s.className}
+                              </Badge>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50/70 p-2.5 rounded-lg border border-slate-100">
+                              <div>
+                                <span className="text-slate-400 block text-[10px]">Mã CCCD</span>
+                                <span className="font-mono font-bold text-slate-800 flex items-center gap-1">
+                                  {s.studentCode}
+                                  {is11Digits && (
+                                    <span className="text-[9px] px-1 py-0.5 rounded bg-red-100 text-red-700 font-bold">
+                                      11 số
+                                    </span>
+                                  )}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-slate-400 block text-[10px]">Mã Bán Trú</span>
+                                <span className="font-mono font-bold text-indigo-700">
+                                  {s.boardingCode || '---'}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-slate-400 block text-[10px]">SĐT Phụ huynh</span>
+                                <span className="font-medium text-slate-700">
+                                  {s.parentPhone || '---'}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-slate-400 block text-[10px]">Ngày sinh</span>
+                                <span className="font-medium text-slate-700">
+                                  {s.birthDate ? new Date(s.birthDate).toLocaleDateString('vi-VN', { timeZone: 'UTC' }) : '---'}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-slate-400 block text-[10px]">Số hóa đơn</span>
+                                <span className="font-bold text-slate-800">
+                                  {s.totalBills} hóa đơn
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-slate-400 block text-[10px]">Đã nộp tiền</span>
+                                <span className="font-bold text-emerald-700">
+                                  {formatCurrency(s.totalPaidAmount)}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Merge Action Button */}
+                            {otherStudent && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                disabled={isMergingDuplicate}
+                                onClick={() => handleMergeStudents(s, otherStudent)}
+                                className="w-full gap-1.5 text-xs font-semibold border-indigo-200 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800 cursor-pointer shadow-2xs"
+                              >
+                                <GitMerge className="h-3.5 w-3.5" />
+                                <span>Giữ hồ sơ này & Gộp hồ sơ #{2 - sIdx} vào</span>
+                              </Button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsDuplicateModalOpen(false)}
+            >
+              Đóng
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
