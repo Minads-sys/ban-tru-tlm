@@ -185,6 +185,7 @@ export async function GET(request: NextRequest) {
       let servingsChay = isHoliday ? 0 : (entry?.servingsChay || 0);
       let totalServings = servingsMan + servingsChao + servingsChay;
       const manMealType = (entry?.manMealType || "COM") as "COM" | "NUOC";
+      const isChayRice = entry?.isChayRice !== false;
       const lockStatus = isHoliday
         ? KitchenLockStatus.LOCKED_COOK
         : (entry?.lockStatus || KitchenLockStatus.UNLOCKED);
@@ -209,14 +210,17 @@ export async function GET(request: NextRequest) {
       let branchFruitKg = 0;
 
       if (!isHoliday) {
-        if (manMealType === "COM") {
-          // Gạo = (Mặn + Chay) * định lượng gạo / 1000
-          branchRiceKg = ((servingsMan + servingsChay) * ricePortionG) / 1000;
-        } else {
-          // Mặn Nước:
-          // Gạo cấp cho Chay = Chay * định lượng gạo / 1000
-          branchRiceKg = (servingsChay * ricePortionG) / 1000;
-          // Bún / Phở = Mặn * định lượng món nước / 1000
+        // Quy tắc tính gạo:
+        // - Món mặn chính: ăn Mặn Cơm (COM) thì tính gạo cho Mặn
+        // - Suất Chay: chỉ tính gạo nếu chọn "Cơm chay" (isChayRice = true)
+        // - Suất Cháo: KHÔNG tính gạo
+        const riceServings =
+          (manMealType === "COM" ? servingsMan : 0) +
+          (isChayRice ? servingsChay : 0);
+        branchRiceKg = (riceServings * ricePortionG) / 1000;
+
+        if (manMealType === "NUOC") {
+          // Mặn Nước/Món khác: Bún / Phở / Nui = Mặn * định lượng món nước / 1000
           branchNoodleKg = (servingsMan * noodlePortionG) / 1000;
         }
 
@@ -300,6 +304,7 @@ export async function GET(request: NextRequest) {
         servingsChao,
         servingsChay,
         manMealType,
+        isChayRice,
         noodleId: entry?.noodleId || null,
         noodleName,
         noodlePortionG,
@@ -395,6 +400,7 @@ export async function POST(request: NextRequest) {
       servingsMan = 0,
       servingsChao = 0,
       servingsChay = 0,
+      isChayRice = true,
       manMealType = "COM",
       noodleId,
       noodleName,
@@ -479,6 +485,7 @@ export async function POST(request: NextRequest) {
         servingsMan: manNum,
         servingsChao: chaoNum,
         servingsChay: chayNum,
+        isChayRice: Boolean(isChayRice),
         marketTotalServings: totalServings,
         marketServingsMan: manNum,
         marketServingsChao: chaoNum,
@@ -496,6 +503,7 @@ export async function POST(request: NextRequest) {
         servingsMan: manNum,
         servingsChao: chaoNum,
         servingsChay: chayNum,
+        isChayRice: Boolean(isChayRice),
         manMealType: manMealType === "NUOC" ? "NUOC" : "COM",
         noodleId: finalNoodleId,
         noodleName: finalNoodleName,
@@ -538,6 +546,7 @@ export async function PUT(request: NextRequest) {
       servingsMan,
       servingsChao,
       servingsChay,
+      isChayRice,
       manMealType,
       noodleId,
       noodleName,
@@ -678,6 +687,7 @@ export async function PUT(request: NextRequest) {
           servingsMan: manNum || 0,
           servingsChao: chaoNum || 0,
           servingsChay: chayNum || 0,
+          isChayRice: isChayRice !== undefined ? Boolean(isChayRice) : true,
           manMealType: manMealType === "NUOC" ? "NUOC" : "COM",
           noodleId: finalNoodleId,
           noodleName: finalNoodleName,
@@ -695,6 +705,7 @@ export async function PUT(request: NextRequest) {
           ...(manNum !== undefined ? { servingsMan: manNum } : {}),
           ...(chaoNum !== undefined ? { servingsChao: chaoNum } : {}),
           ...(chayNum !== undefined ? { servingsChay: chayNum } : {}),
+          ...(isChayRice !== undefined ? { isChayRice: Boolean(isChayRice) } : {}),
           ...(manMealType !== undefined
             ? { manMealType: manMealType === "NUOC" ? "NUOC" : "COM" }
             : {}),

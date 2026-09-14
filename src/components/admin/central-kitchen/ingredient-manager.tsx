@@ -42,13 +42,22 @@ export function IngredientManager({
       return;
     }
 
+    const parsedQty = parseFloat(String(editingItem.quantityPerServing));
+    if (isNaN(parsedQty) || parsedQty <= 0) {
+      toast.error("Vui lòng nhập định lượng lớn hơn 0");
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const isEdit = !!editingItem.id;
       const res = await fetch("/api/central-kitchen/ingredients", {
         method: isEdit ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(editingItem),
+        body: JSON.stringify({
+          ...editingItem,
+          quantityPerServing: parsedQty,
+        }),
       });
 
       const data = await res.json();
@@ -155,13 +164,16 @@ export function IngredientManager({
           <div>
             <p className="font-bold mb-0.5">Quy ước tính Gạo:</p>
             <p>
-              • Chỉ cần 1 định lượng gạo chuẩn (mặc định 150g/suất), không phân biệt loại gạo.
+              • Chỉ cần 1 định lượng gạo chuẩn (mặc định 150g/suất, cho phép nhập số thập phân), không phân biệt loại gạo.
             </p>
             <p>
-              • Với chi nhánh ăn <strong>Mặn Cơm</strong>: Gạo = (Mặn + Chay) × Định lượng Gạo.
+              • Với chi nhánh ăn <strong>Mặn Cơm</strong>: Gạo = Suất Mặn + (nếu chọn &ldquo;Cơm chay&rdquo; thì tính thêm Suất Chay) × Định lượng Gạo.
             </p>
             <p>
-              • Với chi nhánh ăn <strong>Mặn Nước</strong>: Mặn ăn Bún/Phở, Gạo chỉ cấp cho suất Chay (Gạo = Chay × Định lượng Gạo).
+              • Với chi nhánh ăn <strong>Mặn Nước/Món khác</strong>: Mặn không tính gạo. Gạo chỉ tính cho suất Chay nếu chọn &ldquo;Cơm chay&rdquo;.
+            </p>
+            <p>
+              • <strong>Suất Cháo</strong> hoàn toàn không tính gạo.
             </p>
           </div>
         </div>
@@ -260,13 +272,19 @@ export function IngredientManager({
                   </label>
                   <input
                     type="number"
-                    min="1"
+                    step="any"
+                    min="0.01"
                     required
-                    value={editingItem.quantityPerServing || 150}
+                    value={
+                      editingItem.quantityPerServing === undefined ||
+                      editingItem.quantityPerServing === null
+                        ? ""
+                        : editingItem.quantityPerServing
+                    }
                     onChange={(e) =>
                       setEditingItem({
                         ...editingItem,
-                        quantityPerServing: parseInt(e.target.value, 10) || 0,
+                        quantityPerServing: e.target.value as any,
                       })
                     }
                     className="w-full text-sm font-black p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400"

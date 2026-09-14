@@ -554,6 +554,9 @@ model CentralKitchenDailyEntry {
   servingsChao  Int               @default(0) @map("servings_chao")
   servingsChay  Int               @default(0) @map("servings_chay")
 
+  // Tùy chọn Cơm chay (nếu true thì tính gạo cho suất chay, false thì không tính)
+  isChayRice    Boolean           @default(true) @map("is_chay_rice")
+
   // Hình thức món mặn: "COM" (Mặn cơm) hoặc "NUOC" (Mặn nước)
   manMealType   String            @default("COM") @map("man_meal_type")
   noodleId      String?           @map("noodle_id")                     // FK tới CentralKitchenIngredient nếu ăn nước

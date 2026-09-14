@@ -16,6 +16,7 @@ interface BranchCardData {
   servingsChao: number;
   servingsChay: number;
   manMealType: "COM" | "NUOC";
+  isChayRice?: boolean;
   noodleId: string | null;
   noodleName: string;
   noodlePortionG: number;

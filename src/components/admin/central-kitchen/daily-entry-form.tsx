@@ -39,6 +39,7 @@ interface BranchCardData {
   servingsMan: number;
   servingsChao: number;
   servingsChay: number;
+  isChayRice?: boolean;
   manMealType: "COM" | "NUOC";
   noodleId: string | null;
   noodleName: string;
@@ -81,6 +82,7 @@ export function DailyEntryForm({
         servingsMan: number | string;
         servingsChao: number | string;
         servingsChay: number | string;
+        isChayRice: boolean;
         manMealType: "COM" | "NUOC";
         noodleId: string;
         noodleName: string;
@@ -124,6 +126,7 @@ export function DailyEntryForm({
         servingsMan: b.servingsMan || 0,
         servingsChao: b.servingsChao || 0,
         servingsChay: b.servingsChay || 0,
+        isChayRice: b.isChayRice !== false,
         manMealType: b.manMealType || "COM",
         noodleId,
         noodleName,
@@ -146,6 +149,7 @@ export function DailyEntryForm({
         servingsMan: 0,
         servingsChao: 0,
         servingsChay: 0,
+        isChayRice: true,
         manMealType: "COM",
         noodleId: ingredients.noodles[0]?.id || "",
         noodleName: ingredients.noodles[0]?.name || "",
@@ -198,6 +202,7 @@ export function DailyEntryForm({
           servingsMan: Number(data.servingsMan) || 0,
           servingsChao: Number(data.servingsChao) || 0,
           servingsChay: Number(data.servingsChay) || 0,
+          isChayRice: data.isChayRice !== false,
         }),
       });
 
@@ -236,6 +241,7 @@ export function DailyEntryForm({
             servingsMan: Number(data.servingsMan) || 0,
             servingsChao: Number(data.servingsChao) || 0,
             servingsChay: Number(data.servingsChay) || 0,
+            isChayRice: data.isChayRice !== false,
           }),
         });
 
@@ -476,6 +482,7 @@ export function DailyEntryForm({
             servingsMan: 0,
             servingsChao: 0,
             servingsChay: 0,
+            isChayRice: true,
             manMealType: "COM",
             noodleId: ingredients.noodles[0]?.id || "",
             noodleName: ingredients.noodles[0]?.name || "",
@@ -501,12 +508,19 @@ export function DailyEntryForm({
           );
           const fruitPortion = selectedFruit?.quantityPerServing || 150;
 
-          let riceKg = 0;
+          // Quy tắc tính gạo:
+          // - Mặn Cơm (COM): tính gạo cho suất Mặn
+          // - Mặn Nước: Mặn không tính gạo (tính noodleKg)
+          // - Suất Chay: chỉ tính gạo nếu chọn Cơm chay (isChayRice !== false)
+          // - Suất Cháo: KHÔNG tính gạo
+          const isChayRice = val.isChayRice !== false;
+          const riceServings =
+            (val.manMealType === "COM" ? manServings : 0) +
+            (isChayRice ? chayServings : 0);
+          const riceKg = (riceServings * ricePortion) / 1000;
+
           let noodleKg = 0;
-          if (val.manMealType === "COM") {
-            riceKg = ((manServings + chayServings) * ricePortion) / 1000;
-          } else {
-            riceKg = (chayServings * ricePortion) / 1000;
+          if (val.manMealType === "NUOC") {
             noodleKg = (manServings * noodlePortion) / 1000;
           }
           const fruitKg = (totalServings * fruitPortion) / 1000;
@@ -645,7 +659,7 @@ export function DailyEntryForm({
                           : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-600 hover:bg-slate-100 cursor-pointer"
                       }`}
                     >
-                      🍜 Mặn Nước (Bún/Phở)
+                      🍜 Mặn Nước/Món khác
                     </button>
                   </div>
 
@@ -688,7 +702,7 @@ export function DailyEntryForm({
                   <div className="bg-amber-500/5 p-3.5 sm:p-4 rounded-2xl border-2 border-amber-500/30 flex flex-col justify-between overflow-hidden">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-base sm:text-xl font-black text-amber-700 dark:text-amber-300 uppercase tracking-wide truncate">
-                        {val.manMealType === "NUOC" ? "🍜 Mặn Nước" : "🍚 Suất Mặn"}
+                        {val.manMealType === "NUOC" ? "🍜 Mặn Nước/Món khác" : "🍚 Suất Mặn"}
                       </span>
                     </div>
 
@@ -780,10 +794,22 @@ export function DailyEntryForm({
 
                   {/* CHAY */}
                   <div className="bg-emerald-500/5 p-3.5 sm:p-4 rounded-2xl border-2 border-emerald-500/30 flex flex-col justify-between overflow-hidden">
-                    <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center justify-between mb-2 gap-1">
                       <span className="text-base sm:text-xl font-black text-emerald-700 dark:text-emerald-300 uppercase tracking-wide truncate">
                         🥬 Suất Chay
                       </span>
+                      <label className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 cursor-pointer text-xs font-bold text-emerald-800 dark:text-emerald-200 select-none transition shrink-0">
+                        <input
+                          type="checkbox"
+                          disabled={isLocked}
+                          checked={val.isChayRice !== false}
+                          onChange={(e) =>
+                            updateField(branch.branchId, "isChayRice", e.target.checked)
+                          }
+                          className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-emerald-300 cursor-pointer"
+                        />
+                        <span>Cơm chay</span>
+                      </label>
                     </div>
 
                     {/* Hàng 1: Nút -1, Ô nhập số to, Nút +1 */}
@@ -874,9 +900,12 @@ export function DailyEntryForm({
 
                   {/* CHÁO */}
                   <div className="bg-cyan-500/5 p-3.5 sm:p-4 rounded-2xl border-2 border-cyan-500/30 flex flex-col justify-between overflow-hidden">
-                    <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center justify-between mb-2 gap-1">
                       <span className="text-base sm:text-xl font-black text-cyan-700 dark:text-cyan-300 uppercase tracking-wide truncate">
                         🍲 Suất Cháo
+                      </span>
+                      <span className="text-[11px] font-semibold text-cyan-700 dark:text-cyan-300 bg-cyan-500/10 px-2 py-0.5 rounded-full border border-cyan-500/20 shrink-0">
+                        Không tính gạo
                       </span>
                     </div>
 
@@ -1015,7 +1044,13 @@ export function DailyEntryForm({
                     {/* GẠO */}
                     <div className="flex items-center gap-1.5">
                       <span className="text-slate-600 dark:text-slate-400">
-                        {val.manMealType === "COM" ? "🌾 Gạo:" : "🌾 Gạo (Chay):"}
+                        {val.manMealType === "COM"
+                          ? isChayRice && chayServings > 0
+                            ? "🌾 Gạo (Mặn+Chay):"
+                            : "🌾 Gạo (Mặn):"
+                          : isChayRice && chayServings > 0
+                          ? "🌾 Gạo (Chay):"
+                          : "🌾 Gạo:"}
                       </span>
                       <span className="font-black text-amber-600 dark:text-amber-400 text-sm sm:text-base">
                         {riceKg.toFixed(1)} kg

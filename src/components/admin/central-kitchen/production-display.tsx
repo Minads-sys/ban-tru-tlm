@@ -29,6 +29,7 @@ interface BranchCardData {
   servingsChao: number;
   servingsChay: number;
   manMealType: "COM" | "NUOC";
+  isChayRice?: boolean;
   noodleId: string | null;
   noodleName: string;
   noodlePortionG: number;
@@ -207,8 +208,9 @@ export function ProductionDisplay({
       totalChao += dChao;
 
       // Gạo
+      const isChayRice = b.isChayRice !== false;
       const riceServings =
-        b.manMealType === "COM" ? dMan + dChay : dChay;
+        (b.manMealType === "COM" ? dMan : 0) + (isChayRice ? dChay : 0);
       totalRiceKg += (riceServings * ricePortionG) / 1000;
 
       // Món Nước
@@ -589,10 +591,10 @@ export function ProductionDisplay({
             ? branch.totalServings - branch.marketServings.total
             : 0;
 
+          const isChayRice = branch.isChayRice !== false;
           const displayedRiceServings =
-            branch.manMealType === "COM"
-              ? displayedMan + displayedChay
-              : displayedChay;
+            (branch.manMealType === "COM" ? displayedMan : 0) +
+            (isChayRice ? displayedChay : 0);
           const displayedRiceKg = (displayedRiceServings * ricePortionG) / 1000;
           const displayedNoodleKg =
             branch.manMealType === "NUOC"
@@ -723,7 +725,7 @@ export function ProductionDisplay({
                         style={{ fontSize: "clamp(18px, 2.8vh, 30px)" }}
                       >
                         {branch.manMealType === "NUOC" ? (
-                          <>🍜 Món Nước</>
+                          <>🍜 Mặn Nước/Món khác</>
                         ) : (
                           <>🍚 Mặn Cơm</>
                         )}
@@ -840,7 +842,7 @@ export function ProductionDisplay({
                           </div>
                         </div>
 
-                        {displayedChay > 0 && (
+                        {displayedChay > 0 && isChayRice && (
                           <div className="bg-black/25 rounded-lg sm:rounded-xl p-1.5 border-l-4 border-emerald-400 min-h-0 flex flex-col justify-center">
                             <div className="flex items-baseline gap-1 flex-wrap">
                               <span
