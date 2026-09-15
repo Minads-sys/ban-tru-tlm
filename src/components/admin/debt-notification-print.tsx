@@ -362,35 +362,35 @@ export function DebtNotificationPrint({
                   <div className="flex flex-col h-full justify-between">
                     {/* Header Phiếu */}
                     <div className="text-center border-b border-black pb-1 mb-1">
-                      <h3 className="font-bold uppercase tracking-tight text-black text-[11px] leading-tight">
+                      <h3 className="font-bold uppercase tracking-tight text-black text-[8.5pt] leading-tight">
                         {schoolName}
                       </h3>
-                      <h1 className="font-extrabold uppercase text-black text-[14px] leading-snug mt-0.5">
+                      <h1 className="font-extrabold uppercase text-black text-[12.5pt] leading-snug mt-0.5">
                         THÔNG BÁO
                       </h1>
-                      <p className="font-bold uppercase text-black text-[10.5px] mt-0.5">
+                      <p className="font-bold uppercase text-black text-[8.5pt] mt-0.5">
                         PHÁT HÀNH PHIẾU THANH TOÁN TIỀN ĂN BÁN TRÚ THÁNG {bill.month}/{bill.year}
                       </p>
                     </div>
 
                     {/* Kính gửi */}
                     <div className="my-0.5">
-                      <p className="leading-normal text-black text-[11.2px]">
+                      <p className="leading-normal text-black text-[11pt]">
                         Kính gửi: Quý Phụ huynh em{" "}
-                        <span className="uppercase font-bold underline underline-offset-2">
+                        <span className="uppercase font-bold">
                           {fullName}
                         </span>{" "}
                         - Lớp: <span className="font-bold">{clsName}</span>,
                       </p>
 
-                      <p className="leading-relaxed text-black text-justify mt-1 text-[10.5px] indent-3">
+                      <p className="leading-relaxed text-black text-justify mt-1 text-[9pt] indent-3">
                         Căn tin Châu Phương Thảo tại trường Tenlơman xin thông báo: Phiếu thanh toán tiền ăn bán trú đã được cập nhật trên ứng dụng. Quý Phụ huynh vui lòng kiểm tra thông tin và hoàn tất thanh toán theo các phương thức sau:
                       </p>
                     </div>
 
                     {/* Phương thức 1: Trực tuyến */}
                     <div className="border border-black rounded bg-transparent p-1.5 my-0.5">
-                      <p className="font-bold text-black mb-1 text-[11px]">
+                      <p className="font-bold text-black mb-1 text-[11pt]">
                         1. Thanh toán trực tuyến qua mã QR:
                       </p>
 
@@ -403,32 +403,32 @@ export function DebtNotificationPrint({
                               alt="QR App"
                               className="w-[62px] h-[62px]"
                             />
-                            <span className="font-bold text-black text-[8px] mt-0.5">
+                            <span className="font-bold text-black text-[8pt] mt-0.5">
                               Quét mở App
                             </span>
                           </div>
                         )}
-                        <div className="leading-relaxed text-black flex-1 text-[10.2px]">
+                        <div className="leading-relaxed text-black flex-1 text-[9pt]">
                           <p className="font-semibold text-black mb-1">
                             Truy cập link:{" "}
                             <span className="underline font-bold">
                               https://bantrutlm.com/student-login
                             </span>
                           </p>
-                          <div className="space-y-0.5 pl-0.5 text-[9.8px]">
+                          <div className="space-y-0.5 pl-0.5 text-[9pt]">
                             <p>• <b>Tên đăng nhập:</b> Điền Họ và Tên học sinh</p>
                             <p>• <b>Mật khẩu:</b> Nếu đăng nhập lần đầu điền mật khẩu là Ngày tháng năm sinh viết liền (ddmmyyyy)</p>
                             <p>• <b>Mã xác nhận:</b> 6 số cuối CCCD / Mã định danh</p>
                           </div>
                         </div>
                       </div>
-                      <p className="mt-1 italic text-black leading-tight text-[9.5px]">
+                      <p className="mt-1 font-bold italic text-black leading-tight text-[8pt]">
                         Quý Phụ huynh kiểm tra chi tiết phiếu và quét mã QR chuyển khoản trực tiếp trên ứng dụng.
                       </p>
                     </div>
 
                     {/* Phương thức 2: Tiền mặt */}
-                    <div className="text-black pl-0.5 text-[10.5px] my-0.5">
+                    <div className="text-black pl-0.5 text-[11pt] my-0.5">
                       <p className="font-bold text-black">2. Thanh toán bằng tiền mặt:</p>
                       <p className="text-black pl-3 mt-0.5">
                         Quý Phụ huynh vui lòng đến trực tiếp Căn tin nhà trường để đóng tiền.
@@ -436,7 +436,7 @@ export function DebtNotificationPrint({
                     </div>
 
                     {/* Lưu ý */}
-                    <div className="text-black leading-relaxed border-t border-black space-y-0.5 text-[9.8px] pt-1 my-0.5">
+                    <div className="text-black leading-relaxed border-t border-black space-y-0.5 text-[9pt] pt-1 my-0.5">
                       <p className="italic">
                         • Nếu Quý Phụ huynh đã hoàn tất thanh toán trước đó, vui lòng bỏ qua thông báo này.
                       </p>
@@ -448,10 +448,10 @@ export function DebtNotificationPrint({
                     {/* Footer / Ký tên */}
                     <div className="flex justify-end text-right border-t border-black pt-1">
                       <div>
-                        <p className="italic text-black text-[9.5px]">
+                        <p className="italic text-black text-[7.8pt]">
                           TP. Hồ Chí Minh, tháng {bill.month} năm {bill.year}
                         </p>
-                        <p className="font-bold uppercase text-black mt-0.5 text-[10.8px]">
+                        <p className="font-bold uppercase text-black mt-0.5 text-[8.8pt]">
                           Căn tin Châu Phương Thảo
                         </p>
                       </div>

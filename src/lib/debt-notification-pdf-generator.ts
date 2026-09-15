@@ -143,25 +143,24 @@ function createA6BillCell(
       // 2. Kính gửi & Nội dung thông báo
       {
         text: [
-          { text: "Kính gửi: Quý Phụ huynh em ", fontSize: 9.2 },
+          { text: "Kính gửi: Quý Phụ huynh em ", fontSize: 11 },
           {
             text: fullName.toUpperCase(),
-            fontSize: 9.2,
+            fontSize: 11,
             bold: true,
-            decoration: "underline",
           },
-          { text: " - Lớp: ", fontSize: 9.2 },
-          { text: clsName, fontSize: 9.2, bold: true },
-          { text: ",", fontSize: 9.2 },
+          { text: " - Lớp: ", fontSize: 11 },
+          { text: clsName, fontSize: 11, bold: true },
+          { text: ",", fontSize: 11 },
         ],
         margin: [0, 0, 0, 3],
       },
       {
         text: "        Căn tin Châu Phương Thảo tại trường Tenlơman xin thông báo: Phiếu thanh toán tiền ăn bán trú đã được cập nhật trên ứng dụng. Quý Phụ huynh vui lòng kiểm tra thông tin và hoàn tất thanh toán theo các phương thức sau:",
-        fontSize: 8.5,
+        fontSize: 9,
         alignment: "justify",
         lineHeight: 1.18,
-        margin: [0, 0, 0, 7],
+        margin: [0, 0, 0, 5],
       },
 
       // 3. Khung Phương thức 1: Trực tuyến qua QR
@@ -175,7 +174,7 @@ function createA6BillCell(
                   {
                     text: "1. Thanh toán trực tuyến qua mã QR:",
                     bold: true,
-                    fontSize: 8.8,
+                    fontSize: 11,
                     margin: [0, 0, 0, 3],
                   },
                   {
@@ -199,7 +198,7 @@ function createA6BillCell(
                                       },
                                       {
                                         text: "Quét mở App",
-                                        fontSize: 6,
+                                        fontSize: 8,
                                         bold: true,
                                         alignment: "center",
                                         margin: [0, 1, 0, 0],
@@ -230,30 +229,30 @@ function createA6BillCell(
                         stack: [
                           {
                             text: [
-                              { text: "Truy cập link: ", fontSize: 8.2, bold: true },
+                              { text: "Truy cập link: ", fontSize: 9, bold: true },
                               {
                                 text: "https://bantrutlm.com/student-login",
-                                fontSize: 8.2,
+                                fontSize: 9,
                                 bold: true,
                                 decoration: "underline",
                               },
                             ],
-                            margin: [0, 0, 0, 2.5],
+                            margin: [0, 0, 0, 2],
                           },
                           {
                             text: "• Tên đăng nhập: Điền Họ và Tên học sinh",
-                            fontSize: 7.8,
-                            margin: [0, 0, 0, 1.5],
+                            fontSize: 9,
+                            margin: [0, 0, 0, 1.2],
                           },
                           {
                             text: "• Mật khẩu: Nếu đăng nhập lần đầu điền mật khẩu là Ngày tháng năm sinh viết liền (ddmmyyyy)",
-                            fontSize: 7.6,
+                            fontSize: 9,
                             lineHeight: 1.1,
-                            margin: [0, 0, 0, 1.5],
+                            margin: [0, 0, 0, 1.2],
                           },
                           {
                             text: "• Mã xác nhận: 6 số cuối CCCD / Mã định danh",
-                            fontSize: 7.8,
+                            fontSize: 9,
                             margin: [0, 0, 0, 1],
                           },
                         ],
@@ -262,9 +261,10 @@ function createA6BillCell(
                   },
                   {
                     text: "Quý Phụ huynh kiểm tra chi tiết phiếu và quét mã QR chuyển khoản trực tiếp trên ứng dụng.",
+                    bold: true,
                     italics: true,
-                    fontSize: 7.5,
-                    margin: [0, 4, 0, 0],
+                    fontSize: 8,
+                    margin: [0, 3, 0, 0],
                   },
                 ],
                 margin: [2, 2, 2, 2],
@@ -279,10 +279,10 @@ function createA6BillCell(
           vLineColor: () => "#333333",
           paddingLeft: () => 4,
           paddingRight: () => 4,
-          paddingTop: () => 3.5,
-          paddingBottom: () => 3.5,
+          paddingTop: () => 3,
+          paddingBottom: () => 3,
         },
-        margin: [0, 0, 0, 6],
+        margin: [0, 0, 0, 5],
       },
 
       // 4. Phương thức 2: Tiền mặt
@@ -291,16 +291,16 @@ function createA6BillCell(
           {
             text: "2. Thanh toán bằng tiền mặt:",
             bold: true,
-            fontSize: 8.8,
+            fontSize: 11,
             margin: [0, 0, 0, 1.5],
           },
           {
             text: "Quý Phụ huynh vui lòng đến trực tiếp Căn tin nhà trường để đóng tiền.",
-            fontSize: 8.5,
+            fontSize: 11,
             margin: [8, 0, 0, 0],
           },
         ],
-        margin: [0, 0, 0, 6],
+        margin: [0, 0, 0, 5],
       },
 
       // 5. Lưu ý
@@ -316,29 +316,29 @@ function createA6BillCell(
             lineColor: "#000000",
           },
         ],
-        margin: [0, 0, 0, 4],
+        margin: [0, 0, 0, 3],
       },
       {
         stack: [
           {
             text: "• Nếu Quý Phụ huynh đã hoàn tất thanh toán trước đó, vui lòng bỏ qua thông báo này.",
             italics: true,
-            fontSize: 7.8,
+            fontSize: 9,
             margin: [0, 0, 0, 1.5],
           },
           {
             text: [
               {
                 text: "• Mọi thắc mắc hoặc cần hỗ trợ, xin vui lòng liên hệ: ",
-                fontSize: 7.8,
+                fontSize: 9,
               },
-              { text: "0909 932 627", bold: true, fontSize: 7.8 },
-              { text: " (cô Thu Trang).", fontSize: 7.8 },
+              { text: "0909 932 627", bold: true, fontSize: 9 },
+              { text: " (cô Thu Trang).", fontSize: 9 },
             ],
             margin: [0, 0, 0, 2],
           },
         ],
-        margin: [0, 0, 0, 5],
+        margin: [0, 0, 0, 4],
       },
 
       // 6. Footer / Ký tên
@@ -354,7 +354,7 @@ function createA6BillCell(
             lineColor: "#000000",
           },
         ],
-        margin: [0, 0, 0, 3],
+        margin: [0, 0, 0, 2.5],
       },
       {
         stack: [
