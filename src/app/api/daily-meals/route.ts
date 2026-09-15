@@ -40,6 +40,7 @@ export async function GET(request: NextRequest) {
 
   // Tính tuần chuẩn ISO
   const weekNumber = getWeekNumber(date);
+  const dateEndOfDay = new Date(Date.UTC(y, m - 1, d, 23, 59, 59, 999));
 
   // Lấy tất cả các lớp có lịch ăn ngày này
   const schedules = await prisma.classWeeklySchedule.findMany({
@@ -53,10 +54,22 @@ export async function GET(request: NextRequest) {
         include: {
           students: {
             where: {
-              boardingStatus: BoardingStatus.ACTIVE,
-              OR: [
-                { mealStartDate: null },
-                { mealStartDate: { lte: date } },
+              AND: [
+                {
+                  OR: [
+                    { boardingStatus: BoardingStatus.ACTIVE },
+                    {
+                      boardingStatus: BoardingStatus.CANCELLED,
+                      boardingCancelledAt: { gt: dateEndOfDay },
+                    },
+                  ],
+                },
+                {
+                  OR: [
+                    { mealStartDate: null },
+                    { mealStartDate: { lte: date } },
+                  ],
+                },
               ],
             },
           },
@@ -190,6 +203,28 @@ export async function GET(request: NextRequest) {
 
     const exSum = existingSummaryMap.get(schedule.classId);
 
+    // Nếu lớp đã được chốt sổ chính thức (isLocked === true), ưu tiên lấy dữ liệu đã đóng băng từ DB
+    if (exSum && exSum.isLocked) {
+      return {
+        classId: schedule.classId,
+        className: schedule.class.name,
+        totalRegistered: exSum.totalScheduleRegistered,
+        totalCanceled: exSum.totalCanceled,
+        finalMan: exSum.finalMan,
+        finalChay: exSum.finalChay,
+        finalChao: exSum.finalChao,
+        finalTotal: exSum.finalMan + exSum.finalChay + exSum.finalChao,
+        
+        expectedMan: exSum.expectedMan,
+        expectedChay: exSum.expectedChay,
+        expectedChao: exSum.expectedChao,
+        expectedTotal: exSum.expectedMan + exSum.expectedChay + exSum.expectedChao,
+        expectedLockedAt: exSum.expectedLockedAt,
+
+        isLocked: true,
+      };
+    }
+
     return {
       classId: schedule.classId,
       className: schedule.class.name,
@@ -217,7 +252,23 @@ export async function GET(request: NextRequest) {
     where: {
       date,
       student: {
-        boardingStatus: BoardingStatus.ACTIVE,
+        AND: [
+          {
+            OR: [
+              { boardingStatus: BoardingStatus.ACTIVE },
+              {
+                boardingStatus: BoardingStatus.CANCELLED,
+                boardingCancelledAt: { gt: dateEndOfDay },
+              },
+            ],
+          },
+          {
+            OR: [
+              { mealStartDate: null },
+              { mealStartDate: { lte: date } },
+            ],
+          },
+        ],
       },
     },
     include: {
@@ -267,6 +318,33 @@ export async function GET(request: NextRequest) {
       isLocked: isAfterLockTime,
     });
   }
+
+  // Bổ sung các lớp đã được chốt sổ trong existingSummaries nhưng không có trong schedules
+  const existingClassIdsInSummary = new Set(classSummaries.map((c) => c.classId));
+  for (const ex of existingSummaries) {
+    if (!existingClassIdsInSummary.has(ex.classId) && ex.isLocked) {
+      const cls = await prisma.class.findUnique({ where: { id: ex.classId } });
+      classSummaries.push({
+        classId: ex.classId,
+        className: cls?.name || ex.classId,
+        totalRegistered: ex.totalScheduleRegistered,
+        totalCanceled: ex.totalCanceled,
+        finalMan: ex.finalMan,
+        finalChay: ex.finalChay,
+        finalChao: ex.finalChao,
+        finalTotal: ex.finalMan + ex.finalChay + ex.finalChao,
+        expectedMan: ex.expectedMan,
+        expectedChay: ex.expectedChay,
+        expectedChao: ex.expectedChao,
+        expectedTotal: ex.expectedMan + ex.expectedChay + ex.expectedChao,
+        expectedLockedAt: ex.expectedLockedAt,
+        isLocked: true,
+      });
+    }
+  }
+
+  // Sắp xếp lại danh sách lớp theo tên
+  classSummaries.sort((a, b) => a.className.localeCompare(b.className, 'vi', { numeric: true }));
 
   // Tổng hợp toàn trường
   const totalSummary = {
@@ -337,6 +415,7 @@ export async function POST(request: NextRequest) {
     }
 
     const weekNumber = getWeekNumber(date);
+    const dateEndOfDay = new Date(Date.UTC(y, m - 1, d, 23, 59, 59, 999));
 
     // Lấy TKB
     const schedules = await prisma.classWeeklySchedule.findMany({
@@ -349,7 +428,25 @@ export async function POST(request: NextRequest) {
         class: {
           include: {
             students: {
-              where: { boardingStatus: BoardingStatus.ACTIVE },
+              where: {
+                AND: [
+                  {
+                    OR: [
+                      { boardingStatus: BoardingStatus.ACTIVE },
+                      {
+                        boardingStatus: BoardingStatus.CANCELLED,
+                        boardingCancelledAt: { gt: dateEndOfDay },
+                      },
+                    ],
+                  },
+                  {
+                    OR: [
+                      { mealStartDate: null },
+                      { mealStartDate: { lte: date } },
+                    ],
+                  },
+                ],
+              },
             },
           },
         },
