@@ -68,7 +68,7 @@ export interface DebtNotificationPdfBill {
   };
 }
 
-export type DebtNotificationLayout = "A5_LANDSCAPE_2UP" | "A4_PORTRAIT_4UP";
+export type DebtNotificationLayout = "A5_LANDSCAPE_2UP" | "A4_PORTRAIT_4UP" | "A6_SINGLE";
 
 export interface DebtNotificationPdfOptions {
   schoolName?: string;
@@ -388,6 +388,7 @@ export async function generateDebtNotificationPdfBuffer(
   ensureFonts();
 
   const layout = options.layout || "A4_PORTRAIT_4UP";
+  const isA6 = layout === "A6_SINGLE";
   const isA5 = layout === "A5_LANDSCAPE_2UP";
   const schoolName = options.schoolName || "CĂN TIN CHÂU PHƯƠNG THẢO - CN TEN LƠ MAN";
 
@@ -401,93 +402,116 @@ export async function generateDebtNotificationPdfBuffer(
     },
   });
 
-  const chunkSize = isA5 ? 2 : 4;
-  const chunkedBills: DebtNotificationPdfBill[][] = [];
-  for (let i = 0; i < bills.length; i += chunkSize) {
-    chunkedBills.push(bills.slice(i, i + chunkSize));
-  }
-
   const content: any[] = [];
 
-  chunkedBills.forEach((group, pageIndex) => {
-    let pageTable: any;
-
-    if (isA5) {
-      // Khổ A5 ngang: 1 hàng x 2 cột
-      const b0 = group[0] || null;
-      const b1 = group[1] || null;
-
-      const cell0 = createA6BillCell(b0, schoolName, qrCodeDataUrl);
-      const cell1 = createA6BillCell(b1, schoolName, qrCodeDataUrl);
-
-      pageTable = {
+  if (isA6) {
+    // Khổ A6 đơn: Mỗi học sinh 1 trang A6 riêng biệt (thích hợp gửi file PDF riêng cho từng phụ huynh)
+    bills.forEach((bill, pageIndex) => {
+      const cell = createA6BillCell(bill, schoolName, qrCodeDataUrl);
+      const pageTable = {
         table: {
-          widths: [275, 275],
-          heights: [382],
+          widths: [275],
+          heights: [385],
           dontBreakRows: true,
-          body: [[cell0, cell1]],
+          body: [[cell]],
         },
-        layout: {
-          hLineWidth: () => 0,
-          vLineWidth: (i: number) => (i === 1 ? 0.6 : 0),
-          vLineColor: () => "#888888",
-          vLineStyle: () => ({ dash: { length: 2, space: 2 } }),
-          paddingLeft: () => 6,
-          paddingRight: () => 6,
-          paddingTop: () => 5,
-          paddingBottom: () => 5,
-        },
+        layout: "noBorders",
         margin: [0, 0, 0, 0],
       };
-    } else {
-      // Khổ A4 dọc: 2 hàng x 2 cột (4 phiếu A6)
-      const b0 = group[0] || null;
-      const b1 = group[1] || null;
-      const b2 = group[2] || null;
-      const b3 = group[3] || null;
 
-      const cell0 = createA6BillCell(b0, schoolName, qrCodeDataUrl);
-      const cell1 = createA6BillCell(b1, schoolName, qrCodeDataUrl);
-      const cell2 = createA6BillCell(b2, schoolName, qrCodeDataUrl);
-      const cell3 = createA6BillCell(b3, schoolName, qrCodeDataUrl);
+      if (pageIndex > 0) {
+        (pageTable as any).pageBreak = "before";
+      }
 
-      pageTable = {
-        table: {
-          widths: [275, 275],
-          heights: [388, 388],
-          dontBreakRows: true,
-          body: [
-            [cell0, cell1],
-            [cell2, cell3],
-          ],
-        },
-        layout: {
-          hLineWidth: (i: number) => (i === 1 ? 0.6 : 0),
-          vLineWidth: (i: number) => (i === 1 ? 0.6 : 0),
-          hLineColor: () => "#888888",
-          vLineColor: () => "#888888",
-          hLineStyle: () => ({ dash: { length: 2, space: 2 } }),
-          vLineStyle: () => ({ dash: { length: 2, space: 2 } }),
-          paddingLeft: () => 6,
-          paddingRight: () => 6,
-          paddingTop: () => 5,
-          paddingBottom: () => 5,
-        },
-        margin: [0, 0, 0, 0],
-      };
+      content.push(pageTable);
+    });
+  } else {
+    const chunkSize = isA5 ? 2 : 4;
+    const chunkedBills: DebtNotificationPdfBill[][] = [];
+    for (let i = 0; i < bills.length; i += chunkSize) {
+      chunkedBills.push(bills.slice(i, i + chunkSize));
     }
 
-    if (pageIndex > 0) {
-      pageTable.pageBreak = "before";
-    }
+    chunkedBills.forEach((group, pageIndex) => {
+      let pageTable: any;
 
-    content.push(pageTable);
-  });
+      if (isA5) {
+        // Khổ A5 ngang: 1 hàng x 2 cột
+        const b0 = group[0] || null;
+        const b1 = group[1] || null;
+
+        const cell0 = createA6BillCell(b0, schoolName, qrCodeDataUrl);
+        const cell1 = createA6BillCell(b1, schoolName, qrCodeDataUrl);
+
+        pageTable = {
+          table: {
+            widths: [275, 275],
+            heights: [382],
+            dontBreakRows: true,
+            body: [[cell0, cell1]],
+          },
+          layout: {
+            hLineWidth: () => 0,
+            vLineWidth: (i: number) => (i === 1 ? 0.6 : 0),
+            vLineColor: () => "#888888",
+            vLineStyle: () => ({ dash: { length: 2, space: 2 } }),
+            paddingLeft: () => 6,
+            paddingRight: () => 6,
+            paddingTop: () => 5,
+            paddingBottom: () => 5,
+          },
+          margin: [0, 0, 0, 0],
+        };
+      } else {
+        // Khổ A4 dọc: 2 hàng x 2 cột (4 phiếu A6)
+        const b0 = group[0] || null;
+        const b1 = group[1] || null;
+        const b2 = group[2] || null;
+        const b3 = group[3] || null;
+
+        const cell0 = createA6BillCell(b0, schoolName, qrCodeDataUrl);
+        const cell1 = createA6BillCell(b1, schoolName, qrCodeDataUrl);
+        const cell2 = createA6BillCell(b2, schoolName, qrCodeDataUrl);
+        const cell3 = createA6BillCell(b3, schoolName, qrCodeDataUrl);
+
+        pageTable = {
+          table: {
+            widths: [275, 275],
+            heights: [388, 388],
+            dontBreakRows: true,
+            body: [
+              [cell0, cell1],
+              [cell2, cell3],
+            ],
+          },
+          layout: {
+            hLineWidth: (i: number) => (i === 1 ? 0.6 : 0),
+            vLineWidth: (i: number) => (i === 1 ? 0.6 : 0),
+            hLineColor: () => "#888888",
+            vLineColor: () => "#888888",
+            hLineStyle: () => ({ dash: { length: 2, space: 2 } }),
+            vLineStyle: () => ({ dash: { length: 2, space: 2 } }),
+            paddingLeft: () => 6,
+            paddingRight: () => 6,
+            paddingTop: () => 5,
+            paddingBottom: () => 5,
+          },
+          margin: [0, 0, 0, 0],
+        };
+      }
+
+      if (pageIndex > 0) {
+        pageTable.pageBreak = "before";
+      }
+
+      content.push(pageTable);
+    });
+  }
 
   const docDefinition: any = {
-    pageSize: isA5 ? "A5" : "A4",
-    pageOrientation: isA5 ? "landscape" : "portrait",
-    pageMargins: [14, 10, 14, 10],
+    pageSize: isA6 ? "A6" : (isA5 ? "A5" : "A4"),
+    pageOrientation: isA6 ? "portrait" : (isA5 ? "landscape" : "portrait"),
+    pageMargins: isA6 ? [10, 8, 10, 8] : [14, 10, 14, 10],
     content,
     defaultStyle: {
       font: "Times",
@@ -498,4 +522,31 @@ export async function generateDebtNotificationPdfBuffer(
 
   const doc = pdfmake.createPdf(docDefinition);
   return await doc.getBuffer();
+}
+
+/**
+ * Sinh tên file chuẩn không dấu cho từng học sinh khi xuất file PDF thông báo nợ riêng
+ */
+export function generateStudentDebtFileName(
+  className: string,
+  studentName: string,
+  month: number,
+  year: number,
+  boardingCode?: string | null
+): string {
+  const clean = (str: string) =>
+    str
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/đ/g, "d")
+      .replace(/Đ/g, "D")
+      .replace(/[^a-zA-Z0-9]/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_|_$/g, "");
+
+  const cName = clean(className || "Lop");
+  const sName = clean(studentName || "Hoc_Sinh");
+  const mm = String(month).padStart(2, "0");
+  const code = boardingCode ? `_${clean(boardingCode)}` : "";
+  return `Thong_Bao_No_${cName}_${sName}_T${mm}_${year}${code}.pdf`;
 }

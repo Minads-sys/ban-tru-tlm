@@ -193,8 +193,9 @@ export default function BillingPage() {
   const [pdfZipMonth, setPdfZipMonth] = useState<number>(month);
   const [pdfZipYear, setPdfZipYear] = useState<number>(year);
   const [pdfZipClassId, setPdfZipClassId] = useState<string>("ALL");
-  const [pdfZipStatus, setPdfZipStatus] = useState<string>("ALL");
-  const [pdfExportMode, setPdfExportMode] = useState<"SEPARATE_ZIP" | "CLASS_MERGED" | "ALL_IN_ONE">("SEPARATE_ZIP");
+  const [pdfZipStatus, setPdfZipStatus] = useState<string>("DEBT");
+  const [pdfExportMode, setPdfExportMode] = useState<"SEPARATE_ZIP" | "CLASS_MERGED" | "ALL_IN_ONE">("CLASS_MERGED");
+  const [pdfExportLayout, setPdfExportLayout] = useState<"A5_LANDSCAPE_2UP" | "A4_PORTRAIT_4UP">("A4_PORTRAIT_4UP");
   const [downloadingPdfZip, setDownloadingPdfZip] = useState(false);
 
   // State cho In thông báo nợ gửi phụ huynh
@@ -248,8 +249,9 @@ export default function BillingPage() {
     setPdfZipMonth(month);
     setPdfZipYear(year);
     setPdfZipClassId(classFilter === "all" ? "ALL" : classFilter);
-    setPdfZipStatus("ALL");
+    setPdfZipStatus("DEBT");
     setPdfExportMode(mode);
+    setPdfExportLayout("A4_PORTRAIT_4UP");
     setOpenPdfZipModal(true);
   };
 
@@ -858,22 +860,44 @@ export default function BillingPage() {
     }
   };
 
-  // In phiếu
-  const printBills = () => {
-    setPrintBillId("ALL");
-    setTimeout(() => window.print(), 800);
+  // In thông báo nợ cho các học sinh chưa thanh toán ở trang hiện tại
+  const handlePrintCurrentPageDebt = () => {
+    const pageDebtBills = bills.filter(
+      (b) => b.paymentStatus === "UNPAID" || b.paymentStatus === "PARTIAL"
+    );
+    if (pageDebtBills.length === 0) {
+      Swal.fire({
+        title: "Không có công nợ",
+        text: "Tất cả học sinh ở trang này đã hoàn tất thanh toán (không có công nợ cần in thông báo).",
+        icon: "info",
+      });
+      return;
+    }
+    setDebtMonth(month);
+    setDebtYear(year);
+    setDebtClassId(classFilter === "all" ? "ALL" : classFilter);
+    setDebtPrintBills(pageDebtBills);
   };
 
+  // In thông báo nợ cho 1 học sinh cụ thể
+  const handlePrintSingleDebt = (bill: BillData) => {
+    setDebtMonth(bill.month);
+    setDebtYear(bill.year);
+    setDebtClassId(bill.student.class?.id || "ALL");
+    setDebtPrintBills([bill]);
+  };
+
+  // In biên nhận cho học sinh đã thanh toán
   const printSingleBill = (id: string) => {
     setPrintBillId(id);
     setTimeout(() => window.print(), 800);
   };
 
-  // Tải trọn bộ PDF (theo lớp hoặc gộp)
+  // Tải trọn bộ PDF thông báo nợ (theo lớp hoặc gộp)
   const handleDownloadPdfZip = async () => {
     setDownloadingPdfZip(true);
     try {
-      const url = `/api/billing/export-pdf-zip?month=${pdfZipMonth}&year=${pdfZipYear}&classId=${pdfZipClassId}&status=${pdfZipStatus}&mode=${pdfExportMode}`;
+      const url = `/api/billing/export-pdf-zip?month=${pdfZipMonth}&year=${pdfZipYear}&classId=${pdfZipClassId}&status=DEBT&mode=${pdfExportMode}&layout=${pdfExportLayout}`;
       const res = await fetch(url);
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "Lỗi tải file" }));
@@ -895,9 +919,10 @@ export default function BillingPage() {
         const selectedClassObj = classes.find((c) => c.id === pdfZipClassId);
         const classNamePart = selectedClassObj ? `_Lop_${selectedClassObj.name.replace(/\s+/g, "_")}` : "_Toan_Truong";
         const isZip = res.headers.get("content-type")?.includes("zip");
+        const layoutSuffix = pdfExportLayout === "A5_LANDSCAPE_2UP" ? "_A5" : "_A4";
         filename = isZip
-          ? `Phieu_Tien_An${classNamePart}_T${mm}_${pdfZipYear}.zip`
-          : `Phieu_Tien_An${classNamePart}_T${mm}_${pdfZipYear}.pdf`;
+          ? `Thong_Bao_No${classNamePart}_T${mm}_${pdfZipYear}.zip`
+          : `Thong_Bao_No${classNamePart}_T${mm}_${pdfZipYear}${layoutSuffix}.pdf`;
       }
 
       const blob = await res.blob();
@@ -912,10 +937,10 @@ export default function BillingPage() {
 
       const successMsg =
         pdfExportMode === "SEPARATE_ZIP"
-          ? "Đã tải về trọn bộ PDF phân theo thư mục lớp (ZIP)!"
+          ? "Đã tải về trọn bộ PDF thông báo nợ phân theo thư mục lớp (ZIP)!"
           : pdfExportMode === "CLASS_MERGED"
-          ? "Đã tải về file PDF theo lớp (tất cả bill của lớp trong 1 file)!"
-          : "Đã tải về toàn bộ hóa đơn gộp trong 1 file PDF!";
+          ? "Đã tải về file PDF thông báo nợ theo lớp!"
+          : "Đã tải về toàn bộ thông báo nợ gộp trong 1 file PDF!";
       Swal.fire("Thành công", successMsg, "success");
       setOpenPdfZipModal(false);
     } catch (err: any) {
@@ -1330,12 +1355,13 @@ export default function BillingPage() {
             })()}
 
             <Button
-              onClick={printBills}
+              onClick={handlePrintCurrentPageDebt}
               disabled={bills.length === 0}
-              className="bg-purple-600 hover:bg-purple-700 text-white font-semibold shadow hover:shadow-lg hover:shadow-purple-500/25 hover:-translate-y-0.5 hover:scale-[1.02] active:translate-y-0 active:scale-[0.98] transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:translate-y-0 disabled:hover:shadow-none"
+              className="bg-purple-600 hover:bg-purple-700 text-white font-semibold shadow hover:shadow-lg hover:shadow-purple-500/25 hover:-translate-y-0.5 hover:scale-[1.02] active:translate-y-0 active:scale-[0.98] transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:translate-y-0 disabled:hover:shadow-none flex items-center gap-1.5"
+              title="In thông báo nợ cho các học sinh chưa thanh toán ở trang hiện tại"
             >
-              <Printer className="h-4 w-4 mr-2 text-white" />
-              In phiếu trang hiện tại
+              <Printer className="h-4 w-4 text-white" />
+              <span>In thông báo nợ trang hiện tại</span>
             </Button>
 
             <Button
@@ -1358,28 +1384,13 @@ export default function BillingPage() {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-80 sm:w-96 p-1.5 shadow-xl bg-white border border-slate-200">
                 <DropdownMenuItem
-                  onClick={() => handleOpenExportModal("SEPARATE_ZIP")}
-                  className="flex items-start gap-2.5 p-2.5 cursor-pointer rounded-md hover:bg-emerald-50 focus:bg-emerald-50 text-slate-800 transition-colors"
-                >
-                  <Archive className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
-                  <div className="flex flex-col">
-                    <span className="font-semibold text-xs sm:text-sm text-slate-900">
-                      Tải PDF theo lớp như logic hiện tại (ZIP)
-                    </span>
-                    <span className="text-[11px] text-slate-500 mt-0.5 leading-tight">
-                      Mỗi học sinh 1 file riêng, nén ZIP phân theo thư mục từng lớp.
-                    </span>
-                  </div>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator className="my-1" />
-                <DropdownMenuItem
                   onClick={() => handleOpenExportModal("CLASS_MERGED")}
                   className="flex items-start gap-2.5 p-2.5 cursor-pointer rounded-md hover:bg-emerald-50 focus:bg-emerald-50 text-slate-800 transition-colors"
                 >
                   <Files className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
                   <div className="flex flex-col">
                     <span className="font-semibold text-xs sm:text-sm text-slate-900">
-                      Tải PDF theo lớp (tất cả bill của lớp trong 1 file PDF)
+                      Tải PDF theo lớp (tất cả thông báo nợ của lớp trong 1 file)
                     </span>
                     <span className="text-[11px] text-slate-500 mt-0.5 leading-tight">
                       Mỗi lớp gom thành 1 file PDF gồm nhiều trang (thuận tiện in theo từng lớp).
@@ -1394,10 +1405,25 @@ export default function BillingPage() {
                   <FileText className="h-4 w-4 text-purple-600 shrink-0 mt-0.5" />
                   <div className="flex flex-col">
                     <span className="font-semibold text-xs sm:text-sm text-slate-900">
-                      Gộp chung tất cả phiếu trong 1 file (không phân lớp)
+                      Gộp chung tất cả thông báo nợ trong 1 file (Toàn trường)
                     </span>
                     <span className="text-[11px] text-slate-500 mt-0.5 leading-tight">
-                      Toàn bộ phiếu thu gộp vào đúng 1 file PDF duy nhất (thuận tiện gửi lệnh in toàn trường).
+                      Toàn bộ thông báo nợ gộp vào đúng 1 file PDF duy nhất (thuận tiện gửi lệnh in toàn trường).
+                    </span>
+                  </div>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator className="my-1" />
+                <DropdownMenuItem
+                  onClick={() => handleOpenExportModal("SEPARATE_ZIP")}
+                  className="flex items-start gap-2.5 p-2.5 cursor-pointer rounded-md hover:bg-emerald-50 focus:bg-emerald-50 text-slate-800 transition-colors"
+                >
+                  <Archive className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <div className="flex flex-col">
+                    <span className="font-semibold text-xs sm:text-sm text-slate-900">
+                      Tải PDF theo từng học sinh (ZIP phân thư mục lớp)
+                    </span>
+                    <span className="text-[11px] text-slate-500 mt-0.5 leading-tight">
+                      Mỗi học sinh 1 file riêng, nén ZIP phân theo thư mục từng lớp.
                     </span>
                   </div>
                 </DropdownMenuItem>
@@ -1587,9 +1613,15 @@ export default function BillingPage() {
                       </TableCell>
                       <TableCell className="text-center">
                         <div className="flex items-center justify-center gap-1.5">
-                          <Button variant="outline" size="sm" onClick={() => printSingleBill(bill.id)}>
-                            {bill.paymentStatus === "PAID" ? "In biên nhận" : "In phiếu"}
-                          </Button>
+                          {bill.paymentStatus === "PAID" ? (
+                            <Button variant="outline" size="sm" onClick={() => printSingleBill(bill.id)}>
+                              In biên nhận
+                            </Button>
+                          ) : (
+                            <Button variant="outline" size="sm" onClick={() => handlePrintSingleDebt(bill)}>
+                              In TB nợ
+                            </Button>
+                          )}
                           <Button variant="outline" size="sm" onClick={() => openEditModal(bill)}>
                             Sửa
                           </Button>
@@ -2295,7 +2327,7 @@ export default function BillingPage() {
           <DialogHeader className="pb-2 border-b">
             <DialogTitle className="flex items-center gap-2 text-base sm:text-lg font-bold text-slate-900">
               <FileDown className="h-5 w-5 text-emerald-600 shrink-0" />
-              Tải / Xuất Phiếu Thu PDF
+              Tải / Xuất Thông Báo Nợ PDF
             </DialogTitle>
           </DialogHeader>
 
@@ -2311,18 +2343,51 @@ export default function BillingPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="SEPARATE_ZIP">
-                    📦 Tải PDF theo lớp (Logic hiện tại - Từng học sinh 1 file trong ZIP)
-                  </SelectItem>
                   <SelectItem value="CLASS_MERGED">
-                    📑 Tải PDF theo lớp (Gộp tất cả bill của lớp trong 1 file PDF)
+                    📑 Tải PDF theo lớp (Gộp tất cả thông báo nợ của lớp trong 1 file)
                   </SelectItem>
                   <SelectItem value="ALL_IN_ONE">
-                    📚 Gộp chung tất cả phiếu trong 1 file (Không phân lớp)
+                    📚 Gộp chung tất cả thông báo nợ trong 1 file (Toàn trường)
+                  </SelectItem>
+                  <SelectItem value="SEPARATE_ZIP">
+                    📦 Tải PDF theo từng học sinh (ZIP phân thư mục lớp)
                   </SelectItem>
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Chọn Định dạng khổ in */}
+            {pdfExportMode !== "SEPARATE_ZIP" && (
+              <div>
+                <Label className="text-xs font-semibold">Khổ giấy ghép phiếu:</Label>
+                <div className="grid grid-cols-2 gap-2 mt-1">
+                  <button
+                    type="button"
+                    onClick={() => setPdfExportLayout("A4_PORTRAIT_4UP")}
+                    className={`p-2 rounded-md border text-left text-xs transition-all cursor-pointer ${
+                      pdfExportLayout === "A4_PORTRAIT_4UP"
+                        ? "border-emerald-600 bg-emerald-50/80 text-emerald-950 font-bold ring-1 ring-emerald-500"
+                        : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
+                    }`}
+                  >
+                    <span>📑 A4 dọc (4 phiếu A6)</span>
+                    <span className="block text-[10px] text-slate-500 font-normal">Tiết kiệm giấy in</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPdfExportLayout("A5_LANDSCAPE_2UP")}
+                    className={`p-2 rounded-md border text-left text-xs transition-all cursor-pointer ${
+                      pdfExportLayout === "A5_LANDSCAPE_2UP"
+                        ? "border-emerald-600 bg-emerald-50/80 text-emerald-950 font-bold ring-1 ring-emerald-500"
+                        : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
+                    }`}
+                  >
+                    <span>📄 A5 ngang (2 phiếu A6)</span>
+                    <span className="block text-[10px] text-slate-500 font-normal">Cắt đôi theo tờ A5</span>
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -2374,19 +2439,9 @@ export default function BillingPage() {
               </Select>
             </div>
 
-            <div>
-              <Label className="text-xs font-semibold">Lọc trạng thái hóa đơn:</Label>
-              <Select value={pdfZipStatus} onValueChange={setPdfZipStatus}>
-                <SelectTrigger className="mt-1 h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">Tất cả học sinh có hóa đơn</SelectItem>
-                  <SelectItem value="DEBT">Chỉ học sinh còn nợ (Chưa TT & Nộp 1 phần)</SelectItem>
-                  <SelectItem value="UNPAID">Chỉ học sinh Chưa thanh toán</SelectItem>
-                  <SelectItem value="PAID">Chỉ học sinh Đã thanh toán</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="rounded-md bg-amber-50 border border-amber-200 p-2 text-xs text-amber-900">
+              <span className="font-semibold">⚠️ Đối tượng xuất: </span>
+              Chỉ tạo thông báo nợ cho các học sinh <b>chưa thanh toán</b> hoặc <b>mới thanh toán một phần</b>.
             </div>
 
             {/* Khung mô tả cấu trúc file & thư mục */}
@@ -2398,30 +2453,30 @@ export default function BillingPage() {
                 {pdfExportMode === "SEPARATE_ZIP" && (
                   <>
                     <p className="text-emerald-800 font-bold">
-                      📦 Phieu_Tien_An_{pdfZipClassId !== "ALL" ? `Lop_${(classes.find(c => c.id === pdfZipClassId)?.name || '10A1').replace(/\s+/g, '_')}_` : 'Toan_Truong_'}T{String(pdfZipMonth).padStart(2, '0')}_{pdfZipYear}.zip
+                      📦 Thong_Bao_No_{pdfZipClassId !== "ALL" ? `Lop_${(classes.find(c => c.id === pdfZipClassId)?.name || '10A1').replace(/\s+/g, '_')}_` : 'Toan_Truong_'}T{String(pdfZipMonth).padStart(2, '0')}_{pdfZipYear}.zip
                     </p>
                     <p className="pl-3 text-blue-700">├── 📁 Lop_{(classes.find(c => c.id === pdfZipClassId)?.name || '10A1').replace(/\s+/g, '_')}/</p>
-                    <p className="pl-6 text-slate-600">├── 📄 {(classes.find(c => c.id === pdfZipClassId)?.name || '10A1').replace(/\s+/g, '_')}_Nguyen_Van_A_Thang_{String(pdfZipMonth).padStart(2, '0')}_{pdfZipYear}_BT00863.pdf</p>
-                    <p className="pl-6 text-slate-600">└── 📄 {(classes.find(c => c.id === pdfZipClassId)?.name || '10A1').replace(/\s+/g, '_')}_Tran_Thi_B_Thang_{String(pdfZipMonth).padStart(2, '0')}_{pdfZipYear}_BT00864.pdf</p>
+                    <p className="pl-6 text-slate-600">├── 📄 Thong_Bao_No_{(classes.find(c => c.id === pdfZipClassId)?.name || '10A1').replace(/\s+/g, '_')}_Nguyen_Van_A_T{String(pdfZipMonth).padStart(2, '0')}_{pdfZipYear}_BT00863.pdf</p>
+                    <p className="pl-6 text-slate-600">└── 📄 Thong_Bao_No_{(classes.find(c => c.id === pdfZipClassId)?.name || '10A1').replace(/\s+/g, '_')}_Tran_Thi_B_T{String(pdfZipMonth).padStart(2, '0')}_{pdfZipYear}_BT00864.pdf</p>
                   </>
                 )}
                 {pdfExportMode === "CLASS_MERGED" && (
                   pdfZipClassId !== "ALL" ? (
                     <>
                       <p className="text-blue-800 font-bold">
-                        📄 Phieu_Tien_An_Lop_{(classes.find(c => c.id === pdfZipClassId)?.name || '10A1').replace(/\s+/g, '_')}_T{String(pdfZipMonth).padStart(2, '0')}_{pdfZipYear}.pdf
+                        📄 Thong_Bao_No_Lop_{(classes.find(c => c.id === pdfZipClassId)?.name || '10A1').replace(/\s+/g, '_')}_T{String(pdfZipMonth).padStart(2, '0')}_{pdfZipYear}{pdfExportLayout === "A5_LANDSCAPE_2UP" ? "_A5" : "_A4"}.pdf
                       </p>
                       <p className="text-slate-600 pl-3">
-                        * 1 file PDF duy nhất gồm tất cả học sinh lớp {classes.find(c => c.id === pdfZipClassId)?.name || '10A1'} (mỗi học sinh 1 trang khổ A5).
+                        * 1 file PDF duy nhất gồm tất cả học sinh còn nợ lớp {classes.find(c => c.id === pdfZipClassId)?.name || '10A1'} (khổ {pdfExportLayout === "A5_LANDSCAPE_2UP" ? "A5 2 phiếu" : "A4 4 phiếu"}).
                       </p>
                     </>
                   ) : (
                     <>
                       <p className="text-emerald-800 font-bold">
-                        📦 Phieu_Tien_An_Theo_Lop_Gop_T{String(pdfZipMonth).padStart(2, '0')}_{pdfZipYear}.zip
+                        📦 Thong_Bao_No_Theo_Lop_T{String(pdfZipMonth).padStart(2, '0')}_{pdfZipYear}.zip
                       </p>
-                      <p className="pl-3 text-blue-700">├── 📄 Phieu_Tien_An_Lop_10A1_T{String(pdfZipMonth).padStart(2, '0')}_{pdfZipYear}.pdf (tất cả HS lớp 10A1)</p>
-                      <p className="pl-3 text-blue-700">├── 📄 Phieu_Tien_An_Lop_10A2_T{String(pdfZipMonth).padStart(2, '0')}_{pdfZipYear}.pdf (tất cả HS lớp 10A2)</p>
+                      <p className="pl-3 text-blue-700">├── 📄 Thong_Bao_No_Lop_10A1_T{String(pdfZipMonth).padStart(2, '0')}_{pdfZipYear}{pdfExportLayout === "A5_LANDSCAPE_2UP" ? "_A5" : "_A4"}.pdf</p>
+                      <p className="pl-3 text-blue-700">├── 📄 Thong_Bao_No_Lop_10A2_T{String(pdfZipMonth).padStart(2, '0')}_{pdfZipYear}{pdfExportLayout === "A5_LANDSCAPE_2UP" ? "_A5" : "_A4"}.pdf</p>
                       <p className="pl-3 text-slate-500">└── ... (các lớp khác)</p>
                     </>
                   )
@@ -2429,10 +2484,10 @@ export default function BillingPage() {
                 {pdfExportMode === "ALL_IN_ONE" && (
                   <>
                     <p className="text-purple-800 font-bold">
-                      📄 Phieu_Tien_An{pdfZipClassId !== "ALL" ? `_Lop_${(classes.find(c => c.id === pdfZipClassId)?.name || '10A1').replace(/\s+/g, '_')}` : '_Toan_Truong'}_Gop_Chung_T{String(pdfZipMonth).padStart(2, '0')}_{pdfZipYear}.pdf
+                      📄 Thong_Bao_No{pdfZipClassId !== "ALL" ? `_Lop_${(classes.find(c => c.id === pdfZipClassId)?.name || '10A1').replace(/\s+/g, '_')}` : '_Toan_Truong'}_Gop_Chung_T{String(pdfZipMonth).padStart(2, '0')}_{pdfZipYear}{pdfExportLayout === "A5_LANDSCAPE_2UP" ? "_A5" : "_A4"}.pdf
                     </p>
                     <p className="text-slate-600 pl-3">
-                      * 1 file PDF duy nhất chứa toàn bộ học sinh được nối tiếp nhau theo thứ tự từng lớp.
+                      * 1 file PDF duy nhất chứa toàn bộ thông báo nợ của học sinh được nối tiếp nhau theo thứ tự từng lớp.
                     </p>
                     <p className="text-emerald-600 pl-3 italic">
                       * Rất tiện lợi để mở lên và ấn In toàn bộ trên máy in văn phòng.
@@ -2442,10 +2497,10 @@ export default function BillingPage() {
               </div>
               <p className="text-[11px] text-slate-500 italic">
                 {pdfExportMode === "SEPARATE_ZIP"
-                  ? "* Cấu trúc tên file: Lop_ho_tên_thang_năm_Mã ban trú.pdf"
+                  ? "* Mỗi học sinh 1 file PDF A6 đơn riêng biệt trong thư mục lớp."
                   : pdfExportMode === "CLASS_MERGED"
-                  ? "* Mỗi lớp là 1 file PDF riêng biệt gồm tất cả học sinh của lớp đó."
-                  : "* Toàn bộ học sinh xuất chung trong đúng 1 file PDF duy nhất."}
+                  ? "* Mỗi lớp là 1 file PDF riêng biệt gồm tất cả học sinh còn nợ của lớp đó."
+                  : "* Toàn bộ học sinh còn nợ xuất chung trong đúng 1 file PDF duy nhất."}
               </p>
             </div>
           </div>
