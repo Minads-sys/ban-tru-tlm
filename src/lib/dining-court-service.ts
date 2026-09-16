@@ -525,10 +525,22 @@ export async function getDayMealClasses(dateStr: string) {
         include: {
           students: {
             where: {
-              boardingStatus: BoardingStatus.ACTIVE,
-              OR: [
-                { mealStartDate: null },
-                { mealStartDate: { lte: date } },
+              AND: [
+                {
+                  OR: [
+                    { boardingStatus: BoardingStatus.ACTIVE },
+                    {
+                      boardingStatus: BoardingStatus.CANCELLED,
+                      boardingCancelledAt: { gte: date },
+                    },
+                  ],
+                },
+                {
+                  OR: [
+                    { mealStartDate: null },
+                    { mealStartDate: { lte: date } },
+                  ],
+                },
               ],
             },
             include: {
