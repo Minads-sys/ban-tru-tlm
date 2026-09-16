@@ -6,6 +6,7 @@ import { broadcastChange } from "@/lib/realtime-hub";
 import { getWeekNumber, getVietnamTodayUTC, isPastCutoffTime } from "@/lib/utils";
 import { auth } from "@/lib/auth";
 import { logAudit, AUDIT_ACTIONS, AUDIT_MODULES } from "@/lib/audit-log";
+import { autoApproveExpiredCancellations } from "@/app/admin/meal-cancel/actions";
 
 // GET: Lấy tổng hợp suất ăn cho 1 ngày
 export async function GET(request: NextRequest) {
@@ -77,6 +78,13 @@ export async function GET(request: NextRequest) {
       },
     },
   });
+
+  // Tự động quét và duyệt các đơn quá hạn trước khi lấy danh sách cắt suất
+  try {
+    await autoApproveExpiredCancellations();
+  } catch (err) {
+    console.error("Lỗi tự động duyệt đơn quá hạn trong GET daily-meals:", err);
+  }
 
   // Lấy danh sách cắt suất đã duyệt cho ngày này
   const approvedCancellations = await prisma.mealCancellation.findMany({
@@ -452,6 +460,13 @@ export async function POST(request: NextRequest) {
         },
       },
     });
+
+    // Tự động quét và duyệt các đơn quá hạn trước khi chốt số liệu
+    try {
+      await autoApproveExpiredCancellations();
+    } catch (err) {
+      console.error("Lỗi tự động duyệt đơn quá hạn trong POST daily-meals:", err);
+    }
 
     // Lấy cắt suất duyệt
     const approvedCancellations = await prisma.mealCancellation.findMany({

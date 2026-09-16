@@ -628,6 +628,18 @@ export default function DailyMealsPage() {
                   <span>Chốt Chính Thức (Lần 2)</span>
                 </Button>
               )}
+              {classSummaries.length > 0 && (isFullyLocked || isPastLockTime2()) && !isCashier && (
+                <Button
+                  variant="outline"
+                  className="border-emerald-600 text-emerald-700 hover:bg-emerald-50 font-bold gap-1.5 shadow-xs cursor-pointer"
+                  onClick={() => { setLockType("FINAL"); setIsConfirmOpen(true); }}
+                  disabled={isLocking || isLoading}
+                  title="Quét lại toàn bộ đơn cắt suất và đổi món mới nhất để cập nhật lại số liệu chốt báo bếp"
+                >
+                  <RefreshCw className={`h-4 w-4 text-emerald-600 ${isLocking ? 'animate-spin' : ''}`} />
+                  <span>Cập nhật lại số liệu chốt</span>
+                </Button>
+              )}
 
               <Button
                 variant="outline"
@@ -1208,12 +1220,18 @@ export default function DailyMealsPage() {
               </div>
               <div>
                 <DialogTitle className="text-lg font-bold text-slate-900">
-                  {lockType === "EXPECTED" ? "Xác nhận chốt dự kiến" : "Xác nhận chốt chính thức"}
+                  {(isFullyLocked || isPastLockTime2()) && lockType === "FINAL"
+                    ? "Xác nhận cập nhật lại số liệu chốt bếp"
+                    : lockType === "EXPECTED" 
+                      ? "Xác nhận chốt dự kiến" 
+                      : "Xác nhận chốt chính thức"}
                 </DialogTitle>
                 <DialogDescription className="text-xs text-slate-500">
-                  {lockType === "EXPECTED" 
-                    ? "Lưu lại con số dự kiến gửi bộ phận bếp đi chợ"
-                    : "Khóa sổ số lượng thực tế chia thức ăn và tính tiền"}
+                  {(isFullyLocked || isPastLockTime2()) && lockType === "FINAL"
+                    ? "Quét lại toàn bộ đơn cắt suất và đổi món mới nhất để tính toán lại và ghi đè số liệu báo bếp"
+                    : lockType === "EXPECTED" 
+                      ? "Lưu lại con số dự kiến gửi bộ phận bếp đi chợ"
+                      : "Khóa sổ số lượng thực tế chia thức ăn và tính tiền"}
                 </DialogDescription>
               </div>
             </div>
@@ -1221,7 +1239,7 @@ export default function DailyMealsPage() {
 
           <div className="space-y-3 py-2 text-sm text-slate-700">
             <p>
-              Bạn đang chuẩn bị chốt số lượng suất ăn cho{' '}
+              Bạn đang chuẩn bị {(isFullyLocked || isPastLockTime2()) && lockType === "FINAL" ? "cập nhật lại" : "chốt"} số lượng suất ăn cho{' '}
               <span className="font-bold text-slate-900">{classSummaries.length} lớp học</span> vào
               ngày: <span className="font-bold text-blue-700">{formattedDateString}</span>.
             </p>
@@ -1247,7 +1265,9 @@ export default function DailyMealsPage() {
             <div className="flex items-start gap-2 rounded-md bg-amber-50 p-2.5 text-xs text-amber-800 border border-amber-200">
               <Info className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
               <span>
-                Lưu ý: Sau khi chốt, các yêu cầu cắt suất mới phát sinh sẽ không được tự động trừ vào phiếu bếp này trừ khi chốt lại.
+                {(isFullyLocked || isPastLockTime2()) && lockType === "FINAL"
+                  ? "Lưu ý: Thao tác này sẽ quét lại toàn bộ các đơn cắt suất (kể cả duyệt tự động và giáo viên duyệt mới) để đồng bộ chính xác số suất báo bếp."
+                  : "Lưu ý: Sau khi chốt, các yêu cầu cắt suất mới phát sinh sẽ không được tự động trừ vào phiếu bếp này trừ khi chốt lại."}
               </span>
             </div>
           </div>
@@ -1271,12 +1291,12 @@ export default function DailyMealsPage() {
               {isLocking ? (
                 <>
                   <RefreshCw className="h-4 w-4 animate-spin" />
-                  <span>Đang khóa sổ...</span>
+                  <span>{(isFullyLocked || isPastLockTime2()) && lockType === "FINAL" ? "Đang cập nhật lại..." : "Đang khóa sổ..."}</span>
                 </>
               ) : (
                 <>
                   <Lock className="h-4 w-4" />
-                  <span>Xác nhận chốt ngay</span>
+                  <span>{(isFullyLocked || isPastLockTime2()) && lockType === "FINAL" ? "Xác nhận cập nhật lại" : "Xác nhận chốt ngay"}</span>
                 </>
               )}
             </Button>

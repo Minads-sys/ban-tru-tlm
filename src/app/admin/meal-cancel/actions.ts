@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { broadcastChange } from '@/lib/realtime-hub';
 import { getVietnamTodayUTC, isPastCutoffTime, getWeekNumber, getSchoolWeekInfo } from '@/lib/utils';
 import { logAudit, AUDIT_ACTIONS, AUDIT_MODULES } from '@/lib/audit-log';
+import { syncDailyMealSummaryForDate } from '@/lib/daily-meals';
 
 /**
  * Duyệt 1 đơn cắt suất thủ công bởi giáo viên/admin
@@ -31,6 +32,12 @@ export async function approveCancellation(id: string, note?: string) {
 
     broadcastChange('meal_cancellations', 'UPDATE', updated);
     broadcastChange('daily_meals', 'UPDATE');
+
+    try {
+      await syncDailyMealSummaryForDate(updated.cancelDate);
+    } catch (syncErr) {
+      console.error('Lỗi khi syncDailyMealSummaryForDate sau khi duyệt:', syncErr);
+    }
 
     await logAudit({
       userId: approverId,
@@ -267,7 +274,7 @@ export async function autoApproveExpiredCancellations() {
         status: 'PENDING',
         cancelDate: { lte: todayUTC },
       },
-      select: { id: true },
+      select: { id: true, cancelDate: true },
     });
 
     if (pendingList.length === 0) {
@@ -294,6 +301,16 @@ export async function autoApproveExpiredCancellations() {
         note: `Hệ thống tự động duyệt lúc ${cutoffTime} (hết giờ chốt sổ, GV chưa thao tác)`,
       },
     });
+
+    // 5. Tự động đồng bộ lại bảng chốt suất DailyMealSummary cho các ngày bị ảnh hưởng
+    const distinctDates = Array.from(new Set(pendingList.map((item) => item.cancelDate.toISOString())));
+    for (const dateIso of distinctDates) {
+      try {
+        await syncDailyMealSummaryForDate(new Date(dateIso));
+      } catch (syncErr) {
+        console.error(`Lỗi khi syncDailyMealSummaryForDate cho ngày ${dateIso}:`, syncErr);
+      }
+    }
 
     broadcastChange('meal_cancellations', 'UPDATE');
     broadcastChange('daily_meals', 'UPDATE');
@@ -684,6 +701,14 @@ export async function bulkCreateAndApproveCancellations(params: {
     // 8. Phát sóng Realtime & Revalidate
     broadcastChange('meal_cancellations', 'INSERT');
     broadcastChange('daily_meals', 'UPDATE');
+
+    if (autoApprove) {
+      try {
+        await syncDailyMealSummaryForDate(requestDate);
+      } catch (syncErr) {
+        console.error('Lỗi khi syncDailyMealSummaryForDate sau khi bulkCancelMeals:', syncErr);
+      }
+    }
 
     revalidatePath('/admin/meal-cancel');
     revalidatePath('/admin/daily-meals');
