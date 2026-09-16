@@ -23,6 +23,7 @@ import {
   History,
   Building2,
   Truck,
+  Banknote,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -184,6 +185,19 @@ export function SidebarNav({ user }: SidebarNavProps) {
 
       {/* Nav links - Cho phép cuộn lên xuống mượt mà */}
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain sidebar-scroll px-3 py-3">
+        {/* Nút vào nhanh Quầy Thu Ngân POS độc lập */}
+        {["ADMIN", "CASHIER", "ACCOUNTANT", "BOARDING_MANAGER"].includes(user?.role || "") && (
+          <div className="mb-3">
+            <Link
+              href="/pos"
+              onClick={() => setIsOpen(false)}
+              className="flex items-center gap-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 px-3 py-2 text-xs sm:text-sm font-bold text-white shadow-md shadow-emerald-950/40 hover:from-emerald-500 hover:to-teal-500 transition-all group"
+            >
+              <Banknote className="h-4 w-4 text-emerald-200 group-hover:scale-110 transition-transform shrink-0" />
+              <span className="truncate">Quầy Thu Ngân (POS)</span>
+            </Link>
+          </div>
+        )}
         <nav className="space-y-1">
           {NAV_ITEMS.filter(item => {
             if (user?.role === "KITCHEN_SECRETARY") {

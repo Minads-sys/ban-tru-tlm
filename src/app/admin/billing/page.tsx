@@ -1069,20 +1069,30 @@ export default function BillingPage() {
           )}
         </div>
 
-        {/* Nút chuyển nhanh cho Thu Ngân */}
-        {isCashier && (
-          <div className="flex flex-wrap items-center gap-3">
+        {/* Cụm nút tác vụ nhanh */}
+        <div className="flex flex-wrap items-center gap-3">
+          <Link href="/pos">
+            <Button
+              className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold cursor-pointer shadow-md hover:shadow-emerald-500/25 hover:-translate-y-0.5 active:translate-y-0 transition-all text-sm h-10 px-4 rounded-xl"
+              title="Mở màn hình Quầy Thu Ngân chuyên nghiệp độc lập (toàn màn hình POS)"
+            >
+              <Banknote className="h-5 w-5" />
+              <span>Quầy Thu Ngân</span>
+            </Button>
+          </Link>
+
+          {isCashier && (
             <Link href="/admin/daily-meals?tab=dining-areas">
               <Button
                 variant="outline"
-                className="gap-2 border-blue-300 text-blue-700 hover:bg-blue-50 hover:text-blue-900 cursor-pointer shadow-2xs font-semibold"
+                className="gap-2 border-blue-300 text-blue-700 hover:bg-blue-50 hover:text-blue-900 cursor-pointer shadow-2xs font-semibold h-10 rounded-xl"
               >
                 <UtensilsCrossed className="h-4 w-4 text-blue-600" />
                 Chia Sân & Xuất PDF
               </Button>
             </Link>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="no-print">
@@ -1156,6 +1166,21 @@ export default function BillingPage() {
 
         {/* ================= TAB: QUẦY THU TIỀN ================= */}
         <TabsContent value="pos" className="space-y-4 pt-2">
+          <div className="bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-blue-500/10 border border-emerald-300/80 rounded-xl p-3 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                <Banknote className="h-4 w-4" />
+              </div>
+              <div className="text-xs text-slate-800">
+                <span className="font-bold text-emerald-900">Mẹo nâng cao:</span> Bạn có thể mở <b>Màn hình Quầy Thu Ngân Chuyên Nghiệp</b> độc lập (toàn màn hình, không thanh menu sidebar) để thao tác quầy thu rộng rãi, mượt mà hơn.
+              </div>
+            </div>
+            <Link href="/pos" className="shrink-0 w-full sm:w-auto">
+              <Button size="sm" className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs cursor-pointer">
+                Mở Quầy Thu Toàn Màn Hình →
+              </Button>
+            </Link>
+          </div>
           <CashPos currentUser={session?.user} />
         </TabsContent>
 

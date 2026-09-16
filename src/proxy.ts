@@ -18,8 +18,8 @@ export default auth((req) => {
     return NextResponse.next();
   }
 
-  // Protect /admin/* routes (require staff roles)
-  if (pathname.startsWith('/admin')) {
+  // Protect /admin/* and /pos routes (require staff roles)
+  if (pathname.startsWith('/admin') || pathname === '/pos' || pathname.startsWith('/pos/')) {
     if (!isLoggedIn) {
       return NextResponse.redirect(new URL('/login', nextUrl));
     }

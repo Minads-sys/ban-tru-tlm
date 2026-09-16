@@ -206,23 +206,54 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const date = searchParams.get("date"); // YYYY-MM-DD
+    const date = searchParams.get("date"); // YYYY-MM-DD (legacy single day)
+    const startDate = searchParams.get("startDate"); // YYYY-MM-DD
+    const endDate = searchParams.get("endDate"); // YYYY-MM-DD
+    const status = searchParams.get("status"); // all, VALID, CLOSED, VOIDED
     const cashierId = searchParams.get("cashierId");
     const closingSessionId = searchParams.get("closingSessionId");
     const unclosedOnly = searchParams.get("unclosedOnly") === "true";
     const search = searchParams.get("search")?.trim();
+    const isAll = searchParams.get("all") === "true";
     const page = parseInt(searchParams.get("page") || "1", 10);
-    const limit = parseInt(searchParams.get("limit") || "30", 10);
+    const limit = isAll ? 10000 : parseInt(searchParams.get("limit") || "30", 10);
 
     const where: any = {
       paymentMethod: PaymentMethod.CASH,
     };
 
-    if (date) {
+    // Bộ lọc thời gian: Ưu tiên startDate & endDate, kế tiếp là date
+    if (startDate && endDate) {
+      const [sy, sm, sd] = startDate.split("-").map(Number);
+      const start = new Date(Date.UTC(sy, sm - 1, sd, 0, 0, 0));
+      const [ey, em, ed] = endDate.split("-").map(Number);
+      const end = new Date(Date.UTC(ey, em - 1, ed, 23, 59, 59, 999));
+      where.transDate = { gte: start, lte: end };
+    } else if (startDate) {
+      const [sy, sm, sd] = startDate.split("-").map(Number);
+      const start = new Date(Date.UTC(sy, sm - 1, sd, 0, 0, 0));
+      where.transDate = { gte: start };
+    } else if (endDate) {
+      const [ey, em, ed] = endDate.split("-").map(Number);
+      const end = new Date(Date.UTC(ey, em - 1, ed, 23, 59, 59, 999));
+      where.transDate = { lte: end };
+    } else if (date) {
       const [y, m, d] = date.split("-").map(Number);
       const start = new Date(Date.UTC(y, m - 1, d, 0, 0, 0));
       const end = new Date(Date.UTC(y, m - 1, d, 23, 59, 59, 999));
       where.transDate = { gte: start, lte: end };
+    }
+    // Nếu không truyền startDate, endDate, date -> Truy vấn TOÀN THỜI GIAN (không đặt where.transDate)
+
+    // Lọc theo trạng thái
+    if (status === "VALID") {
+      where.isVoided = false;
+      where.closingSessionId = null;
+    } else if (status === "CLOSED") {
+      where.isVoided = false;
+      where.closingSessionId = { not: null };
+    } else if (status === "VOIDED") {
+      where.isVoided = true;
     }
 
     if (cashierId && cashierId !== "all") {
@@ -256,7 +287,7 @@ export async function GET(request: NextRequest) {
     }
 
     const total = await prisma.paymentTransaction.count({ where });
-    const skip = (page - 1) * limit;
+    const skip = isAll ? 0 : (page - 1) * limit;
 
     const transactions = await prisma.paymentTransaction.findMany({
       where,

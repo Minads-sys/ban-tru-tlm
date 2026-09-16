@@ -33,13 +33,20 @@ import {
   FileText,
   Loader2,
   ChevronRight,
+  ChevronLeft,
   X,
   UserX,
   AlertTriangle,
   CheckCircle2,
   Scale,
   ArrowDownLeft,
+  FileSpreadsheet,
+  Download,
+  Filter,
+  ShieldAlert,
+  Calendar,
 } from "lucide-react";
+import ExcelJS from "exceljs";
 import { formatCurrency, numberToVietnameseWords, maskStudentCode, getVietnamTodayString, formatDate } from "@/lib/utils";
 import { generateMealPaymentQR, generateMealPaymentEMVCo } from "@/lib/vietqr";
 import { CashReceiptPrint, CashReceiptData } from "./cash-receipt-print";
@@ -119,10 +126,26 @@ export function CashPos({ currentUser }: { currentUser: any }) {
   // Cài đặt hệ thống (thông tin trường học, ngân hàng)
   const [settings, setSettings] = useState<Record<string, string>>({});
 
-  // Danh sách phiếu thu tiền mặt trong ngày của Thu ngân
-  const [todayReceipts, setTodayReceipts] = useState<any[]>([]);
+  // Quyền Kế toán / Admin để thực hiện các thao tác quản trị đặc biệt như Hủy phiếu thu
+  const isAccountantOrAdmin =
+    currentUser?.role === "ADMIN" ||
+    currentUser?.role === "ACCOUNTANT" ||
+    (currentUser?.permissions || []).includes("MANAGE_FINANCE");
+
+  // Bảng danh sách phiếu thu tiền mặt (hỗ trợ toàn thời gian, bộ lọc thời gian, tìm kiếm, phân trang)
+  const [receiptsList, setReceiptsList] = useState<any[]>([]);
   const [loadingReceipts, setLoadingReceipts] = useState(false);
-  const [todayTotal, setTodayTotal] = useState(0);
+  const [receiptDatePreset, setReceiptDatePreset] = useState<"today" | "yesterday" | "7days" | "this_month" | "all" | "custom">("today");
+  const [receiptCustomStart, setReceiptCustomStart] = useState<string>("");
+  const [receiptCustomEnd, setReceiptCustomEnd] = useState<string>("");
+  const [receiptSearchTerm, setReceiptSearchTerm] = useState<string>("");
+  const [receiptStatusFilter, setReceiptStatusFilter] = useState<"all" | "VALID" | "CLOSED" | "VOIDED">("all");
+  const [receiptPage, setReceiptPage] = useState<number>(1);
+  const [receiptLimit, setReceiptLimit] = useState<number>(20);
+  const [receiptTotalRecords, setReceiptTotalRecords] = useState<number>(0);
+  const [receiptTotalPages, setReceiptTotalPages] = useState<number>(1);
+  const [receiptStats, setReceiptStats] = useState<{ totalValidCount: number; totalAmount: number }>({ totalValidCount: 0, totalAmount: 0 });
+  const [exportingExcel, setExportingExcel] = useState(false);
 
   // Danh sách học sinh hủy bán trú chờ quyết toán nợ (Dành cho Thu ngân)
   const [pendingCollections, setPendingCollections] = useState<any[]>([]);
@@ -130,6 +153,73 @@ export function CashPos({ currentUser }: { currentUser: any }) {
   const [loadingPending, setLoadingPending] = useState(false);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Tính toán tham số ngày dựa theo Preset thời gian
+  const getDateQueryParams = useCallback(() => {
+    const today = getVietnamTodayString();
+    if (receiptDatePreset === "today") {
+      return `date=${today}`;
+    }
+    if (receiptDatePreset === "yesterday") {
+      const now = new Date();
+      now.setDate(now.getDate() - 1);
+      const yStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      return `date=${yStr}`;
+    }
+    if (receiptDatePreset === "7days") {
+      const now = new Date();
+      now.setDate(now.getDate() - 6);
+      const startStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      return `startDate=${startStr}&endDate=${today}`;
+    }
+    if (receiptDatePreset === "this_month") {
+      const now = new Date();
+      const startStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+      const endStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+      return `startDate=${startStr}&endDate=${endStr}`;
+    }
+    if (receiptDatePreset === "custom") {
+      let params = "";
+      if (receiptCustomStart) params += `startDate=${receiptCustomStart}`;
+      if (receiptCustomEnd) params += `${params ? "&" : ""}endDate=${receiptCustomEnd}`;
+      return params;
+    }
+    // "all": Không giới hạn ngày
+    return "";
+  }, [receiptDatePreset, receiptCustomStart, receiptCustomEnd]);
+
+  // Tải danh sách phiếu thu tiền mặt theo bộ lọc & phân trang
+  const fetchReceiptsList = useCallback(
+    async (pageToFetch = 1) => {
+      setLoadingReceipts(true);
+      try {
+        const dateParams = getDateQueryParams();
+        let url = `/api/billing/cash-payment?page=${pageToFetch}&limit=${receiptLimit}&status=${receiptStatusFilter}`;
+        if (dateParams) url += `&${dateParams}`;
+        if (receiptSearchTerm.trim()) url += `&search=${encodeURIComponent(receiptSearchTerm.trim())}`;
+
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data.data) {
+          setReceiptsList(data.data);
+          setReceiptTotalRecords(data.total || 0);
+          setReceiptTotalPages(data.totalPages || 1);
+          setReceiptPage(data.page || 1);
+          setReceiptStats(data.stats || { totalValidCount: 0, totalAmount: 0 });
+        }
+      } catch (err) {
+        console.error("Lỗi khi tải danh sách phiếu thu:", err);
+      } finally {
+        setLoadingReceipts(false);
+      }
+    },
+    [getDateQueryParams, receiptLimit, receiptStatusFilter, receiptSearchTerm]
+  );
+
+  const fetchTodayReceipts = useCallback(() => {
+    fetchReceiptsList(1);
+  }, [fetchReceiptsList]);
 
   // Tải danh sách chờ quyết toán thu nợ
   const fetchPendingCollections = useCallback(async () => {
@@ -164,26 +254,15 @@ export function CashPos({ currentUser }: { currentUser: any }) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   });
 
-  // Tải danh sách phiếu thu tiền mặt hôm nay của Thu ngân
-  const fetchTodayReceipts = useCallback(async () => {
-    setLoadingReceipts(true);
-    try {
-      const today = getVietnamTodayString();
-      const res = await fetch(`/api/billing/cash-payment?date=${today}&limit=100`);
-      const data = await res.json();
-      if (data.data) {
-        setTodayReceipts(data.data);
-        setTodayTotal(data.stats?.totalAmount || 0);
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoadingReceipts(false);
-    }
-  }, []);
+  // Tự động tải lại phiếu thu khi thay đổi bộ lọc (debounce)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchReceiptsList(1);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [fetchReceiptsList]);
 
   useEffect(() => {
-    fetchTodayReceipts();
     fetchPendingCollections();
     fetch("/api/settings")
       .then((res) => res.json())
@@ -191,7 +270,7 @@ export function CashPos({ currentUser }: { currentUser: any }) {
         if (data && typeof data === "object") setSettings(data);
       })
       .catch((err) => console.error(err));
-  }, [fetchTodayReceipts, fetchPendingCollections]);
+  }, [fetchPendingCollections]);
 
   // Tìm kiếm học sinh tự động (debounce)
   useEffect(() => {
@@ -487,6 +566,270 @@ export function CashPos({ currentUser }: { currentUser: any }) {
       bill: receiptItem.bill,
     });
     setOpenPrintModal(true);
+  };
+
+  // Xuất file Excel bảng kê danh sách phiếu thu tiền mặt
+  const handleExportExcel = async () => {
+    setExportingExcel(true);
+    try {
+      const dateParams = getDateQueryParams();
+      let exportApiUrl = `/api/billing/cash-payment?all=true&status=${receiptStatusFilter}`;
+      if (dateParams) exportApiUrl += `&${dateParams}`;
+      if (receiptSearchTerm.trim()) exportApiUrl += `&search=${encodeURIComponent(receiptSearchTerm.trim())}`;
+
+      const res = await fetch(exportApiUrl);
+      const data = await res.json();
+      const exportList: any[] = data.data || [];
+
+      if (exportList.length === 0) {
+        Swal.fire("Thông báo", "Không có dữ liệu phiếu thu nào để xuất file!", "info");
+        return;
+      }
+
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet("Phiếu Thu Tiền Mặt");
+
+      // Tiêu đề
+      worksheet.mergeCells("A1:K1");
+      const titleCell = worksheet.getCell("A1");
+      titleCell.value = "BẢNG KÊ DANH SÁCH PHIẾU THU TIỀN MẶT";
+      titleCell.font = { name: "Arial", size: 16, bold: true, color: { argb: "FF1E3A8A" } };
+      titleCell.alignment = { horizontal: "center", vertical: "middle" };
+      worksheet.getRow(1).height = 30;
+
+      // Phụ đề thời gian & ngày xuất
+      worksheet.mergeCells("A2:K2");
+      const subtitleCell = worksheet.getCell("A2");
+      let timeLabel = "Tất cả thời gian";
+      if (receiptDatePreset === "today") timeLabel = `Hôm nay (${getVietnamTodayString()})`;
+      else if (receiptDatePreset === "yesterday") timeLabel = "Hôm qua";
+      else if (receiptDatePreset === "7days") timeLabel = "7 ngày gần nhất";
+      else if (receiptDatePreset === "this_month") timeLabel = `Tháng ${new Date().getMonth() + 1}/${new Date().getFullYear()}`;
+      else if (receiptDatePreset === "custom") timeLabel = `Từ ${receiptCustomStart || "..."} đến ${receiptCustomEnd || "..."}`;
+
+      subtitleCell.value = `Bộ lọc: ${timeLabel} • Ngày xuất: ${new Date().toLocaleDateString("vi-VN")} ${new Date().toLocaleTimeString("vi-VN")}`;
+      subtitleCell.font = { name: "Arial", size: 10, italic: true, color: { argb: "FF475569" } };
+      subtitleCell.alignment = { horizontal: "center", vertical: "middle" };
+      worksheet.getRow(2).height = 20;
+
+      // Header bảng
+      const headers = [
+        "STT",
+        "Mã phiếu thu",
+        "Thời gian thu",
+        "Họ và tên học sinh",
+        "Lớp",
+        "Mã Bán Trú",
+        "Mã HS (CCCD)",
+        "Số tiền thu (VNĐ)",
+        "Thu ngân lập",
+        "Trạng thái",
+        "Ghi chú",
+      ];
+      const headerRow = worksheet.addRow(headers);
+      headerRow.height = 26;
+      headerRow.eachCell((cell) => {
+        cell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "FF2563EB" },
+        };
+        cell.font = { name: "Arial", size: 10, bold: true, color: { argb: "FFFFFFFF" } };
+        cell.alignment = { horizontal: "center", vertical: "middle" };
+        cell.border = {
+          top: { style: "thin", color: { argb: "FF94A3B8" } },
+          bottom: { style: "thin", color: { argb: "FF94A3B8" } },
+          left: { style: "thin", color: { argb: "FF94A3B8" } },
+          right: { style: "thin", color: { argb: "FF94A3B8" } },
+        };
+      });
+
+      // Rows dữ liệu
+      let sumAmount = 0;
+      exportList.forEach((rc, index) => {
+        const amount = Number(rc.amount) || 0;
+        if (!rc.isVoided) sumAmount += amount;
+
+        let statusText = "Hợp lệ";
+        if (rc.isVoided) statusText = "Đã bị hủy";
+        else if (rc.closingSessionCode) statusText = `Đã chốt (${rc.closingSessionCode})`;
+
+        const row = worksheet.addRow([
+          index + 1,
+          rc.receiptNumber,
+          formatDate(rc.transDate),
+          rc.student?.fullName || "—",
+          rc.student?.className || "—",
+          rc.student?.boardingCode || "—",
+          rc.student?.studentCode || "—",
+          amount,
+          rc.cashierName || "Thu ngân",
+          statusText,
+          rc.note || (rc.isVoided ? `Lý do hủy: ${rc.voidReason || ""}` : ""),
+        ]);
+
+        row.height = 22;
+        row.getCell(1).alignment = { horizontal: "center", vertical: "middle" };
+        row.getCell(2).alignment = { horizontal: "center", vertical: "middle" };
+        row.getCell(2).font = { bold: true, color: { argb: "FF1D4ED8" } };
+        row.getCell(3).alignment = { horizontal: "center", vertical: "middle" };
+        row.getCell(5).alignment = { horizontal: "center", vertical: "middle" };
+        row.getCell(6).alignment = { horizontal: "center", vertical: "middle" };
+        row.getCell(7).alignment = { horizontal: "center", vertical: "middle" };
+        row.getCell(8).alignment = { horizontal: "right", vertical: "middle" };
+        row.getCell(8).numFmt = '#,##0" đ"';
+        row.getCell(8).font = { bold: true, color: rc.isVoided ? { argb: "FF94A3B8" } : { argb: "FFE11D48" } };
+        row.getCell(9).alignment = { horizontal: "left", vertical: "middle" };
+        row.getCell(10).alignment = { horizontal: "center", vertical: "middle" };
+
+        if (rc.isVoided) {
+          row.eachCell((c) => {
+            c.font = { ...c.font, strike: true, color: { argb: "FF94A3B8" } };
+          });
+        }
+
+        row.eachCell((cell) => {
+          cell.border = {
+            top: { style: "thin", color: { argb: "FFE2E8F0" } },
+            bottom: { style: "thin", color: { argb: "FFE2E8F0" } },
+            left: { style: "thin", color: { argb: "FFE2E8F0" } },
+            right: { style: "thin", color: { argb: "FFE2E8F0" } },
+          };
+        });
+      });
+
+      // Dòng TỔNG CỘNG
+      const totalRow = worksheet.addRow([
+        "TỔNG CỘNG",
+        "",
+        "",
+        `${exportList.length} phiếu (${exportList.filter((r) => !r.isVoided).length} hợp lệ)`,
+        "",
+        "",
+        "",
+        sumAmount,
+        "",
+        "",
+        "",
+      ]);
+      totalRow.height = 25;
+      totalRow.font = { name: "Arial", size: 10, bold: true };
+      totalRow.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FFF1F5F9" },
+      };
+      totalRow.getCell(1).alignment = { horizontal: "center", vertical: "middle" };
+      totalRow.getCell(8).alignment = { horizontal: "right", vertical: "middle" };
+      totalRow.getCell(8).numFmt = '#,##0" đ"';
+      totalRow.getCell(8).font = { bold: true, color: { argb: "FFE11D48" } };
+
+      worksheet.columns = [
+        { width: 6 },
+        { width: 22 },
+        { width: 14 },
+        { width: 26 },
+        { width: 10 },
+        { width: 14 },
+        { width: 16 },
+        { width: 18 },
+        { width: 18 },
+        { width: 16 },
+        { width: 28 },
+      ];
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = downloadUrl;
+      a.download = `Bang_Ke_Phieu_Thu_Tien_Mat_${getVietnamTodayString().replace(/-/g, "")}.xlsx`;
+      a.click();
+      window.URL.revokeObjectURL(downloadUrl);
+      Swal.fire("Thành công", "Đã xuất file Excel bảng kê phiếu thu thành công!", "success");
+    } catch (err: any) {
+      console.error(err);
+      Swal.fire("Lỗi", "Không thể xuất file Excel: " + (err.message || ""), "error");
+    } finally {
+      setExportingExcel(false);
+    }
+  };
+
+  // Kế toán / Admin thực hiện hủy phiếu thu tiền mặt
+  const handleVoidReceipt = async (rc: any) => {
+    if (!isAccountantOrAdmin) {
+      Swal.fire("Thông báo", "Bạn không có quyền hủy phiếu thu. Chỉ Kế toán hoặc Quản trị viên mới được phép hủy!", "warning");
+      return;
+    }
+
+    const { value: formValues } = await Swal.fire({
+      title: `HỦY PHIẾU THU ${rc.receiptNumber}`,
+      html: `
+        <div class="text-left text-xs space-y-2 text-slate-700">
+          <div class="p-2 bg-rose-50 border border-rose-200 rounded text-rose-800">
+            <b>CẢNH BÁO QUAN TRỌNG:</b> Thao tác này sẽ trừ số tiền <b>${formatCurrency(rc.amount)}</b> khỏi doanh thu và đưa công nợ của học sinh <b>${rc.student?.fullName || "học sinh"}</b> quay lại trạng thái chưa thanh toán.
+          </div>
+          <div class="pt-1">
+            <label class="font-bold block mb-1">Xác nhận đã thu hồi phiếu in giấy gốc: <span class="text-rose-600">*</span></label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" id="swal-recovered-check-pos" class="rounded text-rose-600" />
+              <span>Đã thu hồi lại phiếu thu giấy từ phụ huynh / học sinh</span>
+            </label>
+          </div>
+          <div class="pt-2">
+            <label class="font-bold block mb-1">Lý do hủy chi tiết (bắt buộc lưu vết): <span class="text-rose-600">*</span></label>
+            <textarea id="swal-void-reason-pos" class="swal2-textarea w-full text-xs p-2 m-0 border rounded" placeholder="VD: Nhập nhầm số tiền, học sinh xin chuyển sang tháng sau..."></textarea>
+          </div>
+        </div>
+      `,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Xác nhận Hủy Phiếu",
+      confirmButtonColor: "#dc2626",
+      cancelButtonText: "Đóng",
+      focusConfirm: false,
+      preConfirm: () => {
+        const recovered = (document.getElementById("swal-recovered-check-pos") as HTMLInputElement)?.checked;
+        const reason = (document.getElementById("swal-void-reason-pos") as HTMLTextAreaElement)?.value;
+        if (!recovered) {
+          Swal.showValidationMessage("Bạn phải xác nhận đã thu hồi phiếu giấy gốc!");
+          return false;
+        }
+        if (!reason || reason.trim().length < 5) {
+          Swal.showValidationMessage("Vui lòng nhập lý do hủy chi tiết (tối thiểu 5 ký tự)!");
+          return false;
+        }
+        return { reason: reason.trim() };
+      },
+    });
+
+    if (!formValues) return;
+
+    try {
+      const res = await fetch("/api/billing/cash-payment", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transactionId: rc.id,
+          voidReason: formValues.reason,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        Swal.fire("Đã hủy phiếu thu thành công", data.message, "success");
+        fetchReceiptsList(receiptPage);
+        if (selectedStudent) {
+          handleSelectStudent(selectedStudent);
+        }
+      } else {
+        Swal.fire("Lỗi", data.error || "Không thể hủy phiếu thu", "error");
+      }
+    } catch {
+      Swal.fire("Lỗi", "Lỗi kết nối", "error");
+    }
   };
 
   const changeAmount = Math.max(0, customerPaid - collectAmount);
@@ -1084,104 +1427,287 @@ export function CashPos({ currentUser }: { currentUser: any }) {
         </div>
       )}
 
-      {/* DANH SÁCH CÁC PHIẾU THU TIỀN MẶT ĐÃ LẬP HÔM NAY CỦA THU NGÂN */}
-      <Card className="border-slate-200 shadow-xs">
-        <CardHeader className="pb-3 border-b flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div>
-            <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
-              <History className="h-4 w-4 text-blue-600" />
-              Phiếu Thu Tiền Mặt Đã Lập Hôm Nay (Ca Làm Việc)
-            </CardTitle>
-            <CardDescription className="text-xs">
-              Các phiếu thu tiền mặt trong ngày của bạn. (Thu ngân không có quyền hủy/xóa phiếu).
-            </CardDescription>
+      {/* SỔ NHẬT KÝ & BẢNG KÊ DANH SÁCH PHIẾU THU TIỀN MẶT (TOÀN THỜI GIAN) */}
+      <Card className="border-slate-200 shadow-sm bg-white overflow-hidden">
+        <CardHeader className="pb-3 border-b bg-slate-50/70">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+            <div>
+              <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <Receipt className="h-5 w-5 text-blue-600" />
+                Sổ Nhật Ký & Danh Sách Phiếu Thu Tiền Mặt
+              </CardTitle>
+              <CardDescription className="text-xs text-slate-500 mt-0.5">
+                Tra cứu, tìm kiếm mọi phiếu thu trong hệ thống, xem theo khoảng thời gian, in lại và xuất file Excel
+              </CardDescription>
+            </div>
+
+            {/* Thống kê nhanh và Nút Xuất Excel */}
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg shadow-2xs text-xs flex items-center gap-2">
+                <span className="text-slate-500">Số phiếu hợp lệ:</span>
+                <span className="font-bold text-slate-800">{receiptStats.totalValidCount}</span>
+                <span className="text-slate-300">|</span>
+                <span className="text-slate-500">Tổng thực thu:</span>
+                <span className="font-black text-rose-600 text-sm">{formatCurrency(receiptStats.totalAmount)}</span>
+              </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleExportExcel}
+                disabled={exportingExcel || receiptTotalRecords === 0}
+                className="h-8 border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 font-semibold text-xs shadow-2xs flex items-center gap-1.5 cursor-pointer"
+                title="Xuất dữ liệu danh sách phiếu thu ra file Excel (.xlsx)"
+              >
+                {exportingExcel ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-600" />
+                ) : (
+                  <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
+                )}
+                <span>Xuất Excel</span>
+              </Button>
+            </div>
           </div>
-          <div className="text-right">
-            <span className="text-xs text-slate-500">Tổng thu tiền mặt hôm nay: </span>
-            <span className="text-base font-black text-rose-600 ml-1">
-              {formatCurrency(todayTotal)}
-            </span>
+
+          {/* THANH CÔNG CỤ BỘ LỌC THỜI GIAN, TÌM KIẾM & TRẠNG THÁI */}
+          <div className="pt-3 border-t border-slate-200/80 mt-3 space-y-2.5">
+            {/* Hàng 1: Nút lọc nhanh thời gian (Presets) */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs font-semibold text-slate-600 mr-1 flex items-center gap-1">
+                <Calendar className="h-3.5 w-3.5 text-slate-500" />
+                Thời gian:
+              </span>
+              {[
+                { id: "today", label: "Hôm nay" },
+                { id: "yesterday", label: "Hôm qua" },
+                { id: "7days", label: "7 ngày qua" },
+                { id: "this_month", label: "Tháng này" },
+                { id: "all", label: "Tất cả thời gian" },
+                { id: "custom", label: "Tùy chọn ngày" },
+              ].map((p) => {
+                const isActive = receiptDatePreset === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => {
+                      setReceiptDatePreset(p.id as any);
+                    }}
+                    className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all duration-150 cursor-pointer ${
+                      isActive
+                        ? "bg-blue-600 text-white shadow-xs"
+                        : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                );
+              })}
+
+              {/* Ô chọn ngày tùy chọn khi chọn preset custom */}
+              {receiptDatePreset === "custom" && (
+                <div className="flex items-center gap-1.5 ml-1 bg-white p-1 rounded-lg border border-slate-200">
+                  <Input
+                    type="date"
+                    value={receiptCustomStart}
+                    onChange={(e) => setReceiptCustomStart(e.target.value)}
+                    className="h-7 text-xs w-32 border-slate-200"
+                    placeholder="Từ ngày"
+                  />
+                  <span className="text-xs text-slate-400">→</span>
+                  <Input
+                    type="date"
+                    value={receiptCustomEnd}
+                    onChange={(e) => setReceiptCustomEnd(e.target.value)}
+                    className="h-7 text-xs w-32 border-slate-200"
+                    placeholder="Đến ngày"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Hàng 2: Ô tìm kiếm & Lọc trạng thái */}
+            <div className="flex flex-col sm:flex-row items-center gap-2">
+              <div className="relative flex-1 w-full">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <Input
+                  type="text"
+                  placeholder="Tìm theo mã phiếu (PT-...), họ tên học sinh, lớp, mã bán trú..."
+                  value={receiptSearchTerm}
+                  onChange={(e) => setReceiptSearchTerm(e.target.value)}
+                  className="pl-8 pr-8 h-8 text-xs bg-white border-slate-200 focus:border-blue-400 rounded-lg w-full"
+                />
+                {receiptSearchTerm && (
+                  <button
+                    type="button"
+                    onClick={() => setReceiptSearchTerm("")}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    title="Xóa tìm kiếm"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+
+              <div className="w-full sm:w-48 shrink-0">
+                <select
+                  value={receiptStatusFilter}
+                  onChange={(e) => setReceiptStatusFilter(e.target.value as any)}
+                  className="w-full h-8 text-xs bg-white border border-slate-200 rounded-lg px-2 text-slate-700 font-medium focus:border-blue-400 focus:outline-none cursor-pointer"
+                >
+                  <option value="all">Tất cả trạng thái</option>
+                  <option value="VALID">Hợp lệ (chưa chốt ca)</option>
+                  <option value="CLOSED">Đã chốt ca bàn giao</option>
+                  <option value="VOIDED">Đã bị hủy</option>
+                </select>
+              </div>
+            </div>
           </div>
         </CardHeader>
+
         <CardContent className="p-0">
           {loadingReceipts ? (
-            <div className="py-8 text-center text-slate-500 text-xs">
-              <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2 text-blue-600" />
+            <div className="py-12 text-center text-slate-500 text-xs">
+              <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2 text-blue-600" />
               Đang tải danh sách phiếu thu...
             </div>
-          ) : todayReceipts.length === 0 ? (
-            <div className="py-8 text-center text-slate-500 text-xs">
-              Chưa có phiếu thu tiền mặt nào được lập trong ngày hôm nay.
+          ) : receiptsList.length === 0 ? (
+            <div className="py-12 text-center text-slate-400 text-xs space-y-1">
+              <Receipt className="h-8 w-8 mx-auto text-slate-300 mb-2" />
+              <p className="font-semibold text-slate-600">Không tìm thấy phiếu thu tiền mặt nào phù hợp.</p>
+              <p className="text-slate-400">Hãy thử đổi khoảng thời gian hoặc điều chỉnh từ khóa tìm kiếm.</p>
             </div>
           ) : (
-            <div className="overflow-x-auto max-h-96">
+            <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <tr className="bg-slate-50 text-[11px]">
                     <TableHead className="w-12 text-center">STT</TableHead>
                     <TableHead>Mã phiếu thu</TableHead>
+                    <TableHead>Thời gian</TableHead>
                     <TableHead>Học sinh</TableHead>
                     <TableHead>Lớp</TableHead>
                     <TableHead>Mã Bán Trú</TableHead>
                     <TableHead>Mã HS (CCCD)</TableHead>
                     <TableHead className="text-right">Số tiền thu</TableHead>
-                    <TableHead className="text-center">Giờ thu</TableHead>
+                    <TableHead>Thu ngân</TableHead>
                     <TableHead className="text-center">Trạng thái</TableHead>
                     <TableHead className="text-right">Thao tác</TableHead>
                   </tr>
                 </TableHeader>
                 <TableBody>
-                  {todayReceipts.map((rc, idx) => (
-                    <TableRow key={rc.id} className={rc.isVoided ? "bg-rose-50/50 opacity-60 line-through" : ""}>
-                      <TableCell className="text-center text-xs">{idx + 1}</TableCell>
+                  {receiptsList.map((rc, idx) => (
+                    <TableRow key={rc.id} className={rc.isVoided ? "bg-rose-50/40 opacity-70 line-through" : "hover:bg-slate-50/80"}>
+                      <TableCell className="text-center text-xs text-slate-500">
+                        {(receiptPage - 1) * receiptLimit + idx + 1}
+                      </TableCell>
                       <TableCell className="font-mono font-bold text-xs text-blue-700">
                         {rc.receiptNumber}
+                      </TableCell>
+                      <TableCell className="text-[11px] text-slate-600 whitespace-nowrap">
+                        {formatDate(rc.transDate)}
                       </TableCell>
                       <TableCell className="font-medium text-slate-900 text-xs uppercase">
                         {rc.student?.fullName || "—"}
                       </TableCell>
-                      <TableCell className="text-xs">{rc.student?.className || "—"}</TableCell>
-                      <TableCell className="font-bold text-xs text-blue-800">
+                      <TableCell className="text-xs font-bold text-blue-800">
+                        {rc.student?.className || "—"}
+                      </TableCell>
+                      <TableCell className="font-bold text-xs text-slate-700">
                         {rc.student?.boardingCode || "—"}
                       </TableCell>
-                      {/* Mã CCCD hiển thị 4 số cuối (đã được mask từ API) */}
-                      <TableCell className="font-mono text-xs text-slate-600">
+                      <TableCell className="font-mono text-xs text-slate-500">
                         {rc.student?.studentCode || "—"}
                       </TableCell>
-                      <TableCell className="text-right font-bold text-xs text-rose-600">
+                      <TableCell className="text-right font-extrabold text-xs text-rose-600 whitespace-nowrap">
                         {formatCurrency(rc.amount)}
                       </TableCell>
-                      <TableCell className="text-center text-[11px] text-slate-500">
-                        {new Date(rc.transDate).toLocaleTimeString("vi-VN", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
+                      <TableCell className="text-xs text-slate-700">
+                        {rc.cashierName || "Thu ngân"}
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="text-center whitespace-nowrap">
                         {rc.isVoided ? (
-                          <Badge variant="destructive" className="text-[10px]">Đã bị hủy</Badge>
+                          <Badge variant="destructive" className="text-[10px]" title={`Lý do: ${rc.voidReason || "Sai sót"}`}>
+                            Đã bị hủy
+                          </Badge>
                         ) : rc.closingSessionCode ? (
-                          <Badge className="bg-slate-200 text-slate-800 text-[10px]">Đã chốt ca</Badge>
+                          <Badge className="bg-slate-200 text-slate-800 text-[10px]" title={`Biên bản: ${rc.closingSessionCode}`}>
+                            Đã chốt ca
+                          </Badge>
                         ) : (
-                          <Badge className="bg-emerald-100 text-emerald-800 text-[10px]">Hợp lệ</Badge>
+                          <Badge className="bg-emerald-100 text-emerald-800 text-[10px]">
+                            Hợp lệ
+                          </Badge>
                         )}
                       </TableCell>
-                      {/* CỘT THAO TÁC: TUYỆT ĐỐI CHỈ CÓ NÚT IN LẠI PHIẾU, KHÔNG CÓ NÚT HỦY/XÓA */}
-                      <TableCell className="text-right">
+                      <TableCell className="text-right whitespace-nowrap space-x-1.5">
                         <Button
                           size="sm"
                           variant="outline"
                           onClick={() => handleReprintReceipt(rc)}
-                          className="h-7 px-2 text-[11px] text-slate-700 hover:bg-slate-100"
+                          className="h-7 px-2 text-[11px] text-slate-700 hover:bg-slate-100 font-medium"
+                          title="Xem trước và in lại phiếu thu phụ huynh"
                         >
                           <Printer className="h-3.5 w-3.5 mr-1" />
                           In lại
                         </Button>
+
+                        {/* Nút Hủy phiếu: Chỉ hiển thị cho Kế toán hoặc Admin khi phiếu chưa hủy và chưa khóa sổ */}
+                        {isAccountantOrAdmin && !rc.isVoided && rc.closingSessionStatus !== "CONFIRMED" && (
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => handleVoidReceipt(rc)}
+                            className="h-7 px-2 text-[11px] font-medium"
+                            title="Hủy phiếu thu sai sót (Yêu cầu quyền Kế toán / Admin)"
+                          >
+                            <RotateCcw className="h-3.5 w-3.5 mr-1" />
+                            Hủy phiếu
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
+            </div>
+          )}
+
+          {/* PHÂN TRANG */}
+          {receiptTotalRecords > 0 && (
+            <div className="p-3 border-t border-slate-200 bg-slate-50 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-600">
+              <div>
+                Hiển thị <b>{(receiptPage - 1) * receiptLimit + 1}</b> – <b>{Math.min(receiptPage * receiptLimit, receiptTotalRecords)}</b> trên tổng số <b>{receiptTotalRecords}</b> phiếu thu
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fetchReceiptsList(receiptPage - 1)}
+                  disabled={receiptPage <= 1 || loadingReceipts}
+                  className="h-7 px-2.5 text-xs"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5 mr-1" />
+                  Trước
+                </Button>
+                <span className="font-semibold text-slate-800">
+                  Trang {receiptPage} / {receiptTotalPages}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fetchReceiptsList(receiptPage + 1)}
+                  disabled={receiptPage >= receiptTotalPages || loadingReceipts}
+                  className="h-7 px-2.5 text-xs"
+                >
+                  Sau
+                  <ChevronRight className="h-3.5 w-3.5 ml-1" />
+                </Button>
+              </div>
             </div>
           )}
         </CardContent>

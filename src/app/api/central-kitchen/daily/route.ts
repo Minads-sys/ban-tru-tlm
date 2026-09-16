@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { KitchenLockStatus } from "@prisma/client";
+import { logAudit, AUDIT_ACTIONS, AUDIT_MODULES } from "@/lib/audit-log";
 
 export const dynamic = "force-dynamic";
 
@@ -542,6 +543,52 @@ export async function POST(request: NextRequest) {
       },
       include: { branch: true },
     });
+
+    // Ghi nhận Audit Log nếu sửa đổi số liệu khi chi nhánh đã ở trạng thái Chốt
+    if (
+      existing &&
+      (existing.lockStatus === KitchenLockStatus.LOCKED_MARKET ||
+        existing.lockStatus === KitchenLockStatus.LOCKED_COOK)
+    ) {
+      const branchName = entry.branch?.name || branchId;
+      const statusLabel =
+        existing.lockStatus === KitchenLockStatus.LOCKED_COOK
+          ? "Chốt số ăn"
+          : "Chốt đi chợ";
+
+      await logAudit({
+        req: request,
+        userId: session.user.id,
+        userName: session.user.name,
+        userRole: session.user.role,
+        action: AUDIT_ACTIONS.UPDATE,
+        module: AUDIT_MODULES.MEALS,
+        description: `Chỉnh sửa số liệu Bếp Trung Tâm ngày ${date} của chi nhánh ${branchName} sau khi đã ${statusLabel}. Cũ: [Mặn: ${existing.servingsMan}, Cháo: ${existing.servingsChao}, Chay: ${existing.servingsChay}, Tổng: ${existing.totalServings}]. Mới: [Mặn: ${manNum}, Cháo: ${chaoNum}, Chay: ${chayNum}, Tổng: ${totalServings}].`,
+        targetId: entry.id,
+        metadata: {
+          date,
+          branchId,
+          branchName,
+          lockStatus: existing.lockStatus,
+          previous: {
+            servingsMan: existing.servingsMan,
+            servingsChao: existing.servingsChao,
+            servingsChay: existing.servingsChay,
+            totalServings: existing.totalServings,
+            manMealType: existing.manMealType,
+            isChayRice: existing.isChayRice,
+          },
+          updated: {
+            servingsMan: manNum,
+            servingsChao: chaoNum,
+            servingsChay: chayNum,
+            totalServings,
+            manMealType,
+            isChayRice,
+          },
+        },
+      });
+    }
 
     return NextResponse.json({ success: true, entry });
   } catch (error: any) {

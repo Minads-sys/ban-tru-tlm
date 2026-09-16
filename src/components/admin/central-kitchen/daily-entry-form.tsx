@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -65,6 +65,8 @@ interface DailyEntryFormProps {
   userRole?: string;
   onRefresh: () => Promise<void>;
   onResetDay?: () => void;
+  onDirtyChange?: (isDirty: boolean, dirtyBranchNames: string[]) => void;
+  registerSaveHandler?: (fn: (() => Promise<boolean>) | null) => void;
 }
 
 export function DailyEntryForm({
@@ -74,6 +76,8 @@ export function DailyEntryForm({
   userRole,
   onRefresh,
   onResetDay,
+  onDirtyChange,
+  registerSaveHandler,
 }: DailyEntryFormProps) {
   // Local form state mapped by branchId
   const [formValues, setFormValues] = useState<
@@ -94,6 +98,23 @@ export function DailyEntryForm({
       }
     >
   >({});
+
+  // Snapshot of initial values from DB for dirty tracking
+  const [initialFormValues, setInitialFormValues] = useState<typeof formValues>({});
+
+  // Temporary unlocked branches for edit (Layer 2: Strict lock)
+  const [unlockedBranchIds, setUnlockedBranchIds] = useState<Set<string>>(new Set());
+
+  // Modals state
+  const [unlockModalBranch, setUnlockModalBranch] = useState<{
+    branchId: string;
+    branchName: string;
+    lockStatus: string;
+  } | null>(null);
+
+  const [batchLockTarget, setBatchLockTarget] = useState<
+    "UNLOCKED" | "LOCKED_MARKET" | "LOCKED_COOK" | null
+  >(null);
 
   const [savingBranchId, setSavingBranchId] = useState<string | null>(null);
   const [isSavingAll, setIsSavingAll] = useState(false);
@@ -138,6 +159,7 @@ export function DailyEntryForm({
       };
     });
     setFormValues(initial);
+    setInitialFormValues(JSON.parse(JSON.stringify(initial)));
   }, [branches, ingredients]);
 
   const updateField = (
@@ -186,6 +208,74 @@ export function DailyEntryForm({
     updateField(branchId, field, newVal);
   };
 
+  // Helper: check if a specific branch has unsaved changes compared to initial state
+  const isBranchDirty = useCallback(
+    (branchId: string) => {
+      const current = formValues[branchId];
+      const initial = initialFormValues[branchId];
+      if (!current || !initial) return false;
+
+      const curMan = Number(current.servingsMan) || 0;
+      const initMan = Number(initial.servingsMan) || 0;
+      const curChao = Number(current.servingsChao) || 0;
+      const initChao = Number(initial.servingsChao) || 0;
+      const curChay = Number(current.servingsChay) || 0;
+      const initChay = Number(initial.servingsChay) || 0;
+      const curChayRice = current.isChayRice !== false;
+      const initChayRice = initial.isChayRice !== false;
+
+      return (
+        curMan !== initMan ||
+        curChao !== initChao ||
+        curChay !== initChay ||
+        curChayRice !== initChayRice ||
+        current.manMealType !== initial.manMealType ||
+        current.noodleId !== initial.noodleId ||
+        current.fruitId !== initial.fruitId ||
+        (current.note || "").trim() !== (initial.note || "").trim()
+      );
+    },
+    [formValues, initialFormValues]
+  );
+
+  // List of branch IDs that currently have unsaved changes
+  const dirtyBranchIds = useMemo(() => {
+    return branches.map((b) => b.branchId).filter((id) => isBranchDirty(id));
+  }, [branches, isBranchDirty]);
+
+  const hasUnsavedChanges = dirtyBranchIds.length > 0;
+
+  const dirtyBranchNames = useMemo(() => {
+    return branches
+      .filter((b) => dirtyBranchIds.includes(b.branchId))
+      .map((b) => b.branchName);
+  }, [branches, dirtyBranchIds]);
+
+  // Notify parent component about dirty state
+  useEffect(() => {
+    if (onDirtyChange) {
+      onDirtyChange(hasUnsavedChanges, dirtyBranchNames);
+    }
+  }, [hasUnsavedChanges, dirtyBranchNames, onDirtyChange]);
+
+  // Revert single branch to initial state
+  const handleRevertBranch = (branchId: string) => {
+    const initial = initialFormValues[branchId];
+    if (initial) {
+      setFormValues((prev) => ({
+        ...prev,
+        [branchId]: { ...initial },
+      }));
+      toast.info("Đã hoàn tác số liệu chi nhánh về ban đầu");
+    }
+  };
+
+  // Revert all branches to initial state
+  const handleRevertAll = () => {
+    setFormValues(JSON.parse(JSON.stringify(initialFormValues)));
+    toast.info("Đã hoàn tác tất cả thay đổi chưa lưu");
+  };
+
   // Save single branch
   const handleSaveBranch = async (branchId: string) => {
     const data = formValues[branchId];
@@ -213,6 +303,18 @@ export function DailyEntryForm({
       }
 
       toast.success("Đã lưu số liệu chi nhánh thành công!");
+
+      // Update initial snapshot and re-lock temporary unlocked status
+      setInitialFormValues((prev) => ({
+        ...prev,
+        [branchId]: { ...data },
+      }));
+      setUnlockedBranchIds((prev) => {
+        const next = new Set(prev);
+        next.delete(branchId);
+        return next;
+      });
+
       await onRefresh();
     } catch (err: any) {
       toast.error(err.message || "Lỗi khi lưu chi nhánh");
@@ -221,8 +323,8 @@ export function DailyEntryForm({
     }
   };
 
-  // Save all branches
-  const handleSaveAll = async () => {
+  // Save all branches (returns boolean success)
+  const handleSaveAll = useCallback(async (): Promise<boolean> => {
     setIsSavingAll(true);
     let successCount = 0;
     let errorCount = 0;
@@ -256,13 +358,28 @@ export function DailyEntryForm({
     setIsSavingAll(false);
     if (errorCount === 0) {
       toast.success(`Đã lưu thành công cả ${successCount} chi nhánh!`);
+      setInitialFormValues(JSON.parse(JSON.stringify(formValues)));
+      setUnlockedBranchIds(new Set());
+      await onRefresh();
+      return true;
     } else {
       toast.warning(`Đã lưu ${successCount} chi nhánh, ${errorCount} chi nhánh gặp sự cố`);
+      await onRefresh();
+      return false;
     }
-    await onRefresh();
-  };
+  }, [branches, date, formValues, onRefresh]);
 
-  // Update lock status
+  // Register save handler for parent (used in navigation modal)
+  useEffect(() => {
+    if (registerSaveHandler) {
+      registerSaveHandler(handleSaveAll);
+    }
+    return () => {
+      if (registerSaveHandler) registerSaveHandler(null);
+    };
+  }, [registerSaveHandler, handleSaveAll]);
+
+  // Update lock status for a branch
   const handleStatusChange = async (
     branchId: string,
     newStatus: "UNLOCKED" | "LOCKED_MARKET" | "LOCKED_COOK"
@@ -289,6 +406,14 @@ export function DailyEntryForm({
       }
 
       updateField(branchId, "lockStatus", newStatus);
+      // If manually locked, remove from unlockedBranchIds
+      if (newStatus !== "UNLOCKED") {
+        setUnlockedBranchIds((prev) => {
+          const next = new Set(prev);
+          next.delete(branchId);
+          return next;
+        });
+      }
       toast.success(`Đã chuyển trạng thái sang: ${getStatusLabel(newStatus)}`);
       await onRefresh();
     } catch (err: any) {
@@ -296,12 +421,8 @@ export function DailyEntryForm({
     }
   };
 
-  // Batch lock/unlock all branches
-  const handleBatchLock = async (status: "UNLOCKED" | "LOCKED_MARKET" | "LOCKED_COOK") => {
-    if (!confirm(`Bạn có chắc chắn muốn chuyển TẤT CẢ chi nhánh sang trạng thái "${getStatusLabel(status)}"?`)) {
-      return;
-    }
-
+  // Execute batch lock across all branches
+  const executeBatchLock = async (status: "UNLOCKED" | "LOCKED_MARKET" | "LOCKED_COOK") => {
     try {
       const res = await fetch("/api/central-kitchen/daily", {
         method: "PUT",
@@ -316,6 +437,7 @@ export function DailyEntryForm({
       const resData = await res.json();
       if (!res.ok) throw new Error(resData.error || "Lỗi cập nhật");
 
+      setUnlockedBranchIds(new Set());
       toast.success(resData.message || "Cập nhật thành công");
       await onRefresh();
     } catch (err: any) {
@@ -436,12 +558,12 @@ export function DailyEntryForm({
               <select
                 onChange={(e) => {
                   if (e.target.value) {
-                    handleBatchLock(e.target.value as any);
+                    setBatchLockTarget(e.target.value as any);
                     e.target.value = "";
                   }
                 }}
                 defaultValue=""
-                className="px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 focus:outline-none"
+                className="px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 focus:outline-none cursor-pointer"
               >
                 <option value="" disabled>
                   ⚡ Khóa hàng loạt...
@@ -454,12 +576,20 @@ export function DailyEntryForm({
           )}
 
           <button
-            onClick={handleSaveAll}
+            onClick={() => handleSaveAll()}
             disabled={isSavingAll}
-            className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs sm:text-sm font-bold shadow-md shadow-blue-600/20 transition disabled:opacity-50 cursor-pointer"
+            className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-4 py-1.5 rounded-lg text-xs sm:text-sm font-bold shadow-md transition disabled:opacity-50 cursor-pointer ${
+              hasUnsavedChanges
+                ? "bg-amber-500 hover:bg-amber-600 text-slate-950 font-black shadow-amber-500/30 animate-pulse"
+                : "bg-blue-600 hover:bg-blue-700 text-white shadow-blue-600/20"
+            }`}
           >
             <Save className="w-4 h-4" />
-            {isSavingAll ? "Đang lưu..." : "Lưu tất cả"}
+            {isSavingAll
+              ? "Đang lưu..."
+              : hasUnsavedChanges
+              ? `Lưu tất cả (${dirtyBranchIds.length}*)`
+              : "Lưu tất cả"}
           </button>
 
           {(userRole === "ADMIN" || userRole === "BOARDING_MANAGER") && onResetDay && (
@@ -533,8 +663,12 @@ export function DailyEntryForm({
           }
           const fruitKg = (totalServings * fruitPortion) / 1000;
 
-          const isLocked =
-            val.lockStatus === "LOCKED_COOK" && userRole !== "ADMIN";
+          const isStatusLocked =
+            val.lockStatus === "LOCKED_MARKET" || val.lockStatus === "LOCKED_COOK";
+          const isTemporarilyUnlocked = unlockedBranchIds.has(branch.branchId);
+          // Strict lock: applies to EVERYONE (including Admin) unless temporarily unlocked via confirmation modal
+          const isLocked = isStatusLocked && !isTemporarilyUnlocked;
+          const isDirty = isBranchDirty(branch.branchId);
           const isSavingThis = savingBranchId === branch.branchId;
 
           return (
@@ -551,7 +685,7 @@ export function DailyEntryForm({
                   background: `linear-gradient(135deg, ${branch.branchColor}dd, ${branch.branchColor})`,
                 }}
               >
-                {/* TIER 1: Branch Title + Total Servings */}
+                {/* TIER 1: Branch Title + Badges + Total Servings */}
                 <div className="flex items-center justify-between gap-2 pb-2">
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="w-3.5 h-3.5 rounded-full bg-white shadow shrink-0" />
@@ -560,16 +694,29 @@ export function DailyEntryForm({
                     </h3>
                   </div>
 
-                  {/* Total Servings Badge */}
-                  <div className="flex items-baseline gap-1 bg-black/25 px-3 py-1 rounded-xl shrink-0 shadow-inner">
-                    <span className="text-xl sm:text-2xl font-black text-white">
-                      {totalServings.toLocaleString("vi-VN")}
-                    </span>
-                    <span className="text-xs font-semibold opacity-85">suất</span>
+                  {/* Status Badges & Total Servings */}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {isDirty && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-400 text-slate-950 text-[10px] font-black uppercase tracking-wider animate-pulse shadow">
+                        ⚠️ Chưa lưu
+                      </span>
+                    )}
+                    {isLocked && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-black/40 text-amber-200 text-[10px] font-bold border border-amber-400/40">
+                        <Lock className="w-3 h-3 text-amber-300" />
+                        Đã khóa sổ
+                      </span>
+                    )}
+                    <div className="flex items-baseline gap-1 bg-black/25 px-3 py-1 rounded-xl shrink-0 shadow-inner">
+                      <span className="text-xl sm:text-2xl font-black text-white">
+                        {totalServings.toLocaleString("vi-VN")}
+                      </span>
+                      <span className="text-xs font-semibold opacity-85">suất</span>
+                    </div>
                   </div>
                 </div>
 
-                {/* TIER 2: Lock Status Selector / Transition Button */}
+                {/* TIER 2: Lock Status Selector & Action Buttons */}
                 <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/20">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-semibold opacity-80">
@@ -588,7 +735,7 @@ export function DailyEntryForm({
                           : val.lockStatus === "LOCKED_MARKET"
                           ? "bg-blue-500/90 text-white border-blue-300"
                           : "bg-red-500/90 text-white border-red-300 animate-pulse"
-                      }`}
+                      } ${isLocked ? "opacity-80 cursor-not-allowed" : ""}`}
                     >
                       <option value="UNLOCKED" className="bg-slate-900 text-white">
                         ⏳ Chưa chốt
@@ -605,16 +752,81 @@ export function DailyEntryForm({
                     </select>
                   </div>
 
-                  {/* Save button for this branch */}
-                  <button
-                    onClick={() => handleSaveBranch(branch.branchId)}
-                    disabled={isSavingThis || isLocked}
-                    className="inline-flex items-center gap-1.5 px-3 py-1 bg-white/20 hover:bg-white/30 active:scale-95 text-white rounded-lg text-xs font-bold transition disabled:opacity-50"
-                  >
-                    <Save className="w-3.5 h-3.5" />
-                    {isSavingThis ? "Đang lưu..." : "Lưu chi nhánh"}
-                  </button>
+                  {/* Right side actions: Unlock button if locked, or Revert & Save buttons if editable */}
+                  {isLocked ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setUnlockModalBranch({
+                          branchId: branch.branchId,
+                          branchName: branch.branchName,
+                          lockStatus: val.lockStatus,
+                        })
+                      }
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/30 hover:bg-amber-500/50 text-white border border-amber-300/60 rounded-lg text-xs font-bold transition shadow-sm cursor-pointer active:scale-95"
+                      title="Chi nhánh đã khóa sổ. Bấm để mở khóa chỉnh sửa"
+                    >
+                      <Unlock className="w-3.5 h-3.5 text-amber-300" />
+                      <span>Mở khóa chỉnh sửa</span>
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-1.5">
+                      {isDirty && (
+                        <button
+                          type="button"
+                          onClick={() => handleRevertBranch(branch.branchId)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 bg-white/15 hover:bg-white/25 text-white rounded-lg text-xs font-bold transition cursor-pointer"
+                          title="Hoàn tác về số liệu ban đầu"
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                          <span className="hidden sm:inline">Hoàn tác</span>
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleSaveBranch(branch.branchId)}
+                        disabled={isSavingThis}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition disabled:opacity-50 cursor-pointer ${
+                          isDirty
+                            ? "bg-amber-400 hover:bg-amber-300 text-slate-950 font-black shadow-md shadow-amber-500/40 animate-pulse"
+                            : "bg-white/20 hover:bg-white/30 text-white"
+                        }`}
+                      >
+                        <Save className="w-3.5 h-3.5" />
+                        {isSavingThis
+                          ? "Đang lưu..."
+                          : isDirty
+                          ? "Lưu thay đổi*"
+                          : "Lưu chi nhánh"}
+                      </button>
+                    </div>
+                  )}
                 </div>
+
+                {/* TEMPORARILY UNLOCKED BANNER */}
+                {isTemporarilyUnlocked && (
+                  <div className="mt-2.5 -mx-3 -mb-3 sm:-mx-4 sm:-mb-4 bg-amber-500/30 border-t border-white/20 px-3 py-1.5 flex items-center justify-between text-xs text-amber-100 font-semibold">
+                    <div className="flex items-center gap-1.5">
+                      <Unlock className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                      <span>
+                        Đang mở khóa chỉnh sửa tạm thời. Sau khi sửa, hãy bấm{" "}
+                        <strong className="underline">Lưu thay đổi</strong> để khóa lại.
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUnlockedBranchIds((prev) => {
+                          const next = new Set(prev);
+                          next.delete(branch.branchId);
+                          return next;
+                        });
+                      }}
+                      className="text-[11px] underline hover:text-white shrink-0 ml-2 cursor-pointer"
+                    >
+                      Khóa lại ngay
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* CARD BODY: INPUTS & STEPPERS */}
@@ -1092,6 +1304,158 @@ export function DailyEntryForm({
           );
         })}
       </div>
+
+      {/* FLOATING BAR: UNSAVED CHANGES WARNING & ACTIONS */}
+      {hasUnsavedChanges && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 bg-slate-900/95 dark:bg-slate-800/95 text-white px-4 sm:px-6 py-3 rounded-2xl shadow-2xl border-2 border-amber-500/70 backdrop-blur-md flex flex-col sm:flex-row items-center gap-3 animate-in fade-in slide-in-from-bottom-5 max-w-[95vw]">
+          <div className="flex items-center gap-2 text-center sm:text-left">
+            <div className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping shrink-0" />
+            <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+            <span className="text-xs sm:text-sm font-bold">
+              Có <span className="text-amber-300 font-extrabold">{dirtyBranchIds.length} chi nhánh</span> chưa lưu:{" "}
+              <span className="text-amber-200 font-semibold">{dirtyBranchNames.join(", ")}</span>
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleRevertAll}
+              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold transition border border-slate-700 text-slate-300 hover:text-white cursor-pointer"
+            >
+              ↺ Hoàn tác tất cả
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSaveAll()}
+              disabled={isSavingAll}
+              className="px-4 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs sm:text-sm shadow-lg shadow-amber-500/30 transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            >
+              <Save className="w-4 h-4" />
+              {isSavingAll ? "Đang lưu..." : "Lưu tất cả ngay"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: XÁC NHẬN MỞ KHÓA CHỈNH SỬA CHO CHI NHÁNH ĐÃ CHỐT */}
+      {unlockModalBranch && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4 backdrop-blur-xs">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-amber-400/50 text-left relative animate-in fade-in zoom-in-95 space-y-4">
+            <div className="flex items-start gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/30">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div className="flex-1">
+                <h4 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
+                  Xác nhận Mở Khóa Chỉnh Sửa?
+                </h4>
+                <p className="text-xs font-bold text-amber-600 dark:text-amber-400 mt-0.5">
+                  Chi nhánh: {unlockModalBranch.branchName}
+                </p>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 text-xs text-amber-900 dark:text-amber-200 space-y-2 leading-relaxed">
+              <div className="font-extrabold flex items-center gap-1.5 text-amber-800 dark:text-amber-300 uppercase tracking-wide text-[11px]">
+                <span>⚠️</span> Cảnh báo rủi ro vận hành xưởng bếp:
+              </div>
+              <ul className="list-disc pl-4 space-y-1.5 text-[11px] sm:text-xs">
+                <li>
+                  Chi nhánh này đã ở trạng thái <strong>{getStatusLabel(unlockModalBranch.lockStatus)}</strong>.
+                </li>
+                <li>
+                  Xưởng bếp trung tâm có thể đã đi chợ hoặc đang tiến hành sơ chế thực phẩm theo số lượng chốt trước đó.
+                </li>
+                <li>
+                  Mọi chỉnh sửa sau khi mở khóa sẽ được <strong>ghi nhận nhật ký kiểm toán (Audit Log)</strong> kèm thời gian và tài khoản của bạn.
+                </li>
+              </ul>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setUnlockModalBranch(null)}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const bId = unlockModalBranch.branchId;
+                  setUnlockedBranchIds((prev) => new Set(prev).add(bId));
+                  setUnlockModalBranch(null);
+                  toast.warning(
+                    `Đã mở khóa tạm thời cho ${unlockModalBranch.branchName}. Vui lòng bấm Lưu sau khi sửa xong.`
+                  );
+                }}
+                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-md shadow-amber-600/30 transition cursor-pointer"
+              >
+                <Unlock className="w-4 h-4" />
+                Tôi hiểu rủi ro, Xác nhận mở khóa
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: XÁC NHẬN KHÓA / CHUYỂN TRẠNG THÁI HÀNG LOẠT */}
+      {batchLockTarget && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4 backdrop-blur-xs">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-blue-400/50 text-left relative animate-in fade-in zoom-in-95 space-y-4">
+            <div className="flex items-start gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 border border-blue-500/30">
+                <Lock className="w-6 h-6" />
+              </div>
+              <div className="flex-1">
+                <h4 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
+                  Xác nhận Chuyển Trạng Thái Tất Cả?
+                </h4>
+                <p className="text-xs font-bold text-blue-600 dark:text-blue-400 mt-0.5">
+                  Mục tiêu: {getStatusLabel(batchLockTarget)}
+                </p>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/60 text-xs text-blue-900 dark:text-blue-200 space-y-2 leading-relaxed">
+              <div className="font-extrabold flex items-center gap-1.5 text-blue-800 dark:text-blue-300 uppercase tracking-wide text-[11px]">
+                <span>ℹ️</span> Phạm vi áp dụng ngày {date}:
+              </div>
+              <p>
+                Hành động này sẽ cập nhật trạng thái của <strong>toàn bộ {branches.length} chi nhánh</strong> sang <strong>{getStatusLabel(batchLockTarget)}</strong>.
+              </p>
+              {batchLockTarget !== "UNLOCKED" && (
+                <p className="text-amber-700 dark:text-amber-300 font-semibold">
+                  ⚠️ Sau khi chốt, toàn bộ các chi nhánh sẽ bị khóa sổ chống bấm nhầm số liệu.
+                </p>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setBatchLockTarget(null)}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const target = batchLockTarget;
+                  setBatchLockTarget(null);
+                  if (target) await executeBatchLock(target);
+                }}
+                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-md shadow-blue-600/30 transition cursor-pointer"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                Xác nhận thực hiện
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

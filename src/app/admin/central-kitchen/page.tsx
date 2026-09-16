@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useSession } from "next-auth/react";
 import QRCode from "qrcode";
 import {
@@ -22,6 +22,8 @@ import {
   RotateCcw,
   AlertTriangle,
   History,
+  Save,
+  Lock,
 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ProductionDisplay } from "@/components/admin/central-kitchen/production-display";
@@ -75,6 +77,29 @@ export default function CentralKitchenPage() {
   const [activeTab, setActiveTab] = useState<string>("entry");
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Unsaved changes & navigation guard states (Layer 1)
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
+  const [dirtyBranchNames, setDirtyBranchNames] = useState<string[]>([]);
+  const saveHandlerRef = useRef<(() => Promise<boolean>) | null>(null);
+
+  const [pendingNavigation, setPendingNavigation] = useState<{
+    type: "TAB" | "DATE";
+    targetTab?: string;
+    targetDate?: string;
+  } | null>(null);
+
+  // Browser beforeunload listener when dirty
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [hasUnsavedChanges]);
 
   // TV link and QR code modal states
   const [showQrModal, setShowQrModal] = useState<boolean>(false);
@@ -209,6 +234,15 @@ export default function CentralKitchenPage() {
     fetchData();
   }, [fetchData]);
 
+  const handleDateChange = (newDate: string) => {
+    if (!newDate || date === newDate) return;
+    if (hasUnsavedChanges && activeTab === "entry") {
+      setPendingNavigation({ type: "DATE", targetDate: newDate });
+      return;
+    }
+    setDate(newDate);
+  };
+
   const changeDateByDays = (days: number) => {
     const [y, m, d] = date.split("-").map(Number);
     const curr = new Date(y, m - 1, d);
@@ -216,7 +250,16 @@ export default function CentralKitchenPage() {
     const newY = curr.getFullYear();
     const newM = String(curr.getMonth() + 1).padStart(2, "0");
     const newD = String(curr.getDate()).padStart(2, "0");
-    setDate(`${newY}-${newM}-${newD}`);
+    handleDateChange(`${newY}-${newM}-${newD}`);
+  };
+
+  const handleTabChange = (newTab: string) => {
+    if (activeTab === newTab) return;
+    if (hasUnsavedChanges && activeTab === "entry") {
+      setPendingNavigation({ type: "TAB", targetTab: newTab });
+      return;
+    }
+    setActiveTab(newTab);
   };
 
   const isSettingsAllowed =
@@ -258,7 +301,7 @@ export default function CentralKitchenPage() {
               <input
                 type="date"
                 value={date}
-                onChange={(e) => setDate(e.target.value)}
+                onChange={(e) => handleDateChange(e.target.value)}
                 className="bg-transparent text-xs sm:text-sm font-bold text-slate-900 dark:text-white border-0 focus:outline-none cursor-pointer"
               />
             </div>
@@ -272,12 +315,12 @@ export default function CentralKitchenPage() {
           </div>
 
           <button
-            onClick={() => fetchData()}
+            onClick={fetchData}
             disabled={loading}
-            className="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition"
-            title="Làm mới dữ liệu"
+            className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition border border-slate-200 dark:border-slate-700 disabled:opacity-50"
+            title="Tải lại dữ liệu"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin text-blue-600" : ""}`} />
+            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
           </button>
 
           {/* NÚT ĐẶT LẠI SỐ LIỆU NGÀY */}
@@ -305,7 +348,7 @@ export default function CentralKitchenPage() {
       )}
 
       {/* MAIN NAVIGATION TABS */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
         <TabsList className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 w-full max-w-4xl bg-slate-200/80 dark:bg-slate-800/90 p-1.5 rounded-2xl h-auto border border-slate-300/80 dark:border-slate-700 gap-1.5 shadow-sm">
           <TabsTrigger
             value="entry"
@@ -369,6 +412,13 @@ export default function CentralKitchenPage() {
             userRole={userRole}
             onRefresh={fetchData}
             onResetDay={() => setShowResetConfirm(true)}
+            onDirtyChange={(isDirty, dirtyNames) => {
+              setHasUnsavedChanges(isDirty);
+              setDirtyBranchNames(dirtyNames);
+            }}
+            registerSaveHandler={(fn) => {
+              saveHandlerRef.current = fn;
+            }}
           />
         </TabsContent>
 
@@ -624,6 +674,95 @@ export default function CentralKitchenPage() {
               >
                 <RotateCcw className={`w-4 h-4 ${resetting ? "animate-spin" : ""}`} />
                 {resetting ? "Đang đặt lại..." : "Xác nhận đặt lại số liệu"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: CẢNH BÁO THAY ĐỔI CHƯA LƯU KHI CHUYỂN TAB HOẶC ĐỔI NGÀY (Layer 1 Guard) */}
+      {pendingNavigation && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4 backdrop-blur-xs">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-amber-400/50 text-left relative animate-in fade-in zoom-in-95 space-y-4">
+            <div className="flex items-start gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/30">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div className="flex-1">
+                <h4 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
+                  Bạn Có Thay Đổi Chưa Lưu!
+                </h4>
+                <p className="text-xs font-bold text-amber-600 dark:text-amber-400 mt-0.5">
+                  {pendingNavigation.type === "TAB"
+                    ? "Bạn đang chuyển sang tab khác"
+                    : `Bạn đang chuyển sang ngày ${pendingNavigation.targetDate}`}
+                </p>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 text-xs text-amber-900 dark:text-amber-200 space-y-2 leading-relaxed">
+              <div className="font-extrabold flex items-center gap-1.5 text-amber-800 dark:text-amber-300 uppercase tracking-wide text-[11px]">
+                <span>⚠️</span> Cảnh báo mất dữ liệu vừa nhập:
+              </div>
+              <p>
+                Có <strong className="text-amber-700 dark:text-amber-300">{dirtyBranchNames.length} chi nhánh</strong> đang có số liệu đã chỉnh sửa nhưng chưa bấm lưu vào hệ thống:
+              </p>
+              <div className="font-semibold text-amber-800 dark:text-amber-200 bg-white/70 dark:bg-slate-800/70 p-2.5 rounded-xl border border-amber-300/50">
+                {dirtyBranchNames.join(", ")}
+              </div>
+              <p className="text-[11px] opacity-90">
+                Nếu rời đi mà không lưu, các thay đổi trên sẽ bị hủy bỏ và hệ thống sẽ giữ nguyên số liệu cũ.
+              </p>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setPendingNavigation(null)}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer text-center"
+              >
+                Ở lại trang
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const nav = pendingNavigation;
+                  setHasUnsavedChanges(false);
+                  setPendingNavigation(null);
+                  if (nav.type === "TAB" && nav.targetTab) {
+                    setActiveTab(nav.targetTab);
+                  } else if (nav.type === "DATE" && nav.targetDate) {
+                    setDate(nav.targetDate);
+                  }
+                  fetchData();
+                }}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 transition cursor-pointer text-center"
+              >
+                Bỏ qua thay đổi
+              </button>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  const nav = pendingNavigation;
+                  if (saveHandlerRef.current) {
+                    const ok = await saveHandlerRef.current();
+                    if (ok) {
+                      setHasUnsavedChanges(false);
+                      setPendingNavigation(null);
+                      if (nav.type === "TAB" && nav.targetTab) {
+                        setActiveTab(nav.targetTab);
+                      } else if (nav.type === "DATE" && nav.targetDate) {
+                        setDate(nav.targetDate);
+                      }
+                    }
+                  }
+                }}
+                className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-md shadow-blue-600/30 transition cursor-pointer text-center"
+              >
+                <Save className="w-4 h-4" />
+                Lưu & Tiếp tục
               </button>
             </div>
           </div>

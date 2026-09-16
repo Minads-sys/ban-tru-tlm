@@ -10,6 +10,7 @@
    * [2.2. Thông tin đăng nhập bảo mật 3 yếu tố](#22-thông-tin-đăng-nhập-bảo-mật-3-yếu-tố)
    * [2.3. Các bước đăng nhập](#23-các-bước-đăng-nhập)
    * [2.4. Bắt buộc đổi mật khẩu trong lần đăng nhập đầu tiên](#24-bắt-buộc-đổi-mật-khẩu-trong-lần-đăng-nhập-đầu-tiên)
+   * [2.5. Khôi phục mật khẩu tự phục vụ khi bị quên (Miễn phí 100%)](#25-khôi-phục-mật-khẩu-tự-phục-vụ-khi-bị-quên-miễn-phí-100)
 3. [Giao diện Trang chủ & Hồ sơ học sinh](#3-giao-diện-trang-chủ--hồ-sơ-học-sinh)
 4. [Nghiệp vụ 1: Báo Cắt suất ăn](#4-nghiệp-vụ-1-báo-cắt-suất-ăn)
 5. [Nghiệp vụ 2: Đăng ký Đổi món ăn](#5-nghiệp-vụ-2-đăng-ký-đổi-món-ăn)
@@ -128,6 +129,42 @@ Nhằm tăng cường tính an toàn và bảo mật thông tin cá nhân cũng 
   * **Họ và tên**: Họ và tên học sinh.
   * **Mật khẩu**: **Mật khẩu MỚI** vừa thiết lập *(không dùng ngày sinh nữa)*.
   * **Mã xác nhận**: 6 số cuối CCCD.
+
+### 2.5. Khôi phục mật khẩu tự phục vụ khi bị quên (Miễn phí 100%)
+
+Nếu bạn đã đổi mật khẩu nhưng sau đó quên mất mật khẩu mới, hệ thống hỗ trợ **tính năng Tự phục vụ 24/7 hoàn toàn miễn phí** (không cần mã OTP SMS hay Email):
+
+```
+   ┌─────────────────────────────────────────────────────────────┐
+   │             KHÔI PHỤC MẬT KHẨU HỌC SINH                     │
+   │ Hệ thống đối soát thông tin với hồ sơ trường để khôi phục  │
+   │ về mật khẩu mặc định (ngày tháng năm sinh).                 │
+   │                                                             │
+   │ Họ và tên Học sinh:        [ Nguyễn Văn An             ]    │
+   │ Số CCCD / Mã định danh:    [ 079208012345              ]    │
+   │ Ngày tháng năm sinh:       [ 15/08/2008                ]    │
+   │ Số điện thoại Phụ huynh:   [ 0903123456                ]    │
+   │                                                             │
+   │              [ XÁC MINH & KHÔI PHỤC ]                       │
+   └─────────────────────────────────────────────────────────────┘
+```
+
+#### A. Các bước thực hiện:
+1. Tại màn hình Đăng nhập học sinh (`/student-login`), bấm vào dòng chữ **"Quên mật khẩu?"** (hoặc bấm vào liên kết hỗ trợ hiện ra khi bạn nhập sai mật khẩu).
+2. Điền đầy đủ 4 trường thông tin đối soát:
+   * **Họ và tên học sinh**: Gõ đầy đủ họ tên (có dấu hoặc không dấu).
+   * **Số CCCD / Mã định danh**: Nhập số CCCD của học sinh. *Hệ thống tự động tương thích thông minh dù bạn nhập 11 số (nếu bảng điểm thiếu số 0 đầu) hoặc 12 số (theo thẻ thật).*
+   * **Ngày tháng năm sinh**: Chọn ngày/tháng/năm sinh của học sinh.
+   * **Số điện thoại Phụ huynh**: Nhập số điện thoại của cha/mẹ đã đăng ký trong hồ sơ bán trú tại trường.
+3. Bấm nút **"Xác minh & Khôi phục"**.
+
+#### B. Sau khi khôi phục thành công:
+* Mật khẩu tài khoản của bạn sẽ được **đặt lại về Ngày sinh mặc định** (8 số `ddmmyyyy`).
+* Bấm nút **"Đăng nhập ngay"**, nhập mật khẩu là Ngày sinh để đăng nhập.
+* Hệ thống sẽ tự động đưa bạn tới trang **Bắt buộc đổi mật khẩu mới** để thiết lập mật khẩu cá nhân mới an toàn.
+
+> [!NOTE]
+> Để phòng chống việc đoán mò, hệ thống giới hạn tối đa **5 lần thử sai trong 15 phút**. Nếu bạn không nhớ số điện thoại phụ huynh đã khai báo, vui lòng liên hệ trực tiếp **Giáo viên chủ nhiệm (GVCN)** để được hỗ trợ cấp lại mật khẩu.
 
 ---
 
