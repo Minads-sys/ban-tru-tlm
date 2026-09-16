@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -374,14 +375,23 @@ export default function StudentLoginForm({ schoolName }: { schoolName: string })
                   <HelpCircle className="h-3.5 w-3.5 text-emerald-600" />
                   Hướng dẫn cho Phụ huynh & Học sinh:
                 </div>
-                <a
-                  href="/huong-dan-hoc-sinh.pdf"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[11px] text-emerald-700 hover:text-emerald-900 font-bold underline inline-flex items-center gap-1"
-                >
-                  📄 File HDSD (PDF)
-                </a>
+                <div className="flex items-center gap-2">
+                  <Link
+                    href="/huong-dan"
+                    className="text-[11px] text-emerald-700 hover:text-emerald-900 font-bold underline inline-flex items-center gap-1"
+                  >
+                    🌐 Web Hướng Dẫn
+                  </Link>
+                  <span className="text-emerald-300">•</span>
+                  <a
+                    href="/huong-dan-hoc-sinh.pdf"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[11px] text-emerald-700 hover:text-emerald-900 font-bold underline inline-flex items-center gap-1"
+                  >
+                    📄 File PDF
+                  </a>
+                </div>
               </div>
               <ul className="list-disc list-inside space-y-0.5 text-[11px] text-emerald-700">
                 <li>Tên đăng nhập: Nhập đầy đủ Họ và tên (có dấu hoặc không dấu đều được).</li>

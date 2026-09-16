@@ -56,7 +56,7 @@ export async function syncDailyMealSummaryForDate(date: Date) {
                       { boardingStatus: BoardingStatus.ACTIVE },
                       {
                         boardingStatus: BoardingStatus.CANCELLED,
-                        boardingCancelledAt: { gt: dateEndOfDay },
+                        boardingCancelledAt: { gte: date },
                       },
                     ],
                   },

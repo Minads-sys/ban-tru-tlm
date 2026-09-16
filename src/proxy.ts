@@ -13,7 +13,9 @@ export default auth((req) => {
     pathname === '/login' ||
     pathname === '/student-login' ||
     pathname === '/kitchen-display' ||
-    pathname.startsWith('/kitchen-display/')
+    pathname.startsWith('/kitchen-display/') ||
+    pathname === '/huong-dan' ||
+    pathname.startsWith('/huong-dan/')
   ) {
     return NextResponse.next();
   }

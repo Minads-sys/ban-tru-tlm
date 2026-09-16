@@ -24,14 +24,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         verificationCode: { label: 'Mã xác nhận', type: 'text' },
       },
       async authorize(credentials) {
-        const fs = require('fs');
-        const log = (msg: string) => {
-          try { fs.appendFileSync('debug_login.txt', new Date().toISOString() + ' - ' + msg + '\n'); } catch (e) {}
-        };
+        const isDev = process.env.NODE_ENV === 'development';
+        const log = (msg: string) => { if (isDev) console.debug('[Auth]', msg); };
         log(`Login attempt for: ${credentials?.username}`);
 
         if (!credentials?.username || !credentials?.password) {
-          log('Missing username or password');
           return null;
         }
 
@@ -40,8 +37,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const verificationCode = credentials.verificationCode 
           ? (credentials.verificationCode as string).trim() 
           : undefined;
-
-        log(`Parsed - username: "${username}", passLen: ${password.length}, vCode: "${verificationCode}"`);
 
         if (!username || !password) {
           return null;

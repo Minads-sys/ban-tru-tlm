@@ -5,6 +5,12 @@ import { logAudit, AUDIT_ACTIONS, AUDIT_MODULES } from '@/lib/audit-log';
 
 export async function GET() {
   try {
+    // Chỉ cho phép user đã đăng nhập (staff) đọc cài đặt hệ thống
+    const session = await auth();
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Chưa đăng nhập' }, { status: 401 });
+    }
+
     const settings = await prisma.systemSetting.findMany();
     const settingsMap: Record<string, string> = {
       SCHOOL_NAME: '',

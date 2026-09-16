@@ -7,7 +7,19 @@ import { format } from "date-fns";
 // Provider sends a GET or POST request to this URL when a parent texts 81xx
 export async function GET(req: Request) {
   try {
+    // Xác thực Bearer token từ SMS Gateway để tránh gọi tùy ý
+    const smsWebhookSecret = process.env.SMS_WEBHOOK_SECRET;
+    if (smsWebhookSecret && smsWebhookSecret.trim() !== '') {
+      const authHeader = new URL(req.url).searchParams.get('secret') 
+        || req.headers.get('authorization')?.replace(/^Bearer\s+/i, '') 
+        || '';
+      if (authHeader !== smsWebhookSecret) {
+        return new NextResponse('Unauthorized', { status: 401 });
+      }
+    }
+
     const { searchParams } = new URL(req.url);
+
     
     // Example parameters from typical VN SMS gateways
     const sender = searchParams.get('sender') || searchParams.get('phone'); // e.g., 0987654321

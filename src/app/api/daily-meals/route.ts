@@ -7,6 +7,7 @@ import { getWeekNumber, getVietnamTodayUTC, isPastCutoffTime } from "@/lib/utils
 import { auth } from "@/lib/auth";
 import { logAudit, AUDIT_ACTIONS, AUDIT_MODULES } from "@/lib/audit-log";
 import { autoApproveExpiredCancellations } from "@/app/admin/meal-cancel/actions";
+import { syncDailyMealSummaryForDate } from "@/lib/daily-meals";
 
 // GET: Lấy tổng hợp suất ăn cho 1 ngày
 export async function GET(request: NextRequest) {
@@ -61,7 +62,7 @@ export async function GET(request: NextRequest) {
                     { boardingStatus: BoardingStatus.ACTIVE },
                     {
                       boardingStatus: BoardingStatus.CANCELLED,
-                      boardingCancelledAt: { gt: dateEndOfDay },
+                      boardingCancelledAt: { gte: date },
                     },
                   ],
                 },
@@ -84,6 +85,13 @@ export async function GET(request: NextRequest) {
     await autoApproveExpiredCancellations();
   } catch (err) {
     console.error("Lỗi tự động duyệt đơn quá hạn trong GET daily-meals:", err);
+  }
+
+  // Tự động đồng bộ lại bảng DailyMealSummary nếu ngày này đã có dữ liệu chốt để phản ánh các đơn duyệt mới
+  try {
+    await syncDailyMealSummaryForDate(date);
+  } catch (err) {
+    console.error("Lỗi syncDailyMealSummaryForDate trong GET daily-meals:", err);
   }
 
   // Lấy danh sách cắt suất đã duyệt cho ngày này
@@ -266,7 +274,7 @@ export async function GET(request: NextRequest) {
               { boardingStatus: BoardingStatus.ACTIVE },
               {
                 boardingStatus: BoardingStatus.CANCELLED,
-                boardingCancelledAt: { gt: dateEndOfDay },
+                boardingCancelledAt: { gte: date },
               },
             ],
           },
@@ -287,18 +295,30 @@ export async function GET(request: NextRequest) {
   });
 
   // Gom HS đặc biệt (không trùng TKB lớp) theo scheduleName
-  const specialGroupMap = new Map<string, { name: string; students: Array<{ id: string; mealType: string }> }>();
+  const specialGroupMap = new Map<string, { 
+    name: string; 
+    totalRegistered: number;
+    canceledCount: number;
+    students: Array<{ id: string; mealType: string }> 
+  }>();
   for (const sm of specialMeals) {
     if (!sm.student) continue;
-    if (cancelledStudentIds.has(sm.student.id)) continue;
     if (scheduleClassIdsSet.has(sm.student.classId)) continue; // Trùng TKB lớp → bỏ qua
 
     const key = sm.scheduleName;
     if (!specialGroupMap.has(key)) {
-      specialGroupMap.set(key, { name: key, students: [] });
+      specialGroupMap.set(key, { name: key, totalRegistered: 0, canceledCount: 0, students: [] });
     }
+    const group = specialGroupMap.get(key)!;
+    group.totalRegistered++;
+
+    if (cancelledStudentIds.has(sm.student.id)) {
+      group.canceledCount++;
+      continue;
+    }
+
     const finalMealType = overrideMap.get(sm.student.id) || sm.student.mealType;
-    specialGroupMap.get(key)!.students.push({ id: sm.student.id, mealType: finalMealType as string });
+    group.students.push({ id: sm.student.id, mealType: finalMealType as string });
   }
 
   // Thêm lớp ảo vào classSummaries
@@ -312,8 +332,8 @@ export async function GET(request: NextRequest) {
     classSummaries.push({
       classId: `SPECIAL::${scheduleName}`,
       className: `Lớp ${scheduleName}`,
-      totalRegistered: group.students.length,
-      totalCanceled: 0,
+      totalRegistered: group.totalRegistered,
+      totalCanceled: group.canceledCount,
       finalMan: man,
       finalChay: chay,
       finalChao: chao,
@@ -443,7 +463,7 @@ export async function POST(request: NextRequest) {
                       { boardingStatus: BoardingStatus.ACTIVE },
                       {
                         boardingStatus: BoardingStatus.CANCELLED,
-                        boardingCancelledAt: { gt: dateEndOfDay },
+                        boardingCancelledAt: { gte: date },
                       },
                     ],
                   },

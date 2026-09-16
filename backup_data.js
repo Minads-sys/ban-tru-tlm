@@ -28,7 +28,15 @@ async function runBackup() {
 
   const models = [
     { name: 'SystemSetting', query: () => prisma.systemSetting.findMany() },
-    { name: 'User', query: () => prisma.user.findMany() },
+    { name: 'User', query: () => prisma.user.findMany({
+        select: {
+          id: true, username: true, fullName: true, role: true,
+          permissions: true, isActive: true, requiresPasswordChange: true,
+          createdAt: true, updatedAt: true, passwordChangedAt: true,
+          // passwordHash: loại trừ khỏi backup vì lý do bảo mật
+        }
+      })
+    },
     { name: 'Class', query: () => prisma.class.findMany() },
     { name: 'Student', query: () => prisma.student.findMany() },
     { name: 'ClassWeeklySchedule', query: () => prisma.classWeeklySchedule.findMany() },
