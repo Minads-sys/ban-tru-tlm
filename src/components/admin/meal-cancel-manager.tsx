@@ -34,6 +34,7 @@ import {
   bulkApproveCancellations,
   autoApproveExpiredCancellations,
   revertApprovalCancellation,
+  deleteMealOverride,
 } from '@/app/admin/meal-cancel/actions';
 import { BulkMealCancelDialog } from '@/components/admin/bulk-meal-cancel-dialog';
 import { BulkMealOverrideDialog } from '@/components/admin/bulk-meal-override-dialog';
@@ -67,22 +68,50 @@ export interface CancellationItem {
   } | null;
 }
 
+export interface MealOverrideItem {
+  id: string;
+  studentId: string;
+  date: string | Date;
+  mealType: 'MAN' | 'CHAY' | 'CHAO';
+  createdAt: string | Date;
+  student?: {
+    id: string;
+    studentCode: string;
+    boardingCode?: string | null;
+    mealType: 'MAN' | 'CHAY' | 'CHAO';
+    classId: string;
+    user?: {
+      fullName: string;
+      username: string;
+    } | null;
+    class?: {
+      name: string;
+    } | null;
+  } | null;
+}
+
 interface MealCancelManagerProps {
   initialPending: CancellationItem[];
   initialHistory: CancellationItem[];
+  initialOverrides?: MealOverrideItem[];
   cutoffTime: string;
   classes?: { id: string; name: string }[];
   isAccountant?: boolean;
+  defaultTab?: 'pending' | 'history' | 'overrides';
 }
 
 export function MealCancelManager({
   initialPending,
   initialHistory,
+  initialOverrides = [],
   cutoffTime,
   classes = [],
   isAccountant = false,
+  defaultTab = 'pending',
 }: MealCancelManagerProps) {
-  const [activeTab, setActiveTab] = useState<'pending' | 'history'>('pending');
+  const [activeTab, setActiveTab] = useState<'pending' | 'history' | 'overrides'>(
+    defaultTab && ['pending', 'history', 'overrides'].includes(defaultTab) ? defaultTab : 'pending'
+  );
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isBulkPending, startBulkTransition] = useTransition();
 
@@ -105,6 +134,15 @@ export function MealCancelManager({
   const [historyDateTo, setHistoryDateTo] = useState<string>('');
   const [revertingId, setRevertingId] = useState<string | null>(null);
   const [localHistoryOverrides, setLocalHistoryOverrides] = useState<Record<string, Partial<CancellationItem>>>({});
+
+  // Filters for Overrides Tab (Học sinh đổi món)
+  const [overrideSearchQuery, setOverrideSearchQuery] = useState('');
+  const [overrideClassFilter, setOverrideClassFilter] = useState<string>('ALL');
+  const [overrideMealTypeFilter, setOverrideMealTypeFilter] = useState<string>('ALL');
+  const [overrideDateFrom, setOverrideDateFrom] = useState<string>('');
+  const [overrideDateTo, setOverrideDateTo] = useState<string>('');
+  const [deletingOverrideId, setDeletingOverrideId] = useState<string | null>(null);
+  const [deletedOverrideIds, setDeletedOverrideIds] = useState<Set<string>>(new Set());
 
   // Format helpers
   const formatDate = (date: Date | string) => {
@@ -193,6 +231,63 @@ export function MealCancelManager({
       filterType !== 'ALL' ||
       historyDateFrom ||
       historyDateTo
+  );
+
+  const getTomorrowIsoString = () => {
+    try {
+      const d = new Date();
+      d.setDate(d.getDate() + 1);
+      return new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Ho_Chi_Minh',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(d);
+    } catch {
+      const d = new Date();
+      d.setDate(d.getDate() + 1);
+      return d.toISOString().split('T')[0];
+    }
+  };
+
+  const getMealTypeBadge = (type: string) => {
+    switch (type) {
+      case 'CHAY':
+        return {
+          label: 'Cơm Chay',
+          icon: '🥗',
+          badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+        };
+      case 'CHAO':
+        return {
+          label: 'Cháo Dinh Dưỡng',
+          icon: '🥣',
+          badgeClass: 'bg-amber-50 text-amber-700 border-amber-200',
+        };
+      case 'MAN':
+      default:
+        return {
+          label: 'Cơm Mặn',
+          icon: '🍗',
+          badgeClass: 'bg-orange-50 text-orange-700 border-orange-200',
+        };
+    }
+  };
+
+  const resetOverrideFilters = () => {
+    setOverrideSearchQuery('');
+    setOverrideClassFilter('ALL');
+    setOverrideMealTypeFilter('ALL');
+    setOverrideDateFrom('');
+    setOverrideDateTo('');
+  };
+
+  const isOverrideFiltered = Boolean(
+    overrideSearchQuery.trim() ||
+      overrideClassFilter !== 'ALL' ||
+      overrideMealTypeFilter !== 'ALL' ||
+      overrideDateFrom ||
+      overrideDateTo
   );
 
   // Available classes for filter
@@ -476,6 +571,120 @@ export function MealCancelManager({
     });
   }, [initialHistory, localHistoryOverrides, searchQuery, filterClass, filterStatus, filterType, historyDateFrom, historyDateTo]);
 
+  // Available classes for overrides filter
+  const availableOverrideClasses = useMemo(() => {
+    const set = new Set<string>();
+    initialOverrides.forEach((item) => {
+      const c = item.student?.class?.name || item.student?.classId;
+      if (c) set.add(c);
+    });
+    return Array.from(set).sort();
+  }, [initialOverrides]);
+
+  // Filtered Overrides
+  const filteredOverrides = useMemo(() => {
+    return initialOverrides
+      .filter((item) => !deletedOverrideIds.has(item.id))
+      .filter((item) => {
+        if (overrideSearchQuery.trim()) {
+          const q = overrideSearchQuery.toLowerCase();
+          const name = item.student?.user?.fullName?.toLowerCase() || '';
+          const code = item.student?.studentCode?.toLowerCase() || '';
+          const bCode = item.student?.boardingCode?.toLowerCase() || '';
+          if (!name.includes(q) && !code.includes(q) && !bCode.includes(q)) return false;
+        }
+
+        if (overrideClassFilter !== 'ALL') {
+          const c = item.student?.class?.name || item.student?.classId;
+          if (c !== overrideClassFilter) return false;
+        }
+
+        if (overrideMealTypeFilter !== 'ALL') {
+          if (item.mealType !== overrideMealTypeFilter) return false;
+        }
+
+        const itemDateStr = getIsoDateString(item.date);
+        if (overrideDateFrom && itemDateStr < overrideDateFrom) return false;
+        if (overrideDateTo && itemDateStr > overrideDateTo) return false;
+
+        return true;
+      });
+  }, [initialOverrides, deletedOverrideIds, overrideSearchQuery, overrideClassFilter, overrideMealTypeFilter, overrideDateFrom, overrideDateTo]);
+
+  // Quick stats for filtered overrides
+  const overrideStats = useMemo(() => {
+    let man = 0;
+    let chay = 0;
+    let chao = 0;
+    filteredOverrides.forEach((item) => {
+      if (item.mealType === 'MAN') man++;
+      else if (item.mealType === 'CHAY') chay++;
+      else if (item.mealType === 'CHAO') chao++;
+    });
+    return {
+      total: filteredOverrides.length,
+      man,
+      chay,
+      chao,
+    };
+  }, [filteredOverrides]);
+
+  // Handle Delete / Revert Meal Override
+  const handleDeleteOverride = async (item: MealOverrideItem) => {
+    const studentName = item.student?.user?.fullName || item.student?.studentCode || 'học sinh';
+    const className = item.student?.class?.name || item.student?.classId || '';
+    const dateStr = formatDate(item.date);
+    const targetMealBadge = getMealTypeBadge(item.mealType);
+    const defaultMealBadge = getMealTypeBadge(item.student?.mealType || 'MAN');
+
+    const { value: reason, isConfirmed } = await Swal.fire({
+      title: 'Hủy đổi món & Khôi phục mặc định?',
+      html: `
+        <div class="text-left text-xs space-y-2 mt-2">
+          <div class="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
+            <p><span class="text-slate-500">Học sinh:</span> <strong class="text-slate-900">${studentName}</strong> ${className ? `<span class="text-slate-600 font-medium">(Lớp ${className})</span>` : ''}</p>
+            <p><span class="text-slate-500">Ngày áp dụng:</span> <strong class="text-blue-700">${dateStr}</strong></p>
+            <p><span class="text-slate-500">Món đã đổi:</span> <strong class="text-indigo-700">${targetMealBadge.icon} ${targetMealBadge.label}</strong> ➔ Khôi phục về: <strong class="text-emerald-700">${defaultMealBadge.icon} ${defaultMealBadge.label}</strong></p>
+          </div>
+          <div class="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-[11px] leading-relaxed">
+            ⚠️ <strong>Hệ thống sẽ:</strong> Xóa yêu cầu đổi món này và đưa học sinh trở lại chế độ ăn mặc định của hồ sơ bán trú. Số lượng chốt suất của nhà bếp sẽ được tự động đồng bộ lại.
+          </div>
+        </div>
+      `,
+      input: 'text',
+      inputLabel: 'Lý do hủy đổi món (tùy chọn):',
+      inputValue: 'Học sinh/phụ huynh xin ăn lại món mặc định',
+      showCancelButton: true,
+      confirmButtonColor: '#4f46e5',
+      cancelButtonColor: '#64748b',
+      confirmButtonText: 'Xác nhận hủy đổi món',
+      cancelButtonText: 'Đóng',
+    });
+
+    if (isConfirmed) {
+      setDeletingOverrideId(item.id);
+      try {
+        const res = await deleteMealOverride(item.id, reason);
+        if (res.success) {
+          setDeletedOverrideIds((prev) => new Set(prev).add(item.id));
+          Swal.fire({
+            icon: 'success',
+            title: 'Thành công',
+            text: res.message || 'Đã hủy đổi món thành công',
+            timer: 1500,
+            showConfirmButton: false,
+          });
+        } else {
+          Swal.fire('Lỗi', res.error || 'Có lỗi xảy ra', 'error');
+        }
+      } catch (err) {
+        Swal.fire('Lỗi', 'Lỗi kết nối hoặc xử lý yêu cầu', 'error');
+      } finally {
+        setDeletingOverrideId(null);
+      }
+    }
+  };
+
   return (
     <div className="space-y-6">
       {isAccountant && (
@@ -552,9 +761,9 @@ export function MealCancelManager({
       </div>
 
       {/* Tabs Layout */}
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'pending' | 'history')} className="w-full">
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'pending' | 'history' | 'overrides')} className="w-full">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-200 pb-3">
-          <TabsList className="bg-slate-100 p-1.5 rounded-xl border border-slate-200 shadow-2xs h-auto">
+          <TabsList className="bg-slate-100 p-1.5 rounded-xl border border-slate-200 shadow-2xs h-auto flex-wrap">
             <TabsTrigger
               value="pending"
               className="px-4 py-2 font-medium text-xs sm:text-sm gap-2 cursor-pointer transition-all duration-150 hover:bg-slate-200/80 hover:text-slate-900 text-slate-700 data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:font-semibold data-[state=active]:shadow-sm group"
@@ -577,23 +786,40 @@ export function MealCancelManager({
                 {initialHistory.length}
               </Badge>
             </TabsTrigger>
+            <TabsTrigger
+              value="overrides"
+              className="px-4 py-2 font-medium text-xs sm:text-sm gap-2 cursor-pointer transition-all duration-150 hover:bg-slate-200/80 hover:text-slate-900 text-slate-700 data-[state=active]:bg-indigo-600 data-[state=active]:text-white data-[state=active]:font-semibold data-[state=active]:shadow-sm group"
+            >
+              <UtensilsCrossed className="h-4 w-4 text-indigo-500 group-data-[state=active]:text-white" />
+              <span>Học sinh đổi món</span>
+              {initialOverrides.length - deletedOverrideIds.size > 0 && (
+                <Badge className="bg-indigo-500 group-data-[state=active]:bg-white group-data-[state=active]:text-indigo-700 text-white text-[11px] px-1.5 py-0 h-5 min-w-5 flex items-center justify-center rounded-full font-bold ml-1 transition-colors">
+                  {initialOverrides.length - deletedOverrideIds.size}
+                </Badge>
+              )}
+            </TabsTrigger>
           </TabsList>
 
           {/* Quick Stats */}
-          <div className="flex items-center gap-2 text-xs text-slate-500">
+          <div className="flex items-center gap-2 text-xs text-slate-500 flex-wrap">
             <span className="flex items-center gap-1 font-medium">
               <span className="inline-block w-2.5 h-2.5 rounded-full bg-amber-400" />
-              Chờ duyệt: <strong className="text-slate-800">{initialPending.length}</strong>
+              Chờ duyệt cắt: <strong className="text-slate-800">{initialPending.length}</strong>
             </span>
             <span className="text-slate-300">|</span>
             <span className="flex items-center gap-1 font-medium">
               <span className="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500" />
-              Đã duyệt: <strong className="text-slate-800">{initialHistory.filter((h) => (localHistoryOverrides[h.id]?.status || h.status) === 'APPROVED').length}</strong>
+              Đã duyệt cắt: <strong className="text-slate-800">{initialHistory.filter((h) => (localHistoryOverrides[h.id]?.status || h.status) === 'APPROVED').length}</strong>
             </span>
             <span className="text-slate-300">|</span>
             <span className="flex items-center gap-1 font-medium">
               <span className="inline-block w-2.5 h-2.5 rounded-full bg-rose-500" />
-              Từ chối: <strong className="text-slate-800">{initialHistory.filter((h) => (localHistoryOverrides[h.id]?.status || h.status) === 'REJECTED').length}</strong>
+              Từ chối cắt: <strong className="text-slate-800">{initialHistory.filter((h) => (localHistoryOverrides[h.id]?.status || h.status) === 'REJECTED').length}</strong>
+            </span>
+            <span className="text-slate-300">|</span>
+            <span className="flex items-center gap-1 font-medium">
+              <span className="inline-block w-2.5 h-2.5 rounded-full bg-indigo-500" />
+              Đổi món: <strong className="text-indigo-700 font-bold">{initialOverrides.length - deletedOverrideIds.size}</strong>
             </span>
           </div>
         </div>
@@ -1165,6 +1391,371 @@ export function MealCancelManager({
                                 ) : (
                                   <span className="text-slate-300 text-xs">-</span>
                                 )}
+                              </TableCell>
+                            )}
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* TAB 3: MEAL OVERRIDES (HỌC SINH ĐỔI MÓN) */}
+        <TabsContent value="overrides" className="mt-4 space-y-4">
+          {/* Filters Bar for Overrides */}
+          <Card className="shadow-xs border-slate-200">
+            <CardContent className="p-3.5 space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2.5">
+                {/* Search */}
+                <div className="relative lg:col-span-4">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                  <Input
+                    placeholder="Tìm tên, mã HS, mã bán trú..."
+                    value={overrideSearchQuery}
+                    onChange={(e) => setOverrideSearchQuery(e.target.value)}
+                    className="pl-9 text-xs bg-white h-9"
+                  />
+                </div>
+
+                {/* Filter Class */}
+                <div className="lg:col-span-3">
+                  <Select value={overrideClassFilter} onValueChange={setOverrideClassFilter}>
+                    <SelectTrigger className="text-xs bg-white h-9">
+                      <SelectValue placeholder="Chọn lớp học" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ALL">Tất cả lớp học</SelectItem>
+                      {availableOverrideClasses.map((c) => (
+                        <SelectItem key={c} value={c}>
+                          Lớp {c}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Filter Target Meal Type */}
+                <div className="lg:col-span-3">
+                  <Select value={overrideMealTypeFilter} onValueChange={setOverrideMealTypeFilter}>
+                    <SelectTrigger className="text-xs bg-white h-9">
+                      <SelectValue placeholder="Món chuyển sang" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ALL">Tất cả món đổi sang</SelectItem>
+                      <SelectItem value="CHAY">🥗 Cơm Chay</SelectItem>
+                      <SelectItem value="CHAO">🥣 Cháo Dinh Dưỡng</SelectItem>
+                      <SelectItem value="MAN">🍗 Cơm Mặn</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Quick Action Button for Teachers */}
+                {!isAccountant && (
+                  <div className="lg:col-span-2 flex items-center justify-end">
+                    <Button
+                      size="sm"
+                      onClick={() => setOpenBulkOverride(true)}
+                      className="w-full text-xs h-9 bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5 shadow-xs cursor-pointer font-medium"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" />
+                      <span>Đổi món</span>
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              {/* Date Filters Row */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2 border-t border-slate-100">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <div className="flex items-center gap-1.5">
+                    <Calendar className="h-4 w-4 text-slate-400 shrink-0" />
+                    <span className="text-[11px] font-medium text-slate-600 shrink-0">Ngày ăn áp dụng từ:</span>
+                    <Input
+                      type="date"
+                      value={overrideDateFrom}
+                      onChange={(e) => setOverrideDateFrom(e.target.value)}
+                      className="text-xs bg-white h-8 w-36 px-2"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] font-medium text-slate-600 shrink-0">đến:</span>
+                    <Input
+                      type="date"
+                      value={overrideDateTo}
+                      onChange={(e) => setOverrideDateTo(e.target.value)}
+                      className="text-xs bg-white h-8 w-36 px-2"
+                    />
+                  </div>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const today = getTodayIsoString();
+                      setOverrideDateFrom(today);
+                      setOverrideDateTo(today);
+                    }}
+                    className="text-xs h-8 px-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-300"
+                  >
+                    Hôm nay
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const tomorrow = getTomorrowIsoString();
+                      setOverrideDateFrom(tomorrow);
+                      setOverrideDateTo(tomorrow);
+                    }}
+                    className="text-xs h-8 px-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-300"
+                  >
+                    Ngày mai
+                  </Button>
+                </div>
+
+                {isOverrideFiltered && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={resetOverrideFilters}
+                    className="text-xs h-8 px-2.5 text-rose-600 hover:text-rose-700 hover:bg-rose-50 self-end sm:self-auto"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5 mr-1" />
+                    Đặt lại bộ lọc
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Overrides Stats Summary Row */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
+              <span className="text-[11px] font-medium text-slate-500 block">Tổng số học sinh đổi món</span>
+              <span className="text-xl font-bold text-slate-900 block mt-0.5">{overrideStats.total}</span>
+              <span className="text-[10px] text-slate-400">suất ăn điều chỉnh</span>
+            </div>
+            <div className="p-3 bg-emerald-50/50 rounded-xl border border-emerald-200/80 shadow-2xs">
+              <span className="text-[11px] font-medium text-emerald-800 flex items-center gap-1">
+                <span>🥗</span> Chuyển sang Cơm Chay
+              </span>
+              <span className="text-xl font-bold text-emerald-700 block mt-0.5">{overrideStats.chay}</span>
+              <span className="text-[10px] text-emerald-600">học sinh</span>
+            </div>
+            <div className="p-3 bg-amber-50/50 rounded-xl border border-amber-200/80 shadow-2xs">
+              <span className="text-[11px] font-medium text-amber-800 flex items-center gap-1">
+                <span>🥣</span> Chuyển sang Cháo
+              </span>
+              <span className="text-xl font-bold text-amber-700 block mt-0.5">{overrideStats.chao}</span>
+              <span className="text-[10px] text-amber-600">học sinh</span>
+            </div>
+            <div className="p-3 bg-orange-50/50 rounded-xl border border-orange-200/80 shadow-2xs">
+              <span className="text-[11px] font-medium text-orange-800 flex items-center gap-1">
+                <span>🍗</span> Chuyển sang Cơm Mặn
+              </span>
+              <span className="text-xl font-bold text-orange-700 block mt-0.5">{overrideStats.man}</span>
+              <span className="text-[10px] text-orange-600">học sinh</span>
+            </div>
+          </div>
+
+          {/* Overrides Table Card */}
+          <Card className="shadow-xs border-slate-200">
+            <CardHeader className="border-b bg-slate-50/50 pb-3 pt-3">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="text-base font-bold text-slate-900">
+                      Danh sách học sinh đăng ký đổi món ăn bán trú
+                    </CardTitle>
+                    {isOverrideFiltered && (
+                      <Badge variant="outline" className="text-xs font-semibold bg-indigo-50 text-indigo-700 border-indigo-200">
+                        Đang lọc: {filteredOverrides.length} / {initialOverrides.length - deletedOverrideIds.size}
+                      </Badge>
+                    )}
+                  </div>
+                  <CardDescription className="text-xs text-slate-500 mt-0.5">
+                    Học sinh đổi món qua Cổng học sinh hoặc Thao tác hàng loạt của giáo viên
+                  </CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="text-xs font-semibold bg-white">
+                    Kết quả: {filteredOverrides.length} lượt đổi
+                  </Badge>
+                </div>
+              </div>
+            </CardHeader>
+
+            <CardContent className="p-0">
+              {initialOverrides.length - deletedOverrideIds.size === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-center px-4">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-indigo-50 text-indigo-600 mb-3">
+                    <UtensilsCrossed className="h-7 w-7" />
+                  </div>
+                  <h3 className="text-sm font-semibold text-slate-900">
+                    Chưa có học sinh nào đăng ký đổi món
+                  </h3>
+                  <p className="mt-1 text-xs text-slate-500 max-w-sm">
+                    Khi học sinh gửi yêu cầu đổi món qua Cổng học sinh hoặc giáo viên thực hiện Đổi món hàng loạt, danh sách sẽ hiển thị tại đây.
+                  </p>
+                  {!isAccountant && (
+                    <Button
+                      size="sm"
+                      onClick={() => setOpenBulkOverride(true)}
+                      className="mt-4 text-xs bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5 cursor-pointer font-medium shadow-xs"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" />
+                      <span>Thực hiện đổi món hàng loạt</span>
+                    </Button>
+                  )}
+                </div>
+              ) : filteredOverrides.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center px-4">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-500 mb-2.5">
+                    <Filter className="h-6 w-6" />
+                  </div>
+                  <h3 className="text-sm font-semibold text-slate-900">
+                    Không tìm thấy đơn đổi món nào khớp với bộ lọc
+                  </h3>
+                  <p className="mt-1 text-xs text-slate-500 max-w-sm">
+                    Thử thay đổi từ khóa tìm kiếm học sinh, chọn lớp khác hoặc đổi khoảng thời gian ngày áp dụng.
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={resetOverrideFilters}
+                    className="mt-3 text-xs gap-1.5 cursor-pointer"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    Xóa bộ lọc tìm kiếm
+                  </Button>
+                </div>
+              ) : (
+                <div className="overflow-x-auto max-h-[600px]">
+                  <Table>
+                    <TableHeader className="bg-slate-50/80 sticky top-0 z-10">
+                      <TableRow>
+                        <TableHead className="w-12 text-center text-xs font-semibold">STT</TableHead>
+                        <TableHead className="w-28 text-xs font-semibold">Mã HS / Mã BT</TableHead>
+                        <TableHead className="text-xs font-semibold">Họ tên học sinh</TableHead>
+                        <TableHead className="w-20 text-xs font-semibold">Lớp</TableHead>
+                        <TableHead className="w-36 text-xs font-semibold">Ngày ăn áp dụng</TableHead>
+                        <TableHead className="w-64 text-xs font-semibold">Chế độ món (Gốc ➔ Đổi sang)</TableHead>
+                        <TableHead className="w-40 text-xs font-semibold">Thời gian đăng ký</TableHead>
+                        {!isAccountant && (
+                          <TableHead className="w-32 text-center text-xs font-semibold">Thao tác</TableHead>
+                        )}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredOverrides.map((item, index) => {
+                        const studentName = item.student?.user?.fullName || 'Chưa cập nhật';
+                        const studentCode = item.student?.studentCode || '-';
+                        const boardingCode = item.student?.boardingCode;
+                        const className = item.student?.class?.name || item.student?.classId || '-';
+                        const defaultMealBadge = getMealTypeBadge(item.student?.mealType || 'MAN');
+                        const targetMealBadge = getMealTypeBadge(item.mealType);
+                        const itemDateIso = getIsoDateString(item.date);
+                        const todayIso = getTodayIsoString();
+                        const tomorrowIso = getTomorrowIsoString();
+                        const isToday = itemDateIso === todayIso;
+                        const isTomorrow = itemDateIso === tomorrowIso;
+
+                        return (
+                          <TableRow key={item.id} className="hover:bg-slate-50/60 text-xs transition-colors">
+                            <TableCell className="text-center font-medium text-slate-400">
+                              {index + 1}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-col gap-0.5">
+                                <span className="font-mono font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-800 border w-fit">
+                                  {studentCode}
+                                </span>
+                                {boardingCode && (
+                                  <span className="font-mono text-[10px] text-slate-400">
+                                    {boardingCode}
+                                  </span>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="font-medium text-slate-900">
+                              {studentName}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className="text-[11px] bg-white font-medium">
+                                {className}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-col gap-1">
+                                <div className="flex items-center gap-1.5 font-medium text-slate-800">
+                                  <Calendar className="h-3.5 w-3.5 text-blue-600" />
+                                  <span>{formatDate(item.date)}</span>
+                                </div>
+                                {isToday && (
+                                  <Badge className="bg-purple-600 text-white text-[9px] px-1 py-0 w-fit font-bold">
+                                    Hôm nay
+                                  </Badge>
+                                )}
+                                {isTomorrow && (
+                                  <Badge className="bg-blue-600 text-white text-[9px] px-1 py-0 w-fit font-bold">
+                                    Ngày mai
+                                  </Badge>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span
+                                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border ${defaultMealBadge.badgeClass} opacity-80`}
+                                  title={`Món mặc định hồ sơ: ${defaultMealBadge.label}`}
+                                >
+                                  <span>{defaultMealBadge.icon}</span>
+                                  <span>{defaultMealBadge.label}</span>
+                                </span>
+
+                                <span className="text-slate-400 font-bold">➔</span>
+
+                                <span
+                                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold border ${targetMealBadge.badgeClass} shadow-2xs`}
+                                  title={`Đã đổi sang: ${targetMealBadge.label}`}
+                                >
+                                  <span>{targetMealBadge.icon}</span>
+                                  <span>{targetMealBadge.label}</span>
+                                </span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-slate-500 whitespace-nowrap">
+                              <div className="flex items-center gap-1">
+                                <Clock className="h-3 w-3 text-slate-400" />
+                                <span>{formatDateTime(item.createdAt)}</span>
+                              </div>
+                            </TableCell>
+                            {!isAccountant && (
+                              <TableCell className="text-center whitespace-nowrap">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleDeleteOverride(item)}
+                                  disabled={deletingOverrideId === item.id}
+                                  className="h-7 px-2 text-xs text-rose-700 bg-rose-50/70 hover:bg-rose-100 hover:text-rose-800 border-rose-300 gap-1 font-medium cursor-pointer transition-colors shadow-2xs"
+                                  title="Hủy đổi món -> khôi phục về chế độ ăn mặc định của học sinh"
+                                >
+                                  {deletingOverrideId === item.id ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin text-rose-600" />
+                                  ) : (
+                                    <RotateCcw className="h-3.5 w-3.5 text-rose-600" />
+                                  )}
+                                  <span>Về mặc định</span>
+                                </Button>
                               </TableCell>
                             )}
                           </TableRow>

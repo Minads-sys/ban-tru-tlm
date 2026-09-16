@@ -3,12 +3,18 @@ import prisma from '@/lib/db';
 import { ClipboardList } from 'lucide-react';
 import { RealtimeRefresher } from '@/components/realtime-refresher';
 import { auth } from '@/lib/auth';
-import { MealCancelManager, CancellationItem } from '@/components/admin/meal-cancel-manager';
+import { MealCancelManager, CancellationItem, MealOverrideItem } from '@/components/admin/meal-cancel-manager';
 import { autoApproveExpiredCancellations } from '@/app/admin/meal-cancel/actions';
 
 export const dynamic = 'force-dynamic';
 
-export default async function AdminMealCancelPage() {
+interface PageProps {
+  searchParams?: Promise<{ tab?: string }>;
+}
+
+export default async function AdminMealCancelPage({ searchParams }: PageProps) {
+  const resolvedSearchParams = await searchParams;
+  const defaultTab = resolvedSearchParams?.tab as 'pending' | 'history' | 'overrides' | undefined;
   const session = await auth();
   const isAccountant = session?.user?.role === 'ACCOUNTANT';
 
@@ -75,7 +81,33 @@ export default async function AdminMealCancelPage() {
     take: 500,
   });
 
-  // 5. Lấy danh sách lớp học phục vụ Cắt suất & Đổi món hàng loạt
+  // 5. Lấy danh sách học sinh đổi món (MealOverride)
+  const mealOverrides = await prisma.mealOverride.findMany({
+    include: {
+      student: {
+        include: {
+          user: {
+            select: {
+              fullName: true,
+              username: true,
+            },
+          },
+          class: {
+            select: {
+              name: true,
+            },
+          },
+        },
+      },
+    },
+    orderBy: [
+      { date: 'desc' },
+      { createdAt: 'desc' },
+    ],
+    take: 500,
+  });
+
+  // 6. Lấy danh sách lớp học phục vụ Cắt suất & Đổi món hàng loạt
   const classes = await prisma.class.findMany({
     select: {
       id: true,
@@ -86,8 +118,8 @@ export default async function AdminMealCancelPage() {
 
   return (
     <div className="min-h-screen bg-slate-50/50 p-4 sm:p-6 lg:p-8">
-      {/* Realtime: tự cập nhật khi có đơn cắt suất mới hoặc trạng thái thay đổi */}
-      <RealtimeRefresher table="meal_cancellations" />
+      {/* Realtime: tự cập nhật khi có đơn cắt suất mới hoặc đổi món */}
+      <RealtimeRefresher tables={['meal_cancellations', 'daily_meals', 'students']} />
       <div className="mx-auto max-w-7xl space-y-6">
         {/* Page Header */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -101,20 +133,22 @@ export default async function AdminMealCancelPage() {
               </h1>
               <p className="text-xs sm:text-sm text-muted-foreground">
                 {isAccountant 
-                  ? "Theo dõi các đơn xin cắt suất ăn bán trú và đối soát dữ liệu lịch sử minh bạch"
-                  : "Xét duyệt các đơn xin cắt suất ăn bán trú, hỗ trợ duyệt hàng loạt và đối soát lịch sử minh bạch"}
+                  ? "Theo dõi các đơn xin cắt suất, danh sách học sinh đổi món ăn bán trú và đối soát dữ liệu lịch sử minh bạch"
+                  : "Xét duyệt các đơn xin cắt suất, theo dõi danh sách học sinh đổi món và đối soát lịch sử minh bạch"}
               </p>
             </div>
           </div>
         </div>
 
-        {/* Manager Component (Tabs: Pending & History) */}
+        {/* Manager Component (Tabs: Pending, History & Overrides) */}
         <MealCancelManager
           initialPending={pendingCancellations as unknown as CancellationItem[]}
           initialHistory={historyCancellations as unknown as CancellationItem[]}
+          initialOverrides={mealOverrides as unknown as MealOverrideItem[]}
           cutoffTime={cutoffTime}
           classes={classes}
           isAccountant={isAccountant}
+          defaultTab={defaultTab}
         />
       </div>
     </div>

@@ -5,7 +5,7 @@ import { useRealtime } from '@/hooks/use-realtime';
 
 interface RealtimeRefresherProps {
   /** Tên bảng PostgreSQL cần lắng nghe (ví dụ: 'meal_cancellations') */
-  table: string;
+  table?: string;
   /** Lắng nghe nhiều bảng cùng lúc */
   tables?: string[];
 }
@@ -23,7 +23,7 @@ interface RealtimeRefresherProps {
 export function RealtimeRefresher({ table, tables }: RealtimeRefresherProps) {
   const router = useRouter();
 
-  const allTables = tables ? tables : [table];
+  const allTables = tables ? tables : table ? [table] : [];
 
   return (
     <>

@@ -940,3 +940,80 @@ export async function bulkOverrideMeals(params: {
     return { success: false, error: 'Lỗi trong quá trình xử lý đổi món hàng loạt' };
   }
 }
+
+/**
+ * Server Action: Hủy yêu cầu đổi món của 1 học sinh (khôi phục về món mặc định)
+ */
+export async function deleteMealOverride(id: string, reason?: string) {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return { success: false, error: 'Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại.' };
+    }
+    if (session.user.role === 'ACCOUNTANT') {
+      return { success: false, error: 'Tài khoản Kế toán chỉ có quyền xem, không được hủy đổi món' };
+    }
+
+    const existing = await prisma.mealOverride.findUnique({
+      where: { id },
+      include: {
+        student: {
+          include: {
+            user: { select: { fullName: true } },
+            class: { select: { name: true } },
+          },
+        },
+      },
+    });
+
+    if (!existing) {
+      return { success: false, error: 'Không tìm thấy yêu cầu đổi món cần hủy.' };
+    }
+
+    await prisma.mealOverride.delete({
+      where: { id },
+    });
+
+    // Đồng bộ lại bảng chốt suất DailyMealSummary cho ngày bị ảnh hưởng
+    try {
+      await syncDailyMealSummaryForDate(existing.date);
+    } catch (syncErr) {
+      console.error('Lỗi khi syncDailyMealSummaryForDate sau khi deleteMealOverride:', syncErr);
+    }
+
+    const studentName = existing.student?.user?.fullName || existing.studentId;
+    const className = existing.student?.class?.name || '';
+    const dateStr = existing.date.toISOString().split('T')[0];
+    const deleteReason = reason?.trim() || 'Giáo viên/Admin hủy đổi món (khôi phục món mặc định)';
+
+    await logAudit({
+      userId: session.user.id,
+      userName: (session.user as any)?.name || (session.user as any)?.username || 'Quản trị viên',
+      userRole: session.user.role,
+      action: AUDIT_ACTIONS.DELETE,
+      module: AUDIT_MODULES.MEALS,
+      description: `Hủy đổi món cho học sinh ${studentName} (${className}) ngày ${dateStr}: ${deleteReason}`,
+      targetId: id,
+      metadata: {
+        studentId: existing.studentId,
+        date: dateStr,
+        mealType: existing.mealType,
+        reason: deleteReason,
+      },
+    });
+
+    broadcastChange('daily_meals', 'UPDATE');
+    broadcastChange('students', 'UPDATE');
+
+    revalidatePath('/admin/meal-cancel');
+    revalidatePath('/admin/daily-meals');
+
+    return {
+      success: true,
+      message: `Đã hủy đổi món cho học sinh ${studentName} (khôi phục về món mặc định thành công).`,
+    };
+  } catch (error) {
+    console.error('Lỗi khi hủy đổi món:', error);
+    return { success: false, error: 'Không thể hủy yêu cầu đổi món' };
+  }
+}
