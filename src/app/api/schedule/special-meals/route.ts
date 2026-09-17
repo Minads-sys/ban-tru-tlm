@@ -129,9 +129,36 @@ export async function DELETE(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
+    const idsParam = searchParams.get("ids");
     const scheduleName = searchParams.get("scheduleName");
     const yearParam = searchParams.get("year");
     const weekParam = searchParams.get("weekNumber");
+
+    if (idsParam) {
+      const ids = idsParam.split(",").map((s) => s.trim()).filter(Boolean);
+      if (ids.length > 0) {
+        const deleteResult = await prisma.studentSpecialMeal.deleteMany({
+          where: { id: { in: ids } },
+        });
+
+        await logAudit({
+          req: request,
+          userId: session.user.id,
+          userName: (session.user as any).name || (session.user as any).username || "Quản trị viên",
+          userRole: session.user.role,
+          action: AUDIT_ACTIONS.DELETE,
+          module: AUDIT_MODULES.SCHEDULE,
+          description: `Xóa hàng loạt ${deleteResult.count} suất ăn đặc biệt`,
+          metadata: { ids, count: deleteResult.count },
+        });
+
+        return NextResponse.json({
+          success: true,
+          message: `Đã xóa thành công ${deleteResult.count} suất ăn đặc biệt`,
+          deletedCount: deleteResult.count,
+        });
+      }
+    }
 
     if (id) {
       // Xóa 1 bản ghi cụ thể
@@ -362,6 +389,99 @@ export async function POST(request: NextRequest) {
     console.error("Lỗi khi thêm lịch ăn đặc biệt:", error);
     return NextResponse.json(
       { error: "Không thể thêm học sinh vào lịch ăn đặc biệt", details: error.message },
+      { status: 500 }
+    );
+  }
+}
+
+// PATCH: Cập nhật ca ăn (shift) cho 1 hoặc nhiều suất ăn đặc biệt
+export async function PATCH(request: NextRequest) {
+  try {
+    const session = await auth();
+    if (!session?.user) {
+      return NextResponse.json({ error: "Chưa đăng nhập" }, { status: 401 });
+    }
+
+    if (session.user.role === "CASHIER" || session.user.role === "ACCOUNTANT") {
+      return NextResponse.json(
+        { error: "Bạn không có quyền chỉnh sửa lịch ăn đặc biệt" },
+        { status: 403 }
+      );
+    }
+
+    const body = await request.json();
+    const { id, shift, ids } = body;
+
+    if (shift !== "TIET_4" && shift !== "TIET_5") {
+      return NextResponse.json(
+        { error: "Ca ăn không hợp lệ. Chỉ chấp nhận TIET_4 hoặc TIET_5" },
+        { status: 400 }
+      );
+    }
+
+    // Cập nhật hàng loạt nhiều id
+    if (Array.isArray(ids) && ids.length > 0) {
+      const updateResult = await prisma.studentSpecialMeal.updateMany({
+        where: { id: { in: ids } },
+        data: { shift },
+      });
+
+      await logAudit({
+        req: request,
+        userId: session.user.id,
+        userName: (session.user as any).name || (session.user as any).username || "Quản trị viên",
+        userRole: session.user.role,
+        action: AUDIT_ACTIONS.UPDATE,
+        module: AUDIT_MODULES.SCHEDULE,
+        description: `Cập nhật ca ăn thành ${shift === "TIET_4" ? "Tiết 4" : "Tiết 5"} cho ${updateResult.count} suất ăn đặc biệt`,
+        metadata: { ids, shift, count: updateResult.count },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: `Đã cập nhật ca ăn thành ${shift === "TIET_4" ? "Tiết 4" : "Tiết 5"} cho ${updateResult.count} suất ăn`,
+        count: updateResult.count,
+      });
+    }
+
+    // Cập nhật 1 id cụ thể
+    if (!id) {
+      return NextResponse.json({ error: "Thiếu ID suất ăn đặc biệt" }, { status: 400 });
+    }
+
+    const updated = await prisma.studentSpecialMeal.update({
+      where: { id },
+      data: { shift },
+      include: {
+        student: {
+          include: { user: { select: { fullName: true } } },
+        },
+      },
+    });
+
+    await logAudit({
+      req: request,
+      userId: session.user.id,
+      userName: (session.user as any).name || (session.user as any).username || "Quản trị viên",
+      userRole: session.user.role,
+      action: AUDIT_ACTIONS.UPDATE,
+      module: AUDIT_MODULES.SCHEDULE,
+      description: `Đổi ca ăn sang ${shift === "TIET_4" ? "Tiết 4" : "Tiết 5"} cho HS ${updated.student?.user?.fullName} ngày ${updated.date.toISOString().split("T")[0]}`,
+      metadata: { id, shift, studentId: updated.studentId },
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: `Đã đổi ca ăn sang ${shift === "TIET_4" ? "Tiết 4" : "Tiết 5"}`,
+      item: {
+        id: updated.id,
+        shift: updated.shift,
+      },
+    });
+  } catch (error: any) {
+    console.error("Lỗi khi cập nhật ca ăn đặc biệt:", error);
+    return NextResponse.json(
+      { error: "Không thể cập nhật ca ăn đặc biệt", details: error.message },
       { status: 500 }
     );
   }

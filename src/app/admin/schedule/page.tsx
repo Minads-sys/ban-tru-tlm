@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useSession } from "next-auth/react";
 import Swal from "sweetalert2";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,7 +23,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { CalendarDays, Save, Loader2, Copy, CheckCircle, X, ChevronLeft, ChevronRight, Trash2, Info, Sparkles, Search, Filter, ExternalLink, Plus, UserPlus, Calendar, Clock, Users, Check } from "lucide-react";
+import { CalendarDays, Save, Loader2, Copy, CheckCircle, X, ChevronLeft, ChevronRight, Trash2, Info, Sparkles, Search, Filter, ExternalLink, Plus, UserPlus, Calendar, Clock, Users, Check, ArrowUpDown } from "lucide-react";
 import { format, parse, startOfWeek, endOfWeek, addDays, addWeeks } from "date-fns";
 import { compareClassNames, removeVietnameseTones } from "@/lib/utils";
 
@@ -100,9 +100,13 @@ export default function SchedulePage() {
   const [specialTotalAllWeeksCount, setSpecialTotalAllWeeksCount] = useState(0);
   const [isSpecialModalOpen, setIsSpecialModalOpen] = useState(false);
   const [specialFilterSchedule, setSpecialFilterSchedule] = useState("ALL");
+  const [specialFilterDate, setSpecialFilterDate] = useState("ALL");
   const [specialSearchTerm, setSpecialSearchTerm] = useState("");
   const [specialAllWeeks, setSpecialAllWeeks] = useState(false);
   const [specialLoading, setSpecialLoading] = useState(false);
+  const [updatingShiftId, setUpdatingShiftId] = useState<string | null>(null);
+  const [selectedMealIds, setSelectedMealIds] = useState<Set<string>>(new Set());
+  const [isBulkUpdatingShift, setIsBulkUpdatingShift] = useState(false);
 
   // Add Special Meal Modal States
   const [isAddSpecialModalOpen, setIsAddSpecialModalOpen] = useState(false);
@@ -278,9 +282,158 @@ export default function SchedulePage() {
     }
   };
 
+  const availableDates = useMemo(() => {
+    const map = new Map<string, { dateStr: string; displayDate: string; dayOfWeekName: string; count: number }>();
+    for (const sm of specialMeals) {
+      if (specialFilterSchedule !== "ALL" && sm.scheduleName !== specialFilterSchedule) continue;
+      const existing = map.get(sm.dateStr);
+      if (existing) {
+        existing.count++;
+      } else {
+        map.set(sm.dateStr, {
+          dateStr: sm.dateStr,
+          displayDate: sm.displayDate,
+          dayOfWeekName: sm.dayOfWeekName,
+          count: 1,
+        });
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.dateStr.localeCompare(b.dateStr));
+  }, [specialMeals, specialFilterSchedule]);
+
+  useEffect(() => {
+    if (specialFilterDate !== "ALL" && !availableDates.some((d) => d.dateStr === specialFilterDate)) {
+      setSpecialFilterDate("ALL");
+    }
+  }, [availableDates, specialFilterDate]);
+
   useEffect(() => {
     fetchSpecialMeals();
+    setSelectedMealIds(new Set());
   }, [weekString, specialAllWeeks, specialFilterSchedule]);
+
+  const handleToggleShift = async (sm: SpecialMealItem) => {
+    if (isAccountant) return;
+    const newShift = sm.shift === "TIET_4" ? "TIET_5" : "TIET_4";
+    const oldShift = sm.shift;
+    const newShiftLabel = newShift === "TIET_4" ? "Tiết 4" : "Tiết 5";
+
+    // Optimistic UI update
+    setSpecialMeals((prev) =>
+      prev.map((item) => (item.id === sm.id ? { ...item, shift: newShift } : item))
+    );
+    setUpdatingShiftId(sm.id);
+
+    try {
+      const res = await fetch("/api/schedule/special-meals", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: sm.id, shift: newShift }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        // Hoàn tác nếu có lỗi
+        setSpecialMeals((prev) =>
+          prev.map((item) => (item.id === sm.id ? { ...item, shift: oldShift } : item))
+        );
+        Swal.fire("Lỗi", data.error || "Không thể đổi ca ăn", "error");
+      } else {
+        const Toast = Swal.mixin({
+          toast: true,
+          position: "top-end",
+          showConfirmButton: false,
+          timer: 2000,
+          timerProgressBar: true,
+        });
+        Toast.fire({
+          icon: "success",
+          title: `Đã chuyển HS ${sm.fullName} sang ${newShiftLabel}`,
+        });
+      }
+    } catch (err: any) {
+      setSpecialMeals((prev) =>
+        prev.map((item) => (item.id === sm.id ? { ...item, shift: oldShift } : item))
+      );
+      Swal.fire("Lỗi", "Lỗi kết nối máy chủ: " + (err?.message || ""), "error");
+    } finally {
+      setUpdatingShiftId(null);
+    }
+  };
+
+  const handleBulkUpdateShift = async (targetShift: "TIET_4" | "TIET_5") => {
+    if (isAccountant || selectedMealIds.size === 0) return;
+    const shiftLabel = targetShift === "TIET_4" ? "Tiết 4" : "Tiết 5";
+    const ids = Array.from(selectedMealIds);
+
+    const result = await Swal.fire({
+      title: `Chuyển sang ${shiftLabel}?`,
+      text: `Bạn có chắc chắn muốn chuyển ${ids.length} suất ăn đã chọn sang ${shiftLabel}?`,
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonText: `Chuyển sang ${shiftLabel}`,
+      cancelButtonText: "Hủy",
+      confirmButtonColor: targetShift === "TIET_4" ? "#f97316" : "#2563eb",
+    });
+
+    if (!result.isConfirmed) return;
+
+    setIsBulkUpdatingShift(true);
+    try {
+      const res = await fetch("/api/schedule/special-meals", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids, shift: targetShift }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSpecialMeals((prev) =>
+          prev.map((item) => (selectedMealIds.has(item.id) ? { ...item, shift: targetShift } : item))
+        );
+        setSelectedMealIds(new Set());
+        Swal.fire("Thành công", data.message || `Đã chuyển ${ids.length} suất sang ${shiftLabel}`, "success");
+      } else {
+        Swal.fire("Lỗi", data.error || "Không thể cập nhật ca ăn hàng loạt", "error");
+      }
+    } catch (err: any) {
+      Swal.fire("Lỗi", "Lỗi kết nối máy chủ: " + (err?.message || ""), "error");
+    } finally {
+      setIsBulkUpdatingShift(false);
+    }
+  };
+
+  const handleBulkDeleteSelected = async () => {
+    if (isAccountant || selectedMealIds.size === 0) return;
+    const ids = Array.from(selectedMealIds);
+
+    const result = await Swal.fire({
+      title: `Xóa ${ids.length} suất ăn đã chọn?`,
+      text: `Bạn có chắc chắn muốn xóa vĩnh viễn ${ids.length} suất ăn đặc biệt đã chọn? Thao tác này không thể khôi phục.`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Xóa các mục đã chọn",
+      cancelButtonText: "Hủy",
+      confirmButtonColor: "#d33",
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+      const res = await fetch(`/api/schedule/special-meals?ids=${ids.join(",")}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSpecialMeals((prev) => prev.filter((item) => !selectedMealIds.has(item.id)));
+        setSelectedMealIds(new Set());
+        Swal.fire("Đã xóa", data.message || `Đã xóa thành công ${ids.length} suất ăn`, "success");
+        fetchSpecialMeals();
+      } else {
+        Swal.fire("Lỗi", data.error || "Không thể xóa các suất ăn đã chọn", "error");
+      }
+    } catch (err: any) {
+      Swal.fire("Lỗi", "Lỗi kết nối máy chủ: " + (err?.message || ""), "error");
+    }
+  };
 
   const handleDeleteSpecialMeal = async (id: string, studentName: string, dateStr: string) => {
     if (isAccountant) return;
@@ -1030,6 +1183,23 @@ export default function SchedulePage() {
                 />
               </div>
 
+              {/* Date Filter */}
+              <div className="flex items-center gap-1.5">
+                <Calendar className="h-4 w-4 text-slate-500" />
+                <select
+                  value={specialFilterDate}
+                  onChange={(e) => setSpecialFilterDate(e.target.value)}
+                  className="h-9 px-3 rounded-md border border-slate-200 bg-white text-sm dark:bg-slate-900 dark:border-slate-800"
+                >
+                  <option value="ALL">Tất cả ngày {availableDates.length > 0 ? `(${availableDates.length} ngày)` : ""}</option>
+                  {availableDates.map((d) => (
+                    <option key={d.dateStr} value={d.dateStr}>
+                      {d.dayOfWeekName} - {d.displayDate} ({d.count} suất)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               {/* Schedule Name Filter */}
               <div className="flex items-center gap-1.5">
                 <Filter className="h-4 w-4 text-slate-500" />
@@ -1126,14 +1296,22 @@ export default function SchedulePage() {
               </div>
             ) : (() => {
               const filtered = specialMeals.filter((sm) => {
+                if (specialFilterSchedule !== "ALL" && sm.scheduleName !== specialFilterSchedule) return false;
+                if (specialFilterDate !== "ALL" && sm.dateStr !== specialFilterDate) return false;
                 if (!specialSearchTerm.trim()) return true;
-                const term = specialSearchTerm.toLowerCase();
+                const term = specialSearchTerm.toLowerCase().trim();
+                const termNoTone = removeVietnameseTones(term);
                 return (
                   sm.fullName.toLowerCase().includes(term) ||
+                  removeVietnameseTones(sm.fullName).toLowerCase().includes(termNoTone) ||
                   sm.className.toLowerCase().includes(term) ||
                   sm.boardingCode.toLowerCase().includes(term) ||
                   sm.studentCode.toLowerCase().includes(term) ||
-                  sm.scheduleName.toLowerCase().includes(term)
+                  sm.scheduleName.toLowerCase().includes(term) ||
+                  sm.displayDate.includes(term) ||
+                  sm.dateStr.includes(term) ||
+                  sm.dayOfWeekName.toLowerCase().includes(term) ||
+                  removeVietnameseTones(sm.dayOfWeekName).toLowerCase().includes(termNoTone)
                 );
               });
 
@@ -1201,65 +1379,189 @@ export default function SchedulePage() {
                 );
               }
 
+              const isAllFilteredSelected = filtered.length > 0 && filtered.every((sm) => selectedMealIds.has(sm.id));
+
               return (
                 <div className="border border-slate-200 dark:border-slate-800 rounded-lg overflow-hidden">
+                  {/* Bulk action toolbar if items selected */}
+                  {!isAccountant && selectedMealIds.size > 0 && (
+                    <div className="bg-purple-50 dark:bg-purple-950/60 border-b border-purple-200 dark:border-purple-800 px-4 py-2 flex flex-wrap items-center justify-between gap-3 text-xs">
+                      <div className="flex items-center gap-2 font-medium text-purple-900 dark:text-purple-200">
+                        <Check className="h-4 w-4 text-purple-600" />
+                        <span>Đã chọn <strong>{selectedMealIds.size}</strong> / {filtered.length} suất ăn</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-slate-500 font-normal mr-1">Chuyển hàng loạt sang:</span>
+                        <Button
+                          size="sm"
+                          type="button"
+                          disabled={isBulkUpdatingShift}
+                          onClick={() => handleBulkUpdateShift("TIET_4")}
+                          className="h-7 px-2.5 text-xs bg-orange-500 hover:bg-orange-600 text-white font-medium cursor-pointer"
+                        >
+                          {isBulkUpdatingShift ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+                          Tiết 4
+                        </Button>
+                        <Button
+                          size="sm"
+                          type="button"
+                          disabled={isBulkUpdatingShift}
+                          onClick={() => handleBulkUpdateShift("TIET_5")}
+                          className="h-7 px-2.5 text-xs bg-blue-600 hover:bg-blue-700 text-white font-medium cursor-pointer"
+                        >
+                          {isBulkUpdatingShift ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+                          Tiết 5
+                        </Button>
+                        <div className="h-4 w-[1px] bg-purple-200 dark:bg-purple-700 mx-1" />
+                        <Button
+                          size="sm"
+                          type="button"
+                          variant="outline"
+                          onClick={handleBulkDeleteSelected}
+                          className="h-7 px-2.5 text-xs text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 cursor-pointer"
+                        >
+                          <Trash2 className="h-3 w-3 mr-1" />
+                          Xóa {selectedMealIds.size} suất
+                        </Button>
+                        <Button
+                          size="sm"
+                          type="button"
+                          variant="ghost"
+                          onClick={() => setSelectedMealIds(new Set())}
+                          className="h-7 px-2 text-xs text-slate-500 hover:text-slate-700 cursor-pointer"
+                        >
+                          Bỏ chọn
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
                   <Table>
                     <TableHeader>
                       <TableRow className="bg-slate-50 dark:bg-slate-800/60">
+                        {!isAccountant && (
+                          <TableHead className="w-10 text-center">
+                            <input
+                              type="checkbox"
+                              checked={isAllFilteredSelected}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedMealIds(new Set(filtered.map((sm) => sm.id)));
+                                } else {
+                                  setSelectedMealIds(new Set());
+                                }
+                              }}
+                              className="rounded border-slate-300 text-purple-600 focus:ring-purple-500 cursor-pointer h-4 w-4 align-middle"
+                              title="Chọn tất cả học sinh đang hiển thị"
+                            />
+                          </TableHead>
+                        )}
                         <TableHead className="w-12 text-center">STT</TableHead>
                         <TableHead className="w-28 text-center font-semibold">Mã Bán Trú</TableHead>
                         <TableHead className="font-semibold">Họ và tên</TableHead>
                         <TableHead className="w-24 text-center font-semibold">Lớp gốc</TableHead>
                         <TableHead className="w-32 text-center font-semibold">Tên Lịch</TableHead>
                         <TableHead className="w-36 text-center font-semibold">Ngày ăn</TableHead>
-                        <TableHead className="w-24 text-center font-semibold">Ca ăn</TableHead>
+                        <TableHead className="w-28 text-center font-semibold">
+                          Ca ăn
+                          {!isAccountant && <span className="block text-[10px] font-normal text-slate-400">(Bấm để đổi)</span>}
+                        </TableHead>
                         {!isAccountant && <TableHead className="w-16 text-center">Xóa</TableHead>}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filtered.map((sm, index) => (
-                        <TableRow key={sm.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-900/50">
-                          <TableCell className="text-center font-mono text-xs text-slate-500">{index + 1}</TableCell>
-                          <TableCell className="text-center font-mono text-xs font-semibold text-blue-700 dark:text-blue-400">
-                            {sm.boardingCode}
-                          </TableCell>
-                          <TableCell className="font-medium text-slate-900 dark:text-slate-100">
-                            {sm.fullName}
-                          </TableCell>
-                          <TableCell className="text-center font-bold text-slate-700 dark:text-slate-300">
-                            {sm.className}
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <Badge className="bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-950 dark:text-purple-300 font-semibold text-xs">
-                              {sm.scheduleName}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-center text-xs">
-                            <div className="font-medium text-slate-800 dark:text-slate-200">{sm.dayOfWeekName}</div>
-                            <div className="text-[11px] text-slate-500">{sm.displayDate}</div>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            {sm.shift === "TIET_4" ? (
-                              <Badge className="bg-orange-100 text-orange-700 border-orange-200 text-xs">Tiết 4</Badge>
-                            ) : (
-                              <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-xs">Tiết 5</Badge>
+                      {filtered.map((sm, index) => {
+                        const isSelected = selectedMealIds.has(sm.id);
+                        return (
+                          <TableRow
+                            key={sm.id}
+                            className={`hover:bg-slate-50/80 dark:hover:bg-slate-900/50 ${
+                              isSelected ? "bg-purple-50/50 dark:bg-purple-950/20" : ""
+                            }`}
+                          >
+                            {!isAccountant && (
+                              <TableCell className="text-center">
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => {
+                                    setSelectedMealIds((prev) => {
+                                      const next = new Set(prev);
+                                      if (next.has(sm.id)) {
+                                        next.delete(sm.id);
+                                      } else {
+                                        next.add(sm.id);
+                                      }
+                                      return next;
+                                    });
+                                  }}
+                                  className="rounded border-slate-300 text-purple-600 focus:ring-purple-500 cursor-pointer h-4 w-4 align-middle"
+                                />
+                              </TableCell>
                             )}
-                          </TableCell>
-                          {!isAccountant && (
-                            <TableCell className="text-center">
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                onClick={() => handleDeleteSpecialMeal(sm.id, sm.fullName, sm.displayDate)}
-                                className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50 cursor-pointer"
-                                title="Xóa suất ăn này"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
+                            <TableCell className="text-center font-mono text-xs text-slate-500">{index + 1}</TableCell>
+                            <TableCell className="text-center font-mono text-xs font-semibold text-blue-700 dark:text-blue-400">
+                              {sm.boardingCode}
                             </TableCell>
-                          )}
-                        </TableRow>
-                      ))}
+                            <TableCell className="font-medium text-slate-900 dark:text-slate-100">
+                              {sm.fullName}
+                            </TableCell>
+                            <TableCell className="text-center font-bold text-slate-700 dark:text-slate-300">
+                              {sm.className}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <Badge className="bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-950 dark:text-purple-300 font-semibold text-xs">
+                                {sm.scheduleName}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-center text-xs">
+                              <div className="font-medium text-slate-800 dark:text-slate-200">{sm.dayOfWeekName}</div>
+                              <div className="text-[11px] text-slate-500">{sm.displayDate}</div>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              {isAccountant ? (
+                                sm.shift === "TIET_4" ? (
+                                  <Badge className="bg-orange-100 text-orange-700 border-orange-200 text-xs">Tiết 4</Badge>
+                                ) : (
+                                  <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-xs">Tiết 5</Badge>
+                                )
+                              ) : (
+                                <button
+                                  type="button"
+                                  disabled={updatingShiftId === sm.id}
+                                  onClick={() => handleToggleShift(sm)}
+                                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold cursor-pointer transition-all duration-150 select-none shadow-xs hover:scale-105 active:scale-95 border ${
+                                    sm.shift === "TIET_4"
+                                      ? "bg-orange-100 text-orange-700 hover:bg-orange-200 border-orange-300 dark:bg-orange-950/60 dark:text-orange-300 dark:border-orange-800"
+                                      : "bg-blue-100 text-blue-700 hover:bg-blue-200 border-blue-300 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800"
+                                  }`}
+                                  title="Bấm vào đây để chuyển đổi giữa Tiết 4 và Tiết 5"
+                                >
+                                  {updatingShiftId === sm.id ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <ArrowUpDown className="h-3 w-3 opacity-60" />
+                                  )}
+                                  <span>{sm.shift === "TIET_4" ? "Tiết 4" : "Tiết 5"}</span>
+                                </button>
+                              )}
+                            </TableCell>
+                            {!isAccountant && (
+                              <TableCell className="text-center">
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => handleDeleteSpecialMeal(sm.id, sm.fullName, sm.displayDate)}
+                                  className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50 cursor-pointer"
+                                  title="Xóa suất ăn này"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </TableCell>
+                            )}
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </div>
