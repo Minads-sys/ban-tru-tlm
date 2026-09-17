@@ -623,7 +623,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
     // Ngày hợp lệ: Hiển thị popup buộc học sinh xác nhận đã nộp đơn xin nghỉ phép và được duyệt
     const result = await Swal.fire({
       title: "Xác nhận xin nghỉ phép",
-      text: "Bạn xác nhận rằng đã nộp đơn xin nghỉ phép cho nhà trường và được duyệt",
+      text: "Tôi xác nhận đã nộp đơn xin nghỉ phép và được nhà trường phê duyệt. Tôi hiểu rằng hệ thống chỉ áp dụng cắt cơm khi đơn nghỉ phép đã được nhà trường chấp thuận.",
       icon: "warning",
       showCancelButton: true,
       confirmButtonColor: "#16a34a",
@@ -681,7 +681,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
     if (!isConfirmedLeave) {
       const result = await Swal.fire({
         title: "Xác nhận xin nghỉ phép",
-        text: "Bạn xác nhận rằng đã nộp đơn xin nghỉ phép cho nhà trường và được duyệt",
+        text: "Tôi xác nhận đã nộp đơn xin nghỉ phép và được nhà trường phê duyệt. Tôi hiểu rằng hệ thống chỉ áp dụng cắt cơm khi đơn nghỉ phép đã được nhà trường chấp thuận.",
         icon: "warning",
         showCancelButton: true,
         confirmButtonColor: "#16a34a",
