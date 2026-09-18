@@ -4,6 +4,7 @@ import prisma from "@/lib/db";
 import { BoardingStatus } from "@prisma/client";
 import { getVietnamTodayUTC, isPastCutoffTime, getWeekNumber, getSchoolWeekInfo } from "@/lib/utils";
 import { broadcastChange } from "@/lib/realtime-hub";
+import { auth } from "@/lib/auth";
 
 // GET: Lấy danh sách yêu cầu cắt suất của 1 học sinh
 export async function GET(request: NextRequest) {
@@ -92,9 +93,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const session = await auth();
+    const isAdmin = session?.user?.role === 'ADMIN';
+
     if (requestDate.getTime() === localToday.getTime()) {
-      // Nếu cắt cho ngày hôm nay thì kiểm tra giờ khóa sổ MEAL_LOCK_TIME_2
-      if (isPastCutoffTime(lockTime2Setting)) {
+      // Nếu cắt cho ngày hôm nay thì kiểm tra giờ khóa sổ MEAL_LOCK_TIME_2 (trừ khi là Admin)
+      if (isPastCutoffTime(lockTime2Setting) && !isAdmin) {
         return NextResponse.json(
           {
             error: `Đã quá giờ chốt chính thức (${lockTime2Setting}). Không thể cắt suất cho ngày hôm nay nữa.`,

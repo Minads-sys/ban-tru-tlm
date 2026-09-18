@@ -27,7 +27,9 @@ import {
   Calendar,
   AlertCircle,
   HelpCircle,
+  ShieldCheck,
 } from 'lucide-react';
+import { useSession } from 'next-auth/react';
 import {
   getBulkActionStudentStatus,
   bulkCreateAndApproveCancellations,
@@ -57,6 +59,9 @@ export function BulkMealCancelDialog({
   cutoffTime,
   onSuccess,
 }: BulkMealCancelDialogProps) {
+  const { data: session } = useSession();
+  const isAdmin = session?.user?.role === 'ADMIN';
+
   // Current Vietnam Date
   const getTodayStr = () => {
     const d = new Date(Date.now() + 7 * 60 * 60 * 1000);
@@ -75,10 +80,10 @@ export function BulkMealCancelDialog({
     return !isNaN(hours) && (vnTime.getHours() > hours || (vnTime.getHours() === hours && vnTime.getMinutes() >= (minutes || 0)));
   };
 
-  const minCancelDate = isPastCutoffNow() ? getTomorrowStr() : getTodayStr();
+  const minCancelDate = (isPastCutoffNow() && !isAdmin) ? getTomorrowStr() : getTodayStr();
 
   const [selectedClassId, setSelectedClassId] = useState<string>(classes[0]?.id || '');
-  const [cancelDate, setCancelDate] = useState<string>(() => (isPastCutoffNow() ? getTomorrowStr() : getTodayStr()));
+  const [cancelDate, setCancelDate] = useState<string>(() => (isPastCutoffNow() && !isAdmin ? getTomorrowStr() : getTodayStr()));
   const [reason, setReason] = useState<string>('Đi dã ngoại / Hoạt động ngoại khóa');
   const [autoApprove, setAutoApprove] = useState<boolean>(true);
 
@@ -127,10 +132,10 @@ export function BulkMealCancelDialog({
     if (!open) {
       setSelectedStudentIds(new Set());
       setSearchQuery('');
-    } else if (isPastCutoffNow() && cancelDate <= getTodayStr()) {
+    } else if (isPastCutoffNow() && !isAdmin && cancelDate <= getTodayStr()) {
       setCancelDate(getTomorrowStr());
     }
-  }, [open]);
+  }, [open, isAdmin]);
 
   // Filter students by search
   const filteredStudents = useMemo(() => {
@@ -197,7 +202,7 @@ export function BulkMealCancelDialog({
       return;
     }
 
-    if (statusData?.isPastMorningCutoff || (cancelDate <= getTodayStr() && isPastCutoffNow())) {
+    if (!isAdmin && (statusData?.isPastMorningCutoff || (cancelDate <= getTodayStr() && isPastCutoffNow()))) {
       const cutoffStr = statusData?.cutoffTime || statusData?.cutoffMorning || cutoffTime || '07:00';
       Swal.fire({
         icon: 'error',
@@ -214,7 +219,7 @@ export function BulkMealCancelDialog({
         cancelDate,
         reason: reason.trim(),
         autoApprove,
-        bypassCutoff: false,
+        bypassCutoff: isAdmin,
       });
 
       if (res.success) {
@@ -319,17 +324,31 @@ export function BulkMealCancelDialog({
               )}
 
               {statusData.isPastMorningCutoff && (
-                <div className="flex items-start gap-2.5 p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-900 text-xs">
-                  <AlertCircle className="h-4 w-4 shrink-0 text-rose-600 mt-0.5" />
-                  <div className="flex-1">
-                    <div className="font-semibold text-rose-800">
-                      Đã quá giờ khóa sổ ({statusData.cutoffTime || statusData.cutoffMorning || cutoffTime || '07:00'}) của ngày hôm nay!
+                isAdmin ? (
+                  <div className="flex items-start gap-2.5 p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs">
+                    <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-600 mt-0.5" />
+                    <div className="flex-1">
+                      <div className="font-semibold text-emerald-800">
+                        Đã qua giờ khóa sổ ({statusData.cutoffTime || statusData.cutoffMorning || cutoffTime || '07:00'}) của ngày hôm nay
+                      </div>
+                      <p className="text-[11px] text-emerald-700 mt-0.5">
+                        Quyền Quản trị viên (Admin): Bạn có toàn quyền cắt suất cho học sinh hôm nay sau giờ chốt sáng. Hệ thống sẽ tự động đồng bộ lại số liệu báo bếp.
+                      </p>
                     </div>
-                    <p className="text-[11px] text-rose-700 mt-0.5">
-                      Theo quy định, không được phép cắt suất cho ngày hôm nay khi đã qua giờ khóa sổ. Hệ thống chỉ cho phép cắt suất từ ngày tiếp theo ({getTomorrowStr()}).
-                    </p>
                   </div>
-                </div>
+                ) : (
+                  <div className="flex items-start gap-2.5 p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-900 text-xs">
+                    <AlertCircle className="h-4 w-4 shrink-0 text-rose-600 mt-0.5" />
+                    <div className="flex-1">
+                      <div className="font-semibold text-rose-800">
+                        Đã quá giờ khóa sổ ({statusData.cutoffTime || statusData.cutoffMorning || cutoffTime || '07:00'}) của ngày hôm nay!
+                      </div>
+                      <p className="text-[11px] text-rose-700 mt-0.5">
+                        Theo quy định, không được phép cắt suất cho ngày hôm nay khi đã qua giờ khóa sổ. Hệ thống chỉ cho phép cắt suất từ ngày tiếp theo ({getTomorrowStr()}).
+                      </p>
+                    </div>
+                  </div>
+                )
               )}
             </div>
           ) : null}

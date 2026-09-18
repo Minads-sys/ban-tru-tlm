@@ -12,6 +12,7 @@ import { MealType, BoardingStatus, UserRole } from "@prisma/client";
 import { parseDateValue, getVietnamTodayUTC, isPastCutoffTime } from "@/lib/utils";
 import { auth } from "@/lib/auth";
 import { logAudit, AUDIT_ACTIONS, AUDIT_MODULES } from "@/lib/audit-log";
+import { syncDailyMealSummaryForDate } from "@/lib/daily-meals";
 
 export async function POST(request: NextRequest) {
   try {
@@ -143,10 +144,8 @@ export async function POST(request: NextRequest) {
                      || lockSettings.find(s => s.key === "CUTOFF_TIME")?.value 
                      || "07:00";
       const localToday = getVietnamTodayUTC();
-      const nextDay = new Date(localToday);
-      nextDay.setUTCDate(nextDay.getUTCDate() + 1);
-      // Nếu import sau giờ chốt thì ngày ăn bắt đầu từ ngày mai
-      const defaultMealStart = isPastCutoffTime(lockTime2) ? nextDay : localToday;
+      // Quản trị viên (Admin) được phép import học sinh bắt đầu ăn ngay từ hôm nay
+      const defaultMealStart = localToday;
 
       for (const row of result.data) {
         const passwordHash = await bcrypt.hash(row.matKhauBanDau, 10);
@@ -231,6 +230,12 @@ export async function POST(request: NextRequest) {
           });
           created++;
         }
+      }
+
+      try {
+        await syncDailyMealSummaryForDate(localToday);
+      } catch (e) {
+        console.error("Lỗi syncDailyMealSummaryForDate sau khi import học sinh:", e);
       }
 
       await logAudit({

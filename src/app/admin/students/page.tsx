@@ -109,6 +109,7 @@ function formatCurrency(amount: number | string): string {
 export default function AdminStudentsPage() {
   const { data: session } = useSession();
   const isAccountant = session?.user?.role === 'ACCOUNTANT';
+  const isAdmin = session?.user?.role === 'ADMIN';
 
   const [students, setStudents] = useState<StudentItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -184,8 +185,11 @@ export default function AdminStudentsPage() {
     return `${vnTime.getFullYear()}-${pad(vnTime.getMonth() + 1)}-${pad(vnTime.getDate())}`;
   }, []);
 
-  // Tính ngày bắt đầu ăn: Nếu đã qua giờ chốt suất ngày hôm nay thì bắt đầu từ ngày mai
+  // Tính ngày bắt đầu ăn: Nếu đã qua giờ chốt suất ngày hôm nay thì bắt đầu từ ngày mai (trừ khi là Admin)
   const getSmartMealStartDate = useCallback((customCutoff?: string) => {
+    if (isAdmin) {
+      return getTodayString();
+    }
     const cTime = customCutoff || cutoffTime;
     const vnTime = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
     const [hours, minutes] = cTime.split(':').map(Number);
@@ -197,7 +201,7 @@ export default function AdminStudentsPage() {
     }
     const pad = (n: number) => String(n).padStart(2, '0');
     return `${target.getFullYear()}-${pad(target.getMonth() + 1)}-${pad(target.getDate())}`;
-  }, [cutoffTime]);
+  }, [cutoffTime, isAdmin, getTodayString]);
 
   const isPastCutoffToday = useMemo(() => {
     const vnTime = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
@@ -486,8 +490,8 @@ export default function AdminStudentsPage() {
 
   // Open cancel dialog with default dates & preview
   const handleOpenCancelDialog = (student: StudentItem) => {
-    // Nếu đã qua giờ chốt suất của ngày hôm nay: Ép ngày bắt đầu ngừng ăn là ngày tiếp theo (ngày mai)
-    const initialDate = isPastCutoffToday ? getTomorrowString() : getTodayString();
+    // Nếu đã qua giờ chốt suất của ngày hôm nay: Ép ngày bắt đầu ngừng ăn là ngày tiếp theo (ngày mai) - trừ khi là Admin
+    const initialDate = (isPastCutoffToday && !isAdmin) ? getTomorrowString() : getTodayString();
     const initialIncludeStopDate = false;
 
     setCancellingStudent(student);
@@ -811,7 +815,7 @@ export default function AdminStudentsPage() {
   }, []);
 
   const handleOpenTransferDialog = useCallback((student: StudentItem) => {
-    const defaultDate = isPastCutoffToday ? getTomorrowString() : getTodayString();
+    const defaultDate = (isPastCutoffToday && !isAdmin) ? getTomorrowString() : getTodayString();
     setTransferringStudent(student);
     const otherClasses = classOptions.filter(c => c.id !== student.classId);
     const defaultToClass = otherClasses.length > 0 ? otherClasses[0].id : '';
@@ -824,7 +828,7 @@ export default function AdminStudentsPage() {
     if (defaultToClass) {
       loadTransferPreview(student.id, defaultToClass, defaultDate);
     }
-  }, [isPastCutoffToday, getTomorrowString, getTodayString, classOptions, loadTransferPreview]);
+  }, [isPastCutoffToday, isAdmin, getTomorrowString, getTodayString, classOptions, loadTransferPreview]);
 
   const handleConfirmTransfer = async () => {
     if (!transferringStudent || !transferFormData.toClassId) return;
@@ -1638,11 +1642,11 @@ export default function AdminStudentsPage() {
                   <Input
                     id="cancelStopDate"
                     type="date"
-                    min={isPastCutoffToday ? getTomorrowString() : undefined}
+                    min={(isPastCutoffToday && !isAdmin) ? getTomorrowString() : undefined}
                     value={cancelStopDate}
                     onChange={(e) => {
                       let newDate = e.target.value;
-                      if (isPastCutoffToday && newDate < getTomorrowString()) {
+                      if (isPastCutoffToday && !isAdmin && newDate < getTomorrowString()) {
                         newDate = getTomorrowString();
                       }
                       setCancelStopDate(newDate);
@@ -1707,17 +1711,31 @@ export default function AdminStudentsPage() {
 
               {/* Cảnh báo khi thao tác sau giờ chốt */}
               {isPastCutoffToday && (
-                <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-xs">
-                  <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
-                  <div className="flex-1">
-                    <span className="font-semibold block text-amber-800">
-                      Đã quá giờ chốt suất ({cutoffTime}) của ngày hôm nay!
-                    </span>
-                    <span className="text-[11px] text-amber-700">
-                      Suất ăn hôm nay đã chốt với nhà bếp (học sinh vẫn tính tiền ăn hôm nay). Ngày bắt đầu ngừng ăn bắt buộc phải chọn từ ngày tiếp theo ({getTomorrowString()}).
-                    </span>
+                isAdmin ? (
+                  <div className="flex items-start gap-2.5 p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs">
+                    <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-600 mt-0.5" />
+                    <div className="flex-1">
+                      <span className="font-semibold block text-emerald-800">
+                        Đã qua giờ chốt suất ({cutoffTime}) của ngày hôm nay
+                      </span>
+                      <span className="text-[11px] text-emerald-700">
+                        Quyền Quản trị viên (Admin): Bạn có toàn quyền chọn ngày ngừng ăn từ hôm nay và cập nhật lại số liệu báo bếp.
+                      </span>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-xs">
+                    <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+                    <div className="flex-1">
+                      <span className="font-semibold block text-amber-800">
+                        Đã quá giờ chốt suất ({cutoffTime}) của ngày hôm nay!
+                      </span>
+                      <span className="text-[11px] text-amber-700">
+                        Suất ăn hôm nay đã chốt với nhà bếp (học sinh vẫn tính tiền ăn hôm nay). Ngày bắt đầu ngừng ăn bắt buộc phải chọn từ ngày tiếp theo ({getTomorrowString()}).
+                      </span>
+                    </div>
+                  </div>
+                )
               )}
 
               {/* Toggle ăn trưa ngày ngừng ăn */}
@@ -2052,16 +2070,23 @@ export default function AdminStudentsPage() {
                 </label>
                 <Input
                   type="date"
-                  min={isPastCutoffToday ? getTomorrowString() : getTodayString()}
+                  min={(isPastCutoffToday && !isAdmin) ? getTomorrowString() : getTodayString()}
                   value={activateMealStartDate}
                   onChange={(e) => setActivateMealStartDate(e.target.value)}
                   className="h-10 text-sm font-medium border-emerald-200 focus:border-emerald-500"
                 />
                 {isPastCutoffToday && (
-                  <p className="text-[11.5px] text-amber-700 bg-amber-50 p-2 rounded-md border border-amber-200 mt-1 flex items-center gap-1.5">
-                    <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
-                    <span>Đã qua giờ chốt suất ngày hôm nay ({cutoffTime}). Ngày ăn bắt đầu từ ngày mai.</span>
-                  </p>
+                  isAdmin ? (
+                    <p className="text-[11.5px] text-emerald-800 bg-emerald-50 p-2 rounded-md border border-emerald-200 mt-1 flex items-center gap-1.5">
+                      <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" />
+                      <span>Đã qua giờ chốt suất ({cutoffTime}). Quyền Admin cho phép kích hoạt ăn từ hôm nay.</span>
+                    </p>
+                  ) : (
+                    <p className="text-[11.5px] text-amber-700 bg-amber-50 p-2 rounded-md border border-amber-200 mt-1 flex items-center gap-1.5">
+                      <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
+                      <span>Đã qua giờ chốt suất ngày hôm nay ({cutoffTime}). Ngày ăn bắt đầu từ ngày mai.</span>
+                    </p>
+                  )
                 )}
               </div>
 
@@ -2238,16 +2263,23 @@ export default function AdminStudentsPage() {
                 </label>
                 <Input
                   type="date"
-                  min={isPastCutoffToday ? getTomorrowString() : getTodayString()}
+                  min={(isPastCutoffToday && !isAdmin) ? getTomorrowString() : getTodayString()}
                   value={createFormData.mealStartDate}
                   onChange={(e) => setCreateFormData({ ...createFormData, mealStartDate: e.target.value })}
                   className="h-10 text-sm font-medium border-rose-200 focus:border-rose-500"
                 />
                 {isPastCutoffToday && (
-                  <p className="text-[11.5px] text-amber-700 bg-amber-50 p-2 rounded-md border border-amber-200 mt-1 flex items-center gap-1.5">
-                    <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
-                    <span>Đã qua giờ chốt suất ngày hôm nay ({cutoffTime}). Ngày ăn bắt đầu từ ngày mai.</span>
-                  </p>
+                  isAdmin ? (
+                    <p className="text-[11.5px] text-emerald-800 bg-emerald-50 p-2 rounded-md border border-emerald-200 mt-1 flex items-center gap-1.5">
+                      <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" />
+                      <span>Đã qua giờ chốt suất ({cutoffTime}). Quyền Admin cho phép học sinh ăn từ hôm nay.</span>
+                    </p>
+                  ) : (
+                    <p className="text-[11.5px] text-amber-700 bg-amber-50 p-2 rounded-md border border-amber-200 mt-1 flex items-center gap-1.5">
+                      <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
+                      <span>Đã qua giờ chốt suất ngày hôm nay ({cutoffTime}). Ngày ăn bắt đầu từ ngày mai.</span>
+                    </p>
+                  )
                 )}
               </div>
             </div>
@@ -2656,15 +2688,27 @@ export default function AdminStudentsPage() {
 
               {/* Cảnh báo khi đã qua giờ chốt hôm nay */}
               {isPastCutoffToday && (
-                <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800">
-                  <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
-                  <div>
-                    <span className="font-bold block">Đã qua giờ chốt suất ({cutoffTime}) của ngày hôm nay!</span>
-                    <span className="text-[11px] text-amber-700">
-                      Suất ăn hôm nay vẫn thuộc lớp cũ. Ngày bắt đầu ăn theo lịch của lớp mới sẽ tính từ ngày tiếp theo.
-                    </span>
+                isAdmin ? (
+                  <div className="flex items-start gap-2 p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-800">
+                    <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-600 mt-0.5" />
+                    <div>
+                      <span className="font-bold block">Đã qua giờ chốt suất ({cutoffTime}) của ngày hôm nay</span>
+                      <span className="text-[11px] text-emerald-700">
+                        Quyền Quản trị viên (Admin): Bạn được phép chuyển lớp có hiệu lực ngay từ hôm nay. Số liệu báo bếp sẽ tự động đồng bộ lại.
+                      </span>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800">
+                    <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+                    <div>
+                      <span className="font-bold block">Đã qua giờ chốt suất ({cutoffTime}) của ngày hôm nay!</span>
+                      <span className="text-[11px] text-amber-700">
+                        Suất ăn hôm nay vẫn thuộc lớp cũ. Ngày bắt đầu ăn theo lịch của lớp mới sẽ tính từ ngày tiếp theo.
+                      </span>
+                    </div>
+                  </div>
+                )
               )}
 
               {/* Lý do chuyển lớp */}

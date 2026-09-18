@@ -4,6 +4,8 @@ import prisma from "@/lib/db";
 import { getVietnamTodayUTC, isPastCutoffTime, getWeekNumber, getSchoolWeekInfo } from "@/lib/utils";
 import { BoardingStatus } from "@prisma/client";
 import { broadcastChange } from "@/lib/realtime-hub";
+import { auth } from "@/lib/auth";
+import { syncDailyMealSummaryForDate } from "@/lib/daily-meals";
 
 // GET: Lấy danh sách đổi món của 1 học sinh
 export async function GET(request: NextRequest) {
@@ -87,8 +89,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const session = await auth();
+    const isAdmin = session?.user?.role === 'ADMIN';
+
     if (requestDate.getTime() === localToday.getTime()) {
-      if (isPastCutoffTime(cutoffTime)) {
+      if (isPastCutoffTime(cutoffTime) && !isAdmin) {
         return NextResponse.json(
           {
             error: `Đã quá giờ khóa sổ chính thức (${cutoffTime}). Không thể đổi món cho ngày hôm nay nữa.`,
@@ -204,6 +209,12 @@ export async function POST(request: NextRequest) {
 
     broadcastChange('daily_meals', 'UPDATE', override);
     broadcastChange('students', 'UPDATE');
+
+    try {
+      await syncDailyMealSummaryForDate(new Date(date));
+    } catch (syncErr) {
+      console.error('Lỗi syncDailyMealSummaryForDate trong meal-override:', syncErr);
+    }
 
     return NextResponse.json({
       message: "Đã đổi món thành công cho ngày " + new Date(date).toLocaleDateString(),

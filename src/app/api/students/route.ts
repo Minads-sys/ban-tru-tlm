@@ -6,6 +6,7 @@ import { auth } from "@/lib/auth";
 import { broadcastChange } from "@/lib/realtime-hub";
 import { removeVietnameseTones, getVietnamTodayUTC, isPastCutoffTime } from "@/lib/utils";
 import { logAudit, AUDIT_ACTIONS, AUDIT_MODULES } from "@/lib/audit-log";
+import { syncDailyMealSummaryForDate } from "@/lib/daily-meals";
 
 // GET: Lấy danh sách học sinh
 export async function GET(request: NextRequest) {
@@ -239,12 +240,13 @@ export async function POST(request: NextRequest) {
 
       const localToday = getVietnamTodayUTC();
       const isPastLock = isPastCutoffTime(lockTime2);
+      const isAdmin = session?.user?.role === 'ADMIN';
 
-      // Nếu đăng ký mới khi đã qua giờ chốt suất ngày thì ngày ăn bắt đầu từ hôm sau
+      // Nếu đăng ký mới khi đã qua giờ chốt suất ngày thì ngày ăn bắt đầu từ hôm sau (trừ khi là Admin)
       const nextDay = new Date(localToday);
       nextDay.setUTCDate(nextDay.getUTCDate() + 1);
 
-      if (isPastLock && parsedMealStartDate <= localToday) {
+      if (isPastLock && !isAdmin && parsedMealStartDate <= localToday) {
         parsedMealStartDate = nextDay;
       }
 
@@ -404,6 +406,14 @@ export async function POST(request: NextRequest) {
 
       broadcastChange('students', 'INSERT', newStudent);
       broadcastChange('daily_meals', 'UPDATE');
+
+      if (parsedMealStartDate <= localToday) {
+        try {
+          await syncDailyMealSummaryForDate(parsedMealStartDate);
+        } catch (e) {
+          console.error("Lỗi syncDailyMealSummaryForDate khi thêm học sinh:", e);
+        }
+      }
 
       const formattedStartDate = `${String(parsedMealStartDate.getUTCDate()).padStart(2, '0')}/${String(parsedMealStartDate.getUTCMonth() + 1).padStart(2, '0')}/${parsedMealStartDate.getUTCFullYear()}`;
       let responseMsg = `Đăng ký học sinh thành công (Bắt đầu ăn từ ngày ${formattedStartDate})`;
@@ -848,13 +858,14 @@ async function calculateTransferImpact({
 
       const localToday = getVietnamTodayUTC();
       const isPastLock = isPastCutoffTime(lockTime2);
+      const isAdmin = session?.user?.role === 'ADMIN';
       const nextDay = new Date(localToday);
       nextDay.setUTCDate(nextDay.getUTCDate() + 1);
       const nextDayStr = `${nextDay.getUTCFullYear()}-${String(nextDay.getUTCMonth() + 1).padStart(2, '0')}-${String(nextDay.getUTCDate()).padStart(2, '0')}`;
 
-      // Nếu đã qua giờ chốt của ngày ăn: Ép ngày bắt đầu ngừng ăn phải từ ngày tiếp theo (ngày mai)
+      // Nếu đã qua giờ chốt của ngày ăn: Ép ngày bắt đầu ngừng ăn phải từ ngày tiếp theo (ngày mai) - trừ khi là Admin
       let effectiveStopDate = stopDate;
-      if (isPastLock) {
+      if (isPastLock && !isAdmin) {
         let stopDateObj: Date;
         if (stopDate && /^\d{4}-\d{2}-\d{2}$/.test(stopDate)) {
           const [sY, sM, sD] = stopDate.split("-").map(Number);
@@ -929,12 +940,13 @@ async function calculateTransferImpact({
 
       const localToday = getVietnamTodayUTC();
       const isPastLock = isPastCutoffTime(lockTime2);
+      const isAdmin = session?.user?.role === 'ADMIN';
 
-      // Nếu mở lại bán trú khi đã qua giờ chốt suất ngày thì ngày ăn bắt đầu từ hôm sau
+      // Nếu mở lại bán trú khi đã qua giờ chốt suất ngày thì ngày ăn bắt đầu từ hôm sau (trừ khi là Admin)
       const nextDay = new Date(localToday);
       nextDay.setUTCDate(nextDay.getUTCDate() + 1);
 
-      if (isPastLock && parsedMealStartDate <= localToday) {
+      if (isPastLock && !isAdmin && parsedMealStartDate <= localToday) {
         parsedMealStartDate = nextDay;
       }
 
@@ -973,6 +985,14 @@ async function calculateTransferImpact({
       broadcastChange('students', 'UPDATE', { id: studentId, status: BoardingStatus.ACTIVE });
       broadcastChange('daily_meals', 'UPDATE');
 
+      if (parsedMealStartDate <= localToday) {
+        try {
+          await syncDailyMealSummaryForDate(parsedMealStartDate);
+        } catch (e) {
+          console.error("Lỗi syncDailyMealSummaryForDate khi reactivate học sinh:", e);
+        }
+      }
+
       await logAudit({
         req: request,
         userId: adminId,
@@ -1003,8 +1023,9 @@ async function calculateTransferImpact({
 
       const localToday = getVietnamTodayUTC();
       const isPastLock = isPastCutoffTime(lockTime2);
+      const isAdmin = session?.user?.role === 'ADMIN';
 
-      // Quy tắc: Sau thời gian chốt suất của ngày ăn, không được hủy bán trú cho ngày hôm nay.
+      // Quy tắc: Sau thời gian chốt suất của ngày ăn, không được hủy bán trú cho ngày hôm nay (trừ khi là Admin).
       // Ngày bắt đầu ngừng ăn bắt buộc phải từ ngày tiếp theo (ngày mai).
       const nextDay = new Date(localToday);
       nextDay.setUTCDate(nextDay.getUTCDate() + 1);
@@ -1013,7 +1034,7 @@ async function calculateTransferImpact({
       let effectiveStopDate = stopDate;
       let forcedNextDay = false;
 
-      if (isPastLock) {
+      if (isPastLock && !isAdmin) {
         let stopDateObj: Date;
         if (stopDate && /^\d{4}-\d{2}-\d{2}$/.test(stopDate)) {
           const [sY, sM, sD] = stopDate.split("-").map(Number);
@@ -1119,6 +1140,12 @@ async function calculateTransferImpact({
       broadcastChange('daily_meals', 'UPDATE');
       broadcastChange('monthly_bills', 'UPDATE');
 
+      try {
+        await syncDailyMealSummaryForDate(localToday);
+      } catch (e) {
+        console.error("Lỗi syncDailyMealSummaryForDate khi hủy bán trú:", e);
+      }
+
       await logAudit({
         req: request,
         userId: adminId,
@@ -1182,14 +1209,15 @@ async function calculateTransferImpact({
 
       const localToday = getVietnamTodayUTC();
       const isPastLock = isPastCutoffTime(lockTime2);
+      const isAdmin = session?.user?.role === 'ADMIN';
       const nextDay = new Date(localToday);
       nextDay.setUTCDate(nextDay.getUTCDate() + 1);
       const nextDayStr = `${nextDay.getUTCFullYear()}-${String(nextDay.getUTCMonth() + 1).padStart(2, '0')}-${String(nextDay.getUTCDate()).padStart(2, '0')}`;
 
-      // Nếu đã qua giờ chốt hôm nay: ép ngày hiệu lực từ ngày mai
+      // Nếu đã qua giờ chốt hôm nay: ép ngày hiệu lực từ ngày mai (trừ khi là Admin)
       let effectiveDateStr = effectiveDate;
       let forcedNextDay = false;
-      if (isPastLock) {
+      if (isPastLock && !isAdmin) {
         let effDateObj: Date;
         if (effectiveDate && /^\d{4}-\d{2}-\d{2}$/.test(effectiveDate)) {
           const [sY, sM, sD] = effectiveDate.split("-").map(Number);
@@ -1205,7 +1233,7 @@ async function calculateTransferImpact({
       }
 
       if (!effectiveDateStr) {
-        effectiveDateStr = isPastLock ? nextDayStr : `${localToday.getUTCFullYear()}-${String(localToday.getUTCMonth() + 1).padStart(2, '0')}-${String(localToday.getUTCDate()).padStart(2, '0')}`;
+        effectiveDateStr = (isPastLock && !isAdmin) ? nextDayStr : `${localToday.getUTCFullYear()}-${String(localToday.getUTCMonth() + 1).padStart(2, '0')}-${String(localToday.getUTCDate()).padStart(2, '0')}`;
       }
 
       const impact = await calculateTransferImpact({
@@ -1255,13 +1283,14 @@ async function calculateTransferImpact({
 
       const localToday = getVietnamTodayUTC();
       const isPastLock = isPastCutoffTime(lockTime2);
+      const isAdmin = session?.user?.role === 'ADMIN';
       const nextDay = new Date(localToday);
       nextDay.setUTCDate(nextDay.getUTCDate() + 1);
       const nextDayStr = `${nextDay.getUTCFullYear()}-${String(nextDay.getUTCMonth() + 1).padStart(2, '0')}-${String(nextDay.getUTCDate()).padStart(2, '0')}`;
 
       let effectiveDateStr = effectiveDate;
       let forcedNextDay = false;
-      if (isPastLock) {
+      if (isPastLock && !isAdmin) {
         let effDateObj: Date;
         if (effectiveDate && /^\d{4}-\d{2}-\d{2}$/.test(effectiveDate)) {
           const [sY, sM, sD] = effectiveDate.split("-").map(Number);
@@ -1277,7 +1306,7 @@ async function calculateTransferImpact({
       }
 
       if (!effectiveDateStr) {
-        effectiveDateStr = isPastLock ? nextDayStr : `${localToday.getUTCFullYear()}-${String(localToday.getUTCMonth() + 1).padStart(2, '0')}-${String(localToday.getUTCDate()).padStart(2, '0')}`;
+        effectiveDateStr = (isPastLock && !isAdmin) ? nextDayStr : `${localToday.getUTCFullYear()}-${String(localToday.getUTCMonth() + 1).padStart(2, '0')}-${String(localToday.getUTCDate()).padStart(2, '0')}`;
       }
 
       const impact = await calculateTransferImpact({
@@ -1348,6 +1377,12 @@ async function calculateTransferImpact({
 
       broadcastChange('students', 'UPDATE', { id: student.id, classId: toClassId });
       broadcastChange('daily_meals', 'UPDATE');
+
+      try {
+        await syncDailyMealSummaryForDate(localToday);
+      } catch (e) {
+        console.error("Lỗi syncDailyMealSummaryForDate khi chuyển lớp:", e);
+      }
 
       const oldClassName = student.class?.name || student.classId;
       const newClassName = toClassObj.name || toClassId;
@@ -1539,6 +1574,12 @@ export async function PUT(request: NextRequest) {
     broadcastChange('students', 'UPDATE');
     broadcastChange('daily_meals', 'UPDATE');
 
+    try {
+      await syncDailyMealSummaryForDate(getVietnamTodayUTC());
+    } catch (e) {
+      console.error("Lỗi syncDailyMealSummaryForDate khi cập nhật học sinh:", e);
+    }
+
     await logAudit({
       req: request,
       userId: session?.user?.id,
@@ -1590,6 +1631,12 @@ export async function DELETE(request: NextRequest) {
 
     broadcastChange('students', 'DELETE', { studentId });
     broadcastChange('daily_meals', 'UPDATE');
+
+    try {
+      await syncDailyMealSummaryForDate(getVietnamTodayUTC());
+    } catch (e) {
+      console.error("Lỗi syncDailyMealSummaryForDate khi xóa học sinh:", e);
+    }
 
     await logAudit({
       req: request,

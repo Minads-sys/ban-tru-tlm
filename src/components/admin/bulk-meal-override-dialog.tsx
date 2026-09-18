@@ -31,6 +31,7 @@ import {
   getBulkActionStudentStatus,
   bulkOverrideMeals,
 } from '@/app/admin/meal-cancel/actions';
+import { useSession } from 'next-auth/react';
 import Swal from 'sweetalert2';
 
 interface BulkMealOverrideDialogProps {
@@ -74,6 +75,9 @@ export function BulkMealOverrideDialog({
   cutoffTime,
   onSuccess,
 }: BulkMealOverrideDialogProps) {
+  const { data: session } = useSession();
+  const isAdmin = session?.user?.role === 'ADMIN';
+
   // Current Vietnam Tomorrow
   const getTomorrowStr = () => {
     const d = new Date(Date.now() + 7 * 60 * 60 * 1000 + 24 * 60 * 60 * 1000);
@@ -195,7 +199,7 @@ export function BulkMealOverrideDialog({
       return;
     }
 
-    if (statusData?.isPastAfternoonCutoff && !bypassCutoff) {
+    if (!isAdmin && statusData?.isPastAfternoonCutoff && !bypassCutoff) {
       const cutoffStr = statusData.cutoffTime || statusData.cutoffAfternoon || statusData.cutoffMorning;
       Swal.fire({
         icon: 'warning',
@@ -211,7 +215,7 @@ export function BulkMealOverrideDialog({
         studentIds: Array.from(selectedStudentIds),
         date: targetDate,
         mealType: selectedMealType,
-        bypassCutoff,
+        bypassCutoff: isAdmin || bypassCutoff,
       });
 
       if (res.success) {
@@ -315,26 +319,40 @@ export function BulkMealOverrideDialog({
               )}
 
               {statusData.isPastAfternoonCutoff && (
-                <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-50/90 border border-amber-200 text-amber-900 text-xs">
-                  <Clock className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
-                  <div className="flex-1">
-                    <div className="font-semibold">
-                      Đã quá giờ khóa sổ chính thức ({statusData.cutoffTime || statusData.cutoffAfternoon || statusData.cutoffMorning}) hoặc ngày đã qua!
+                isAdmin ? (
+                  <div className="flex items-start gap-2.5 p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs">
+                    <Clock className="h-4 w-4 shrink-0 text-emerald-600 mt-0.5" />
+                    <div className="flex-1">
+                      <div className="font-semibold text-emerald-800">
+                        Đã quá giờ khóa sổ chính thức ({statusData.cutoffTime || statusData.cutoffAfternoon || statusData.cutoffMorning})
+                      </div>
+                      <p className="text-[11px] text-emerald-700 mt-0.5">
+                        Quyền Quản trị viên (Admin): Bạn được phép đổi món sau giờ chốt. Số liệu báo bếp sẽ tự động đồng bộ lại sau khi lưu.
+                      </p>
                     </div>
-                    <p className="text-[11px] text-amber-700 mt-0.5">
-                      Thao tác đổi món sau giờ chốt cần sự xác nhận ngoại lệ của Quản lý / Giáo viên.
-                    </p>
-                    <label className="flex items-center gap-2 mt-2 cursor-pointer font-medium text-amber-900">
-                      <input
-                        type="checkbox"
-                        checked={bypassCutoff}
-                        onChange={(e) => setBypassCutoff(e.target.checked)}
-                        className="rounded text-amber-600 focus:ring-amber-500 h-4 w-4"
-                      />
-                      <span>Xác nhận đổi món ngoại lệ sau giờ chốt sổ</span>
-                    </label>
                   </div>
-                </div>
+                ) : (
+                  <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-50/90 border border-amber-200 text-amber-900 text-xs">
+                    <Clock className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+                    <div className="flex-1">
+                      <div className="font-semibold">
+                        Đã quá giờ khóa sổ chính thức ({statusData.cutoffTime || statusData.cutoffAfternoon || statusData.cutoffMorning}) hoặc ngày đã qua!
+                      </div>
+                      <p className="text-[11px] text-amber-700 mt-0.5">
+                        Thao tác đổi món sau giờ chốt cần sự xác nhận ngoại lệ của Quản lý / Giáo viên.
+                      </p>
+                      <label className="flex items-center gap-2 mt-2 cursor-pointer font-medium text-amber-900">
+                        <input
+                          type="checkbox"
+                          checked={bypassCutoff}
+                          onChange={(e) => setBypassCutoff(e.target.checked)}
+                          className="rounded text-amber-600 focus:ring-amber-500 h-4 w-4"
+                        />
+                        <span>Xác nhận đổi món ngoại lệ sau giờ chốt sổ</span>
+                      </label>
+                    </div>
+                  </div>
+                )
               )}
             </div>
           ) : null}

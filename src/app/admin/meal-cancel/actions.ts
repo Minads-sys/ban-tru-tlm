@@ -176,6 +176,12 @@ export async function revertApprovalCancellation(id: string, reason?: string) {
       },
     });
 
+    try {
+      await syncDailyMealSummaryForDate(existing.cancelDate);
+    } catch (syncErr) {
+      console.error('Lỗi khi syncDailyMealSummaryForDate sau khi hủy duyệt cắt suất:', syncErr);
+    }
+
     revalidatePath('/admin/meal-cancel');
     revalidatePath('/admin/daily-meals');
     return {
@@ -583,15 +589,16 @@ export async function bulkCreateAndApproveCancellations(params: {
       }
     }
 
-    // 3. Kiểm tra Giờ chốt & Quá khứ: Tuyệt đối không cho phép cắt suất cho ngày hôm nay khi đã qua giờ chốt hoặc ngày quá khứ
+    // 3. Kiểm tra Giờ chốt & Quá khứ: Admin hoặc có cờ bypassCutoff được phép cắt suất sau giờ chốt sáng
     const localToday = getVietnamTodayUTC();
     const isPastDate = requestDate < localToday;
     const isToday = requestDate.getTime() === localToday.getTime();
+    const isAdmin = session.user.role === 'ADMIN';
 
     if (isPastDate) {
       return { success: false, error: 'Không thể cắt suất cho ngày trong quá khứ.' };
     }
-    if (isToday && isPastCutoffTime(cutoffTime)) {
+    if (isToday && isPastCutoffTime(cutoffTime) && !isAdmin && !bypassCutoff) {
       return { 
         success: false, 
         error: `Đã quá giờ khóa sổ của ngày hôm nay (${cutoffTime}). Hệ thống chỉ cho phép cắt suất từ ngày tiếp theo.` 
@@ -784,13 +791,14 @@ export async function bulkOverrideMeals(params: {
       }
     }
 
-    // 3. Kiểm tra Giờ chốt đổi món nếu không bypass
+    // 3. Kiểm tra Giờ chốt đổi món nếu không bypass và không phải Admin
     // Quy tắc: Giờ khóa sổ của ngày ăn là giờ trong cài đặt của chính ngày ăn đó
     const localToday = getVietnamTodayUTC();
     const isPastDate = requestDate < localToday;
     const isToday = requestDate.getTime() === localToday.getTime();
+    const isAdmin = session.user.role === 'ADMIN';
 
-    if (!bypassCutoff) {
+    if (!bypassCutoff && !isAdmin) {
       if (isPastDate) {
         return {
           success: false,
