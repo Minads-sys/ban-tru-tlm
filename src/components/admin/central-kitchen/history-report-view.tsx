@@ -12,6 +12,9 @@ import {
   Utensils,
   ChevronRight,
   TrendingUp,
+  TrendingDown,
+  Scale,
+  ShoppingCart,
   Download,
   Building2,
   Info,
@@ -88,6 +91,18 @@ function formatDateDisplay(dateStr: string): string {
   if (!dateStr) return "";
   const [y, m, d] = dateStr.split("-");
   return `${d}/${m}/${y}`;
+}
+
+function formatLockTime(isoStr?: string | null): string {
+  if (!isoStr) return "-";
+  try {
+    const d = new Date(isoStr);
+    const h = String(d.getHours()).padStart(2, "0");
+    const m = String(d.getMinutes()).padStart(2, "0");
+    return `${h}:${m}`;
+  } catch {
+    return "-";
+  }
 }
 
 // Helpers to get quick date ranges
@@ -377,7 +392,7 @@ export function HistoryReportView() {
       const ws2 = workbook.addWorksheet("Chi_Tiet_Tung_Ngay");
 
       // Banner Title
-      ws2.mergeCells("A1:M1");
+      ws2.mergeCells("A1:Q1");
       const title2 = ws2.getCell("A1");
       title2.value = "NHẬT KÝ CHI TIẾT SUẤT ĂN THEO NGÀY - BẾP TRUNG TÂM";
       title2.font = { name: "Arial", size: 14, bold: true, color: { argb: "FFFFFFFF" } };
@@ -389,7 +404,7 @@ export function HistoryReportView() {
       };
       ws2.getRow(1).height = 32;
 
-      ws2.mergeCells("A2:M2");
+      ws2.mergeCells("A2:Q2");
       const sub2 = ws2.getCell("A2");
       sub2.value = `Từ ngày ${formatDateDisplay(startDate)} đến ngày ${formatDateDisplay(
         endDate
@@ -404,11 +419,15 @@ export function HistoryReportView() {
         "Ngày Ăn",
         "Chi Nhánh",
         "Trạng Thái Chốt",
+        "Suất Đi Chợ",
+        "Suất Chốt Ăn",
+        "Chênh Lệch (±)",
+        "Giờ Chốt Chợ",
+        "Giờ Chốt Ăn",
         "Thực Đơn Mặn",
         "Suất Mặn",
         "Suất Chay",
         "Suất Cháo",
-        "Tổng Suất",
         "Gạo (kg)",
         "Món Nước (kg)",
         "Trái Cây (kg)",
@@ -436,16 +455,27 @@ export function HistoryReportView() {
         const mealText =
           e.manMealType === "NUOC" ? `Mặn Nước (${e.noodleName || "Bánh phở"})` : "Mặn Cơm";
 
+        const hasMarket = e.marketTotalServings !== null && e.marketTotalServings > 0;
+        const diffDisplay = hasMarket
+          ? e.difference > 0
+            ? `+${e.difference}`
+            : `${e.difference}`
+          : "-";
+
         row.values = [
           idx + 1,
           formatDateDisplay(e.date),
           e.branchName,
           statusText,
+          hasMarket ? e.marketTotalServings : "-",
+          e.totalServings,
+          diffDisplay,
+          e.marketLockedAt ? formatLockTime(e.marketLockedAt) : "-",
+          e.mealLockedAt ? formatLockTime(e.mealLockedAt) : "-",
           mealText,
           e.servingsMan,
           e.servingsChay,
           e.servingsChao,
-          e.totalServings,
           e.materials.riceKg,
           e.manMealType === "NUOC" ? e.materials.noodleKg : "-",
           e.materials.fruitKg,
@@ -457,8 +487,26 @@ export function HistoryReportView() {
         row.getCell(1).alignment = { vertical: "middle", horizontal: "center" };
         row.getCell(2).alignment = { vertical: "middle", horizontal: "center" };
         row.getCell(4).alignment = { vertical: "middle", horizontal: "center" };
-        [6, 7, 8, 9, 10, 11, 12].forEach((colIdx) => {
-          row.getCell(colIdx).numFmt = colIdx >= 10 ? "#,##0.0" : "#,##0";
+        row.getCell(5).alignment = { vertical: "middle", horizontal: "right" };
+        row.getCell(6).alignment = { vertical: "middle", horizontal: "right" };
+        row.getCell(7).alignment = { vertical: "middle", horizontal: "right" };
+        row.getCell(8).alignment = { vertical: "middle", horizontal: "center" };
+        row.getCell(9).alignment = { vertical: "middle", horizontal: "center" };
+
+        if (typeof row.getCell(5).value === "number") row.getCell(5).numFmt = "#,##0";
+        row.getCell(6).numFmt = "#,##0";
+
+        // Style diff cell
+        if (hasMarket && e.difference > 0) {
+          row.getCell(7).font = { name: "Arial", size: 10, bold: true, color: { argb: "FFD97706" } };
+        } else if (hasMarket && e.difference < 0) {
+          row.getCell(7).font = { name: "Arial", size: 10, bold: true, color: { argb: "FF2563EB" } };
+        } else if (hasMarket && e.difference === 0) {
+          row.getCell(7).font = { name: "Arial", size: 10, bold: true, color: { argb: "FF059669" } };
+        }
+
+        [11, 12, 13, 14, 15, 16].forEach((colIdx) => {
+          row.getCell(colIdx).numFmt = colIdx >= 14 ? "#,##0.0" : "#,##0";
           row.getCell(colIdx).alignment = { vertical: "middle", horizontal: "right" };
         });
         row.height = 20;
@@ -482,11 +530,15 @@ export function HistoryReportView() {
         { width: 14 },
         { width: 20 },
         { width: 16 },
+        { width: 14 },
+        { width: 14 },
+        { width: 14 },
+        { width: 14 },
+        { width: 14 },
         { width: 22 },
         { width: 12 },
         { width: 12 },
         { width: 12 },
-        { width: 14 },
         { width: 14 },
         { width: 14 },
         { width: 14 },
@@ -852,11 +904,13 @@ export function HistoryReportView() {
                 <th className="py-3 px-3">Ngày</th>
                 <th className="py-3 px-3">Chi nhánh</th>
                 <th className="py-3 px-3 text-center">Trạng thái chốt</th>
+                <th className="py-3 px-3 text-right text-blue-700 dark:text-blue-300">Suất Chợ</th>
+                <th className="py-3 px-3 text-right text-emerald-700 dark:text-emerald-300">Suất Ăn</th>
+                <th className="py-3 px-3 text-right font-black">Lệch (±)</th>
                 <th className="py-3 px-3">Thực đơn mặn</th>
                 <th className="py-3 px-3 text-right">Mặn</th>
                 <th className="py-3 px-3 text-right">Chay</th>
                 <th className="py-3 px-3 text-right">Cháo</th>
-                <th className="py-3 px-3 text-right font-black">Tổng</th>
                 <th className="py-3 px-3 text-right text-amber-600 dark:text-amber-400">Gạo (kg)</th>
                 <th className="py-3 px-3 text-right text-blue-600 dark:text-blue-400">Nước (kg)</th>
                 <th className="py-3 px-3 text-right text-yellow-600 dark:text-yellow-400">Trái cây (kg)</th>
@@ -866,75 +920,105 @@ export function HistoryReportView() {
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
               {filteredEntries.length === 0 ? (
                 <tr>
-                  <td colSpan={13} className="py-8 text-center text-slate-400">
+                  <td colSpan={15} className="py-8 text-center text-slate-400">
                     Không có bản ghi nhật ký phù hợp
                   </td>
                 </tr>
               ) : (
-                filteredEntries.map((e, idx) => (
-                  <tr key={e.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition">
-                    <td className="py-2.5 px-3 text-center text-slate-400 font-bold">{idx + 1}</td>
-                    <td className="py-2.5 px-3 font-bold text-slate-800 dark:text-slate-200 whitespace-nowrap">
-                      {formatDateDisplay(e.date)}
-                    </td>
-                    <td className="py-2.5 px-3 font-bold text-slate-900 dark:text-white whitespace-nowrap">
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: e.branchColor }} />
-                        <span>{e.branchName}</span>
-                      </div>
-                    </td>
-                    <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                      {e.lockStatus === "LOCKED_COOK" ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300">
-                          🍽️ Đã chốt ăn
-                        </span>
-                      ) : e.lockStatus === "LOCKED_MARKET" ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
-                          🛒 Đã chốt chợ
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300">
-                          ⏳ Chưa chốt
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-2.5 px-3 whitespace-nowrap">
-                      {e.manMealType === "NUOC" ? (
-                        <span className="font-bold text-blue-600 dark:text-blue-400 text-xs">
-                          🍜 {e.noodleName || "Bánh phở"}
-                        </span>
-                      ) : (
-                        <span className="font-semibold text-amber-700 dark:text-amber-400 text-xs">
-                          🍚 Cơm
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-2.5 px-3 text-right font-bold text-amber-600 dark:text-amber-400">
-                      {e.servingsMan.toLocaleString("vi-VN")}
-                    </td>
-                    <td className="py-2.5 px-3 text-right font-bold text-emerald-600 dark:text-emerald-400">
-                      {e.servingsChay.toLocaleString("vi-VN")}
-                    </td>
-                    <td className="py-2.5 px-3 text-right font-bold text-cyan-600 dark:text-cyan-400">
-                      {e.servingsChao.toLocaleString("vi-VN")}
-                    </td>
-                    <td className="py-2.5 px-3 text-right font-black text-slate-900 dark:text-white">
-                      {e.totalServings.toLocaleString("vi-VN")}
-                    </td>
-                    <td className="py-2.5 px-3 text-right font-bold text-amber-600 dark:text-amber-400">
-                      {e.materials.riceKg.toFixed(1)}
-                    </td>
-                    <td className="py-2.5 px-3 text-right font-bold text-blue-600 dark:text-blue-400">
-                      {e.manMealType === "NUOC" ? e.materials.noodleKg.toFixed(1) : "-"}
-                    </td>
-                    <td className="py-2.5 px-3 text-right font-bold text-yellow-600 dark:text-yellow-400">
-                      {e.materials.fruitKg.toFixed(1)}
-                    </td>
-                    <td className="py-2.5 px-3 text-xs text-slate-500 max-w-[180px] truncate" title={e.note}>
-                      {e.note || "-"}
-                    </td>
-                  </tr>
-                ))
+                filteredEntries.map((e, idx) => {
+                  const hasMarket = e.marketTotalServings !== null && e.marketTotalServings > 0;
+                  return (
+                    <tr key={e.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition">
+                      <td className="py-2.5 px-3 text-center text-slate-400 font-bold">{idx + 1}</td>
+                      <td className="py-2.5 px-3 font-bold text-slate-800 dark:text-slate-200 whitespace-nowrap">
+                        {formatDateDisplay(e.date)}
+                      </td>
+                      <td className="py-2.5 px-3 font-bold text-slate-900 dark:text-white whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: e.branchColor }} />
+                          <span>{e.branchName}</span>
+                        </div>
+                      </td>
+                      <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                        {e.lockStatus === "LOCKED_COOK" ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300">
+                            🍽️ Đã chốt ăn
+                          </span>
+                        ) : e.lockStatus === "LOCKED_MARKET" ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
+                            🛒 Đã chốt chợ
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300">
+                            ⏳ Chưa chốt
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Suất Chợ */}
+                      <td className="py-2.5 px-3 text-right font-bold text-blue-700 dark:text-blue-300 whitespace-nowrap">
+                        {hasMarket ? e.marketTotalServings?.toLocaleString("vi-VN") : "-"}
+                      </td>
+
+                      {/* Suất Ăn */}
+                      <td className="py-2.5 px-3 text-right font-black text-slate-900 dark:text-white whitespace-nowrap">
+                        {e.totalServings.toLocaleString("vi-VN")}
+                      </td>
+
+                      {/* Chênh lệch */}
+                      <td className="py-2.5 px-3 text-right font-black whitespace-nowrap">
+                        {hasMarket ? (
+                          e.difference > 0 ? (
+                            <span className="inline-flex items-center gap-0.5 text-amber-600 dark:text-amber-400 font-bold">
+                              <TrendingUp className="w-3 h-3" />+{e.difference}
+                            </span>
+                          ) : e.difference < 0 ? (
+                            <span className="inline-flex items-center gap-0.5 text-blue-600 dark:text-blue-400 font-bold">
+                              <TrendingDown className="w-3 h-3" />{e.difference}
+                            </span>
+                          ) : (
+                            <span className="text-emerald-600 dark:text-emerald-400 font-bold">0</span>
+                          )
+                        ) : (
+                          <span className="text-slate-400 font-normal">-</span>
+                        )}
+                      </td>
+
+                      <td className="py-2.5 px-3 whitespace-nowrap">
+                        {e.manMealType === "NUOC" ? (
+                          <span className="font-bold text-blue-600 dark:text-blue-400 text-xs">
+                            🍜 {e.noodleName || "Bánh phở"}
+                          </span>
+                        ) : (
+                          <span className="font-semibold text-amber-700 dark:text-amber-400 text-xs">
+                            🍚 Cơm
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-bold text-amber-600 dark:text-amber-400">
+                        {e.servingsMan.toLocaleString("vi-VN")}
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-bold text-emerald-600 dark:text-emerald-400">
+                        {e.servingsChay.toLocaleString("vi-VN")}
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-bold text-cyan-600 dark:text-cyan-400">
+                        {e.servingsChao.toLocaleString("vi-VN")}
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-bold text-amber-600 dark:text-amber-400">
+                        {e.materials.riceKg.toFixed(1)}
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-bold text-blue-600 dark:text-blue-400">
+                        {e.manMealType === "NUOC" ? e.materials.noodleKg.toFixed(1) : "-"}
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-bold text-yellow-600 dark:text-yellow-400">
+                        {e.materials.fruitKg.toFixed(1)}
+                      </td>
+                      <td className="py-2.5 px-3 text-xs text-slate-500 max-w-[180px] truncate" title={e.note}>
+                        {e.note || "-"}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

@@ -4,6 +4,7 @@ import { HdsdFooter } from "@/components/hdsd/HdsdFooter";
 import { HdsdScrollProgress } from "@/components/hdsd/HdsdScrollProgress";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://bantrutlm.com"),
   title: "Hướng Dẫn Nghiệp Vụ Bán Trú — THPT Ten Lơ Man",
   description:
     "Cẩm nang hướng dẫn thao tác sử dụng phần mềm Bán Trú dành riêng cho Học sinh & Phụ huynh trường THPT Ten Lơ Man: Đăng nhập 3 yếu tố, cắt suất ăn, đổi món ăn, xem công nợ và thanh toán VietQR tự động.",
