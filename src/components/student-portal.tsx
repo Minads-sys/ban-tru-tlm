@@ -2524,6 +2524,18 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                             </div>
                           </div>
 
+                          {/* Giải thích nguyên tắc tính tiền ăn bán trú cho phụ huynh */}
+                          {!settlement && (
+                            <div className="p-2.5 bg-blue-50/80 border border-blue-200/80 rounded-lg text-xs text-slate-700 flex items-start gap-2">
+                              <Info className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
+                              <div className="leading-relaxed">
+                                <span className="font-semibold text-blue-900">Cách tính tiền ăn: </span>
+                                Tiền ăn được tạm thu theo lịch học trong tháng. Toàn bộ các ngày con báo cắt suất được duyệt sẽ được{" "}
+                                <span className="text-emerald-700 font-semibold">tự động hoàn trừ trực tiếp vào tiền ăn của tháng tiếp theo</span>.
+                              </div>
+                            </div>
+                          )}
+
                           {/* Chi tiết bù trừ tháng trước (nếu có) */}
                           {(Number(bill.previousDeduction) > 0 || Number(bill.previousAddition || 0) > 0) && (
                             <div className="p-2 bg-blue-50/70 border border-blue-200/70 rounded-lg text-[11px] text-slate-700 flex flex-wrap items-center gap-x-4 gap-y-1">
