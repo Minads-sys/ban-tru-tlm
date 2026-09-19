@@ -30,6 +30,7 @@ import {
   ChevronRight,
   Images,
   Layers,
+  ExternalLink,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -369,6 +370,57 @@ export default function MealDeliveryPage() {
   };
 
   const activeGalleryPhotos = galleryRecord ? getRecordPhotos(galleryRecord) : [];
+
+  // Điều hướng bằng phím mũi tên khi mở modal gallery
+  useEffect(() => {
+    if (!galleryRecord || activeGalleryPhotos.length <= 1) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "ArrowLeft") {
+        setActivePhotoIndex((prev) => (prev > 0 ? prev - 1 : activeGalleryPhotos.length - 1));
+      } else if (e.key === "ArrowRight") {
+        setActivePhotoIndex((prev) => (prev < activeGalleryPhotos.length - 1 ? prev + 1 : 0));
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [galleryRecord, activeGalleryPhotos.length]);
+
+  // Hỗ trợ vuốt cảm ứng (touch swipe) cho mobile
+  const touchStartXRef = useRef<number | null>(null);
+  const touchEndXRef = useRef<number | null>(null);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartXRef.current = e.targetTouches[0].clientX;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    touchEndXRef.current = e.targetTouches[0].clientX;
+  };
+
+  const handleTouchEnd = () => {
+    if (touchStartXRef.current === null || touchEndXRef.current === null) return;
+    const diff = touchStartXRef.current - touchEndXRef.current;
+    const minSwipeDistance = 45; // pixel
+    if (diff > minSwipeDistance) {
+      // Vuốt sang trái -> xem ảnh kế tiếp
+      setActivePhotoIndex((prev) => (prev < activeGalleryPhotos.length - 1 ? prev + 1 : 0));
+    } else if (diff < -minSwipeDistance) {
+      // Vuốt sang phải -> xem ảnh trước đó
+      setActivePhotoIndex((prev) => (prev > 0 ? prev - 1 : activeGalleryPhotos.length - 1));
+    }
+    touchStartXRef.current = null;
+    touchEndXRef.current = null;
+  };
+
+  // Tự động cuộn thumbnail đang chọn vào giữa tầm nhìn
+  const thumbnailContainerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!thumbnailContainerRef.current) return;
+    const activeThumb = thumbnailContainerRef.current.children[activePhotoIndex] as HTMLElement;
+    if (activeThumb) {
+      activeThumb.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+    }
+  }, [activePhotoIndex]);
 
   return (
     <div className="container mx-auto p-4 sm:p-6 max-w-5xl space-y-6">
@@ -919,85 +971,121 @@ export default function MealDeliveryPage() {
 
       {/* Modal Lightbox Gallery Phóng to ảnh ký nhận (Hỗ trợ duyệt nhiều ảnh qua lại) */}
       <Dialog open={!!galleryRecord} onOpenChange={(open) => !open && setGalleryRecord(null)}>
-        <DialogContent className="max-w-4xl w-[96vw] p-4 bg-slate-950 text-white border-slate-800 shadow-2xl">
-          <DialogHeader className="text-left space-y-1 pb-2 border-b border-slate-800">
-            <DialogTitle className="text-base text-slate-100 flex items-center justify-between flex-wrap gap-2">
-              <span>Ảnh Biên Bản Ký Nhận Suất Cơm</span>
-              {galleryRecord && (
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="text-xs bg-slate-800 text-slate-300 border-slate-700">
-                    {formatDate(galleryRecord.deliveryDate)} • {galleryRecord.receiverName} ({galleryRecord.totalDelivered} suất)
-                  </Badge>
-                  <Badge className="bg-blue-600 text-white text-xs">
+        <DialogContent className="max-w-5xl w-[96vw] max-h-[95vh] p-3 sm:p-5 bg-slate-950 text-white border border-slate-800 shadow-2xl flex flex-col min-w-0 overflow-hidden rounded-2xl">
+          <DialogHeader className="text-left space-y-2 pb-3 border-b border-slate-800/80 pr-10 shrink-0">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <DialogTitle className="text-base sm:text-lg font-bold text-slate-100 flex items-center gap-2">
+                <span className="truncate">Ảnh Biên Bản Ký Nhận Suất Cơm</span>
+                {activeGalleryPhotos.length > 0 && (
+                  <Badge className="bg-blue-600 hover:bg-blue-600 text-white text-xs font-mono shrink-0">
                     Ảnh {activePhotoIndex + 1} / {activeGalleryPhotos.length}
+                  </Badge>
+                )}
+              </DialogTitle>
+
+              {galleryRecord && (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <Badge variant="outline" className="text-[11px] sm:text-xs bg-slate-900 text-slate-300 border-slate-700 font-normal">
+                    <Calendar className="h-3 w-3 mr-1 inline text-blue-400" />
+                    {formatDate(galleryRecord.deliveryDate)}
+                  </Badge>
+                  <Badge variant="outline" className="text-[11px] sm:text-xs bg-slate-900 text-slate-300 border-slate-700 font-normal">
+                    <User className="h-3 w-3 mr-1 inline text-amber-400" />
+                    {galleryRecord.receiverName}
+                  </Badge>
+                  <Badge variant="outline" className="text-[11px] sm:text-xs bg-emerald-950/80 text-emerald-300 border-emerald-800 font-medium">
+                    {galleryRecord.totalDelivered} suất
                   </Badge>
                 </div>
               )}
-            </DialogTitle>
+            </div>
           </DialogHeader>
 
           {activeGalleryPhotos.length > 0 && (
-            <div className="py-2 flex flex-col items-center justify-center space-y-3">
-              <div className="relative w-full max-h-[72vh] overflow-hidden rounded-xl border border-slate-800 bg-black flex items-center justify-center">
+            <div className="flex-1 min-h-0 min-w-0 flex flex-col space-y-3 py-2 overflow-hidden">
+              {/* Vùng xem ảnh phóng to */}
+              <div
+                className="relative w-full flex-1 min-h-[42vh] max-h-[58vh] sm:max-h-[66vh] overflow-hidden rounded-xl border border-slate-800 bg-black flex items-center justify-center select-none"
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+              >
                 <img
                   src={activeGalleryPhotos[activePhotoIndex]}
                   alt={`Ảnh ký nhận ${activePhotoIndex + 1}`}
-                  className="max-h-[70vh] w-auto max-w-full object-contain mx-auto transition-all"
+                  className="max-h-full max-w-full w-auto h-auto object-contain mx-auto transition-opacity duration-150"
                 />
 
-                {/* Nút Prev */}
+                {/* Nút Prev trên ảnh */}
                 {activeGalleryPhotos.length > 1 && (
                   <button
                     type="button"
                     onClick={() => setActivePhotoIndex((prev) => (prev > 0 ? prev - 1 : activeGalleryPhotos.length - 1))}
-                    className="absolute left-2 top-1/2 -translate-y-1/2 p-2.5 bg-black/60 hover:bg-black/90 text-white rounded-full backdrop-blur-sm cursor-pointer transition-transform hover:scale-110"
-                    title="Ảnh trước đó (←)"
+                    className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 p-2 sm:p-3 bg-black/60 hover:bg-blue-600/90 text-white rounded-full backdrop-blur-md cursor-pointer transition-all active:scale-95 shadow-lg border border-white/10 z-10"
+                    title="Ảnh trước đó (Phím ←)"
                   >
-                    <ChevronLeft className="h-5 w-5" />
+                    <ChevronLeft className="h-5 w-5 sm:h-6 sm:w-6" />
                   </button>
                 )}
 
-                {/* Nút Next */}
+                {/* Nút Next trên ảnh */}
                 {activeGalleryPhotos.length > 1 && (
                   <button
                     type="button"
                     onClick={() => setActivePhotoIndex((prev) => (prev < activeGalleryPhotos.length - 1 ? prev + 1 : 0))}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-2.5 bg-black/60 hover:bg-black/90 text-white rounded-full backdrop-blur-sm cursor-pointer transition-transform hover:scale-110"
-                    title="Ảnh tiếp theo (→)"
+                    className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 p-2 sm:p-3 bg-black/60 hover:bg-blue-600/90 text-white rounded-full backdrop-blur-md cursor-pointer transition-all active:scale-95 shadow-lg border border-white/10 z-10"
+                    title="Ảnh tiếp theo (Phím →)"
                   >
-                    <ChevronRight className="h-5 w-5" />
+                    <ChevronRight className="h-5 w-5 sm:h-6 sm:w-6" />
                   </button>
                 )}
               </div>
 
               {/* Dải thumbnail bên dưới modal */}
               {activeGalleryPhotos.length > 1 && (
-                <div className="flex items-center gap-1.5 max-w-full overflow-x-auto py-1 px-2">
-                  {activeGalleryPhotos.map((thumbUrl, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => setActivePhotoIndex(idx)}
-                      className={`relative shrink-0 w-12 h-12 rounded-md overflow-hidden border-2 transition-all cursor-pointer ${
-                        activePhotoIndex === idx ? "border-blue-500 scale-105 shadow-md" : "border-slate-700 opacity-60 hover:opacity-100"
-                      }`}
-                    >
-                      <img src={thumbUrl} alt={`Thumb ${idx + 1}`} className="w-full h-full object-cover" />
-                    </button>
-                  ))}
+                <div className="w-full min-w-0 overflow-hidden">
+                  <div
+                    ref={thumbnailContainerRef}
+                    className="flex items-center gap-1.5 sm:gap-2 max-w-full overflow-x-auto py-1 px-1 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent"
+                  >
+                    {activeGalleryPhotos.map((thumbUrl, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setActivePhotoIndex(idx)}
+                        className={`relative shrink-0 w-11 h-11 sm:w-14 sm:h-14 rounded-lg overflow-hidden border-2 transition-all cursor-pointer ${
+                          activePhotoIndex === idx
+                            ? "border-blue-500 scale-105 shadow-md shadow-blue-500/30 ring-2 ring-blue-500/40"
+                            : "border-slate-800 opacity-60 hover:opacity-100 hover:border-slate-600"
+                        }`}
+                      >
+                        <img src={thumbUrl} alt={`Thumb ${idx + 1}`} className="w-full h-full object-cover" />
+                        <span className="absolute bottom-0 right-0 bg-black/80 text-[9px] text-white font-mono px-1 rounded-tl">
+                          #{idx + 1}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
 
-              <div className="flex items-center justify-between w-full text-xs text-slate-400 pt-1">
-                <span>Dùng phím mũi tên hoặc nút bấm để chuyển ảnh</span>
-                <a
-                  href={activeGalleryPhotos[activePhotoIndex]}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-blue-400 hover:text-blue-300 underline font-medium"
-                >
-                  Mở ảnh gốc trong tab mới
-                </a>
+              {/* Thanh thông tin và thao tác dưới cùng */}
+              <div className="flex items-center justify-between w-full text-xs text-slate-400 pt-1.5 border-t border-slate-800/80 gap-2 shrink-0">
+                <div className="flex items-center gap-1.5 text-slate-400 text-[11px] sm:text-xs truncate">
+                  <span className="hidden sm:inline">Phím <strong>← →</strong> hoặc vuốt màn hình để chuyển ảnh</span>
+                  <span className="sm:hidden">Vuốt sang ngang để chuyển ảnh</span>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <a
+                    href={activeGalleryPhotos[activePhotoIndex]}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-blue-400 hover:text-blue-300 rounded-md text-[11px] sm:text-xs transition-colors font-medium"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    <span>Mở ảnh gốc</span>
+                  </a>
+                </div>
               </div>
             </div>
           )}
