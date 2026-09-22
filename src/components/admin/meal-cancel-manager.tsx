@@ -21,6 +21,7 @@ import {
   CalendarX,
   UtensilsCrossed,
   RotateCcw,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
@@ -38,6 +39,7 @@ import {
 } from '@/app/admin/meal-cancel/actions';
 import { BulkMealCancelDialog } from '@/components/admin/bulk-meal-cancel-dialog';
 import { BulkMealOverrideDialog } from '@/components/admin/bulk-meal-override-dialog';
+import { ImportMealCancelDialog } from '@/components/admin/import-meal-cancel-dialog';
 import Swal from 'sweetalert2';
 
 export interface CancellationItem {
@@ -118,6 +120,7 @@ export function MealCancelManager({
   // Dialog states for Bulk Actions
   const [openBulkCancel, setOpenBulkCancel] = useState<boolean>(false);
   const [openBulkOverride, setOpenBulkOverride] = useState<boolean>(false);
+  const [openImportExcel, setOpenImportExcel] = useState<boolean>(false);
 
   // Filters for Pending Tab
   const [pendingSearchQuery, setPendingSearchQuery] = useState('');
@@ -746,6 +749,15 @@ export function MealCancelManager({
             >
               <CalendarX className="h-3.5 w-3.5" />
               <span>Cắt suất hàng loạt</span>
+            </Button>
+
+            <Button
+              size="sm"
+              onClick={() => setOpenImportExcel(true)}
+              className="text-xs shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs cursor-pointer gap-1.5 font-medium"
+            >
+              <FileSpreadsheet className="h-3.5 w-3.5" />
+              <span>📥 Import Excel</span>
             </Button>
 
             <Button
@@ -1782,6 +1794,12 @@ export function MealCancelManager({
         open={openBulkOverride}
         onOpenChange={setOpenBulkOverride}
         classes={classes}
+        cutoffTime={cutoffTime}
+      />
+
+      <ImportMealCancelDialog
+        open={openImportExcel}
+        onOpenChange={setOpenImportExcel}
         cutoffTime={cutoffTime}
       />
     </div>

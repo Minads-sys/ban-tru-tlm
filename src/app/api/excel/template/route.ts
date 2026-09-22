@@ -5,6 +5,7 @@ import {
   generateStudentTemplate,
   generateScheduleTemplate,
   generateSpecialMealTemplate,
+  generateMealCancelTemplate,
 } from "@/lib/excel";
 
 export async function GET(request: NextRequest) {
@@ -31,9 +32,13 @@ export async function GET(request: NextRequest) {
       buffer = await generateSpecialMealTemplate();
       filename = "Template_LichAnDacBiet.xlsx";
       break;
+    case "meal-cancel":
+      buffer = await generateMealCancelTemplate();
+      filename = "Template_CatSuatAn.xlsx";
+      break;
     default:
       return NextResponse.json(
-        { error: "Loại template không hợp lệ. Sử dụng: class, student, schedule, special-meal" },
+        { error: "Loại template không hợp lệ. Sử dụng: class, student, schedule, special-meal, meal-cancel" },
         { status: 400 }
       );
   }

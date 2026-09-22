@@ -4,7 +4,8 @@ import prisma from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
 import { broadcastChange } from '@/lib/realtime-hub';
-import { getVietnamTodayUTC, isPastCutoffTime, getWeekNumber, getSchoolWeekInfo } from '@/lib/utils';
+import { getVietnamTodayUTC, isPastCutoffTime, getWeekNumber, getSchoolWeekInfo, removeVietnameseTones, parseDateValue } from '@/lib/utils';
+import type { MealCancelImportRow } from '@/lib/excel';
 import { logAudit, AUDIT_ACTIONS, AUDIT_MODULES } from '@/lib/audit-log';
 import { syncDailyMealSummaryForDate } from '@/lib/daily-meals';
 
@@ -32,6 +33,7 @@ export async function approveCancellation(id: string, note?: string) {
 
     broadcastChange('meal_cancellations', 'UPDATE', updated);
     broadcastChange('daily_meals', 'UPDATE');
+    broadcastChange('daily_dining_courts', 'UPDATE');
 
     try {
       await syncDailyMealSummaryForDate(updated.cancelDate);
@@ -83,6 +85,7 @@ export async function rejectCancellation(id: string, reason?: string) {
 
     broadcastChange('meal_cancellations', 'UPDATE', updated);
     broadcastChange('daily_meals', 'UPDATE');
+    broadcastChange('daily_dining_courts', 'UPDATE');
 
     await logAudit({
       userId: approverId,
@@ -154,6 +157,7 @@ export async function revertApprovalCancellation(id: string, reason?: string) {
     // 3. Phát sóng Realtime
     broadcastChange('meal_cancellations', 'UPDATE', updated);
     broadcastChange('daily_meals', 'UPDATE');
+    broadcastChange('daily_dining_courts', 'UPDATE');
 
     const studentName = existing.student?.user?.fullName || existing.studentId;
     const className = existing.student?.class?.name || '';
@@ -225,6 +229,7 @@ export async function bulkApproveCancellations(ids: string[]) {
 
     broadcastChange('meal_cancellations', 'UPDATE');
     broadcastChange('daily_meals', 'UPDATE');
+    broadcastChange('daily_dining_courts', 'UPDATE');
 
     await logAudit({
       userId: approverId,
@@ -320,6 +325,7 @@ export async function autoApproveExpiredCancellations() {
 
     broadcastChange('meal_cancellations', 'UPDATE');
     broadcastChange('daily_meals', 'UPDATE');
+    broadcastChange('daily_dining_courts', 'UPDATE');
 
     revalidatePath('/admin/meal-cancel');
     revalidatePath('/admin/daily-meals');
@@ -708,6 +714,7 @@ export async function bulkCreateAndApproveCancellations(params: {
     // 8. Phát sóng Realtime & Revalidate
     broadcastChange('meal_cancellations', 'INSERT');
     broadcastChange('daily_meals', 'UPDATE');
+    broadcastChange('daily_dining_courts', 'UPDATE');
 
     if (autoApprove) {
       try {
@@ -934,6 +941,7 @@ export async function bulkOverrideMeals(params: {
 
     // 9. Phát sóng Realtime & Revalidate
     broadcastChange('daily_meals', 'UPDATE');
+    broadcastChange('daily_dining_courts', 'UPDATE');
     broadcastChange('students', 'UPDATE');
 
     revalidatePath('/admin/meal-cancel');
@@ -1011,6 +1019,7 @@ export async function deleteMealOverride(id: string, reason?: string) {
     });
 
     broadcastChange('daily_meals', 'UPDATE');
+    broadcastChange('daily_dining_courts', 'UPDATE');
     broadcastChange('students', 'UPDATE');
 
     revalidatePath('/admin/meal-cancel');
@@ -1023,5 +1032,413 @@ export async function deleteMealOverride(id: string, reason?: string) {
   } catch (error) {
     console.error('Lỗi khi hủy đổi món:', error);
     return { success: false, error: 'Không thể hủy yêu cầu đổi món' };
+  }
+}
+
+// ==================== IMPORT EXCEL CẮT SUẤT ĂN ====================
+
+export interface ValidateRowResult {
+  rowIndex: number;
+  hoTen: string;
+  lop: string;
+  ngaySinh?: string;
+  status: 'OK' | 'WARNING' | 'ERROR' | 'AMBIGUOUS';
+  message: string;
+  matchedStudentId?: string;
+  matchedBoardingCode?: string;
+  /** Danh sách HS trùng tên khi cần chọn thủ công */
+  candidates?: Array<{
+    studentId: string;
+    boardingCode: string;
+    fullName: string;
+    birthDate?: string;
+    parentPhone?: string;
+  }>;
+}
+
+export interface ValidateImportResult {
+  rows: ValidateRowResult[];
+  totalOk: number;
+  totalWarning: number;
+  totalError: number;
+  totalAmbiguous: number;
+}
+
+/**
+ * Normalize tên để so sánh: lowercase + bỏ dấu + chuẩn hóa khoảng trắng
+ */
+function normalizeName(name: string): string {
+  return removeVietnameseTones(name.trim().toLowerCase()).replace(/\s+/g, ' ');
+}
+
+/**
+ * Normalize tên lớp: bỏ prefix "Lớp", trim, chuẩn hóa
+ */
+function normalizeClassName(name: string): string {
+  return name.trim()
+    .replace(/^l[oớ]p\s*/i, '')
+    .replace(/\s+/g, '')
+    .toUpperCase();
+}
+
+/**
+ * Tính khoảng cách Levenshtein giữa 2 chuỗi
+ */
+function levenshteinDistance(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = Math.min(
+        dp[i - 1][j] + 1,
+        dp[i][j - 1] + 1,
+        dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+      );
+    }
+  }
+  return dp[m][n];
+}
+
+/**
+ * Kiểm tra hợp lệ danh sách cắt suất import từ Excel.
+ * Matching theo HoTen + Lop + NgaySinh (nếu có).
+ */
+export async function validateMealCancelImport(
+  rows: MealCancelImportRow[]
+): Promise<ValidateImportResult> {
+  // 1. Lấy tất cả HS bán trú ACTIVE kèm thông tin User, Class
+  const allStudents = await prisma.student.findMany({
+    where: {
+      boardingStatus: 'ACTIVE',
+    },
+    include: {
+      user: { select: { fullName: true } },
+      class: { select: { id: true, name: true } },
+    },
+  });
+
+  // Lấy cả HS không ACTIVE để cảnh báo
+  const allStudentsIncludingInactive = await prisma.student.findMany({
+    include: {
+      user: { select: { fullName: true } },
+      class: { select: { id: true, name: true } },
+    },
+  });
+
+  // 2. Lấy tất cả lớp
+  const allClasses = await prisma.class.findMany({ select: { id: true, name: true } });
+  const classNameMap = new Map<string, string>(); // normalizedName -> classId
+  for (const cls of allClasses) {
+    classNameMap.set(normalizeClassName(cls.name), cls.id);
+    classNameMap.set(normalizeClassName(cls.id), cls.id);
+  }
+
+  // 3. Lấy MealCancellation hôm nay
+  const todayUTC = getVietnamTodayUTC();
+  const existingCancellations = await prisma.mealCancellation.findMany({
+    where: { cancelDate: todayUTC },
+    select: { studentId: true, status: true },
+  });
+  const cancellationMap = new Map(existingCancellations.map((c) => [c.studentId, c.status]));
+
+  // 4. Lấy TKB hôm nay
+  const dayOfWeek = todayUTC.getUTCDay();
+  const dayFieldMap: Record<number, string> = {
+    1: 'monday', 2: 'tuesday', 3: 'wednesday',
+    4: 'thursday', 5: 'friday', 6: 'saturday',
+  };
+  const dayField = dayFieldMap[dayOfWeek];
+
+  // 5. Validate từng dòng
+  const results: ValidateRowResult[] = [];
+  const seenKeys = new Set<string>(); // Detect trùng trong file
+
+  for (const row of rows) {
+    const result: ValidateRowResult = {
+      rowIndex: row.stt,
+      hoTen: row.hoTen,
+      lop: row.lop,
+      ngaySinh: row.ngaySinh,
+      status: 'OK',
+      message: '',
+    };
+
+    // 5.1 Tìm lớp
+    const normalizedLop = normalizeClassName(row.lop);
+    const classId = classNameMap.get(normalizedLop);
+
+    if (!classId) {
+      // Thử tìm gần đúng
+      let bestMatch = '';
+      let bestDist = Infinity;
+      for (const [normName, cId] of classNameMap) {
+        const dist = levenshteinDistance(normalizedLop, normName);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestMatch = cId;
+        }
+      }
+      if (bestDist <= 2) {
+        result.status = 'ERROR';
+        const matchedClass = allClasses.find(c => c.id === bestMatch);
+        result.message = `Lớp "${row.lop}" không tồn tại. Bạn có ý là "${matchedClass?.name || bestMatch}"?`;
+      } else {
+        result.status = 'ERROR';
+        result.message = `Lớp "${row.lop}" không tồn tại trong hệ thống`;
+      }
+      results.push(result);
+      continue;
+    }
+
+    // 5.2 Tìm HS trong lớp theo tên (exact match sau normalize)
+    const normalizedHoTen = normalizeName(row.hoTen);
+
+    // Tìm trong tất cả HS (cả ACTIVE và không ACTIVE) để có thể cảnh báo chính xác
+    const matchesAll = allStudentsIncludingInactive.filter(
+      (s) => s.classId === classId && normalizeName(s.user?.fullName || '') === normalizedHoTen
+    );
+
+    const matchesActive = matchesAll.filter((s) => s.boardingStatus === 'ACTIVE');
+
+    if (matchesAll.length === 0) {
+      // Fuzzy match trong lớp đó
+      const studentsInClass = allStudentsIncludingInactive.filter((s) => s.classId === classId);
+      let bestFuzzy: typeof studentsInClass[0] | null = null;
+      let bestDist = Infinity;
+      for (const s of studentsInClass) {
+        const dist = levenshteinDistance(normalizedHoTen, normalizeName(s.user?.fullName || ''));
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestFuzzy = s;
+        }
+      }
+
+      if (bestFuzzy && bestDist <= 3) {
+        result.status = 'AMBIGUOUS';
+        result.message = `Không tìm chính xác. Bạn có ý là "${bestFuzzy.user?.fullName}" (${bestFuzzy.boardingCode || 'N/A'})?`;
+        result.candidates = [{
+          studentId: bestFuzzy.id,
+          boardingCode: bestFuzzy.boardingCode || '',
+          fullName: bestFuzzy.user?.fullName || '',
+          birthDate: bestFuzzy.birthDate ? bestFuzzy.birthDate.toISOString().split('T')[0] : undefined,
+          parentPhone: bestFuzzy.parentPhone || undefined,
+        }];
+      } else {
+        result.status = 'ERROR';
+        result.message = `Không tìm thấy HS "${row.hoTen}" trong lớp ${row.lop}`;
+      }
+      results.push(result);
+      continue;
+    }
+
+    // HS tìm thấy nhưng không ACTIVE
+    if (matchesActive.length === 0) {
+      result.status = 'WARNING';
+      result.message = `HS "${row.hoTen}" không đăng ký bán trú → Bỏ qua`;
+      results.push(result);
+      continue;
+    }
+
+    // 5.3 Xử lý trùng tên
+    let matchedStudent = matchesActive[0];
+
+    if (matchesActive.length > 1) {
+      // Thử dùng NgaySinh để phân biệt
+      if (row.ngaySinh) {
+        const inputBirthDate = row.ngaySinh; // DD/MM/YYYY string
+        const matchByBirth = matchesActive.filter((s) => {
+          if (!s.birthDate) return false;
+          const dbDate = s.birthDate.toISOString().split('T')[0]; // YYYY-MM-DD
+          // Convert input DD/MM/YYYY to YYYY-MM-DD for comparison
+          const parts = inputBirthDate.split('/');
+          if (parts.length === 3) {
+            const comparable = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+            return dbDate === comparable;
+          }
+          return false;
+        });
+
+        if (matchByBirth.length === 1) {
+          matchedStudent = matchByBirth[0];
+          // Resolved by birth date!
+        } else {
+          // NgaySinh didn't help — still ambiguous
+          result.status = 'AMBIGUOUS';
+          result.message = `Tìm thấy ${matchesActive.length} HS cùng tên "${row.hoTen}" lớp ${row.lop}, ngày sinh không khớp → Cần chọn thủ công`;
+          result.candidates = matchesActive.map((s) => ({
+            studentId: s.id,
+            boardingCode: s.boardingCode || '',
+            fullName: s.user?.fullName || '',
+            birthDate: s.birthDate ? s.birthDate.toISOString().split('T')[0] : undefined,
+            parentPhone: s.parentPhone || undefined,
+          }));
+          results.push(result);
+          continue;
+        }
+      } else {
+        // Không có NgaySinh → cần chọn thủ công
+        result.status = 'AMBIGUOUS';
+        result.message = `Tìm thấy ${matchesActive.length} HS cùng tên "${row.hoTen}" lớp ${row.lop} → Cần chọn thủ công`;
+        result.candidates = matchesActive.map((s) => ({
+          studentId: s.id,
+          boardingCode: s.boardingCode || '',
+          fullName: s.user?.fullName || '',
+          birthDate: s.birthDate ? s.birthDate.toISOString().split('T')[0] : undefined,
+          parentPhone: s.parentPhone || undefined,
+        }));
+        results.push(result);
+        continue;
+      }
+    }
+
+    // 5.4 Kiểm tra trùng lặp trong file
+    const dedupeKey = `${matchedStudent.id}`;
+    if (seenKeys.has(dedupeKey)) {
+      result.status = 'WARNING';
+      result.message = `Trùng lặp trong file — HS "${row.hoTen}" đã xuất hiện ở dòng trước → Bỏ qua`;
+      results.push(result);
+      continue;
+    }
+    seenKeys.add(dedupeKey);
+
+    // 5.5 Kiểm tra đã có đơn cắt suất hôm nay
+    const existingStatus = cancellationMap.get(matchedStudent.id);
+    if (existingStatus === 'APPROVED' || existingStatus === 'PENDING') {
+      result.status = 'WARNING';
+      result.message = `HS "${row.hoTen}" (${matchedStudent.boardingCode || 'N/A'}) đã cắt suất hôm nay (${existingStatus === 'APPROVED' ? 'Đã duyệt' : 'Chờ duyệt'}) → Bỏ qua`;
+      results.push(result);
+      continue;
+    }
+
+    // 5.6 Match thành công
+    result.status = 'OK';
+    result.matchedStudentId = matchedStudent.id;
+    result.matchedBoardingCode = matchedStudent.boardingCode || 'N/A';
+    result.message = `→ ${matchedStudent.boardingCode || matchedStudent.id}`;
+    results.push(result);
+  }
+
+  return {
+    rows: results,
+    totalOk: results.filter((r) => r.status === 'OK').length,
+    totalWarning: results.filter((r) => r.status === 'WARNING').length,
+    totalError: results.filter((r) => r.status === 'ERROR').length,
+    totalAmbiguous: results.filter((r) => r.status === 'AMBIGUOUS').length,
+  };
+}
+
+/**
+ * Import cắt suất hàng loạt từ danh sách studentIds đã được validate.
+ * Tạo MealCancellation (APPROVED) + sync DailyMealSummary + broadcast dining courts.
+ */
+export async function importMealCancellations(
+  studentIds: string[],
+  reason: string
+) {
+  try {
+    if (!studentIds || studentIds.length === 0) {
+      return { success: false, error: 'Không có học sinh nào để import' };
+    }
+
+    const session = await auth();
+    if (!session?.user || session.user.role === 'ACCOUNTANT') {
+      return { success: false, error: 'Không có quyền thực hiện chức năng này' };
+    }
+
+    // 1. Kiểm tra giờ chốt
+    const settings = await prisma.systemSetting.findMany({
+      where: { key: { in: ['MEAL_LOCK_TIME_2', 'CUTOFF_TIME'] } },
+    });
+    const cutoffTime = settings.find((s) => s.key === 'MEAL_LOCK_TIME_2')?.value
+                    || settings.find((s) => s.key === 'CUTOFF_TIME')?.value
+                    || '07:00';
+
+    if (isPastCutoffTime(cutoffTime)) {
+      return { success: false, error: `Đã quá giờ chốt suất (${cutoffTime}). Không thể import cắt suất cho hôm nay.` };
+    }
+
+    // 2. Ngày hôm nay
+    const todayUTC = getVietnamTodayUTC();
+    const approverId = session.user.id;
+    const noteText = `Import Excel cắt suất: ${reason.trim()}`;
+
+    // 3. Upsert MealCancellation hàng loạt
+    let importedCount = 0;
+    let skippedCount = 0;
+
+    await prisma.$transaction(
+      studentIds.map((studentId) =>
+        prisma.mealCancellation.upsert({
+          where: {
+            studentId_cancelDate: {
+              studentId,
+              cancelDate: todayUTC,
+            },
+          },
+          update: {
+            reason: reason.trim(),
+            status: 'APPROVED',
+            approvalType: 'MANUAL',
+            approvedBy: approverId,
+            approvedAt: new Date(),
+            note: noteText,
+          },
+          create: {
+            studentId,
+            cancelDate: todayUTC,
+            reason: reason.trim(),
+            status: 'APPROVED',
+            approvalType: 'MANUAL',
+            approvedBy: approverId,
+            approvedAt: new Date(),
+            note: noteText,
+          },
+        })
+      )
+    );
+    importedCount = studentIds.length;
+
+    // 4. Sync DailyMealSummary
+    try {
+      await syncDailyMealSummaryForDate(todayUTC);
+    } catch (syncErr) {
+      console.error('Lỗi khi syncDailyMealSummaryForDate sau import Excel:', syncErr);
+    }
+
+    // 5. Audit Log
+    await logAudit({
+      userId: approverId,
+      userName: (session.user as any)?.name || (session.user as any)?.username || 'Quản trị viên',
+      userRole: session.user.role,
+      action: AUDIT_ACTIONS.IMPORT,
+      module: AUDIT_MODULES.MEALS,
+      description: `Import Excel cắt suất hàng loạt: ${importedCount} học sinh, lý do: ${reason.trim()}`,
+      metadata: {
+        count: importedCount,
+        reason: reason.trim(),
+        date: todayUTC.toISOString().split('T')[0],
+      },
+    });
+
+    // 6. Broadcast & Revalidate
+    broadcastChange('meal_cancellations', 'INSERT');
+    broadcastChange('daily_meals', 'UPDATE');
+    broadcastChange('daily_dining_courts', 'UPDATE');
+
+    revalidatePath('/admin/meal-cancel');
+    revalidatePath('/admin/daily-meals');
+
+    return {
+      success: true,
+      message: `Đã import thành công cắt suất cho ${importedCount} học sinh.`,
+      importedCount,
+      skippedCount,
+    };
+  } catch (error) {
+    console.error('Lỗi khi import cắt suất hàng loạt từ Excel:', error);
+    return { success: false, error: 'Lỗi trong quá trình import cắt suất' };
   }
 }

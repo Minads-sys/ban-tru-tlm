@@ -36,6 +36,7 @@ import { DiningCourtWeeklyMatrix } from './dining-court-weekly-matrix';
 import { splitVietnameseName } from '@/lib/utils';
 import Swal from 'sweetalert2';
 import { useSession } from 'next-auth/react';
+import { useRealtime } from '@/hooks/use-realtime';
 
 interface DiningCourtTabProps {
   cutoffTime: string;
@@ -78,6 +79,14 @@ export function DiningCourtTab({ cutoffTime, schoolName }: DiningCourtTabProps) 
   useEffect(() => {
     fetchData(selectedDate);
   }, [selectedDate, fetchData]);
+
+  // Lắng nghe thay đổi cắt suất / đổi món → auto refresh dữ liệu sân ăn
+  useRealtime({
+    table: 'daily_dining_courts',
+    onChanged: () => {
+      fetchData(selectedDate);
+    },
+  });
 
   // Chốt suất ăn chính thức
   const handleLockMealsFromCourtTab = async () => {

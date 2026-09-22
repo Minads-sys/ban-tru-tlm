@@ -37,6 +37,13 @@ export interface ScheduleImportRow {
   ghiChu?: string;
 }
 
+export interface MealCancelImportRow {
+  stt: number;
+  hoTen: string;
+  lop: string;
+  ngaySinh?: string;
+}
+
 export interface ValidationError {
   row: number;
   column: string;
@@ -1149,6 +1156,119 @@ export async function generateSpecialMealTemplate(): Promise<Buffer> {
   sheet.addRow([1, "Nguyễn Văn An", "10A1", "TIẾT 4", "", "TIẾT 5", ""]);
   sheet.addRow([2, "Trần Thị Bình", "10A1", "", "TIẾT 5", "", "TIẾT 4"]);
   sheet.addRow([3, "Lê Hoàng Chi", "10A2", "TIẾT 5", "TIẾT 4", "", ""]);
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  return Buffer.from(buffer);
+}
+
+
+/**
+ * Parse file Excel Cắt suất ăn
+ */
+export async function parseMealCancelExcel(buffer: Uint8Array): Promise<ImportResult<MealCancelImportRow>> {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer as any);
+  const sheet = workbook.worksheets[0];
+  const data: MealCancelImportRow[] = [];
+  const errors: ValidationError[] = [];
+
+  let headerRowNum = 3;
+  let hoTenCol = 2;
+  let lopCol = 3;
+  let ngaySinhCol = 4;
+
+  sheet.eachRow((row, rowNumber) => {
+    row.eachCell((cell, colNumber) => {
+      const cellValue = removeVietnameseTones(String(cell.value || "").toLowerCase());
+      if (cellValue.includes("hoten") || cellValue.includes("ho ten")) {
+        headerRowNum = rowNumber;
+        hoTenCol = colNumber;
+      } else if (cellValue.includes("lop")) {
+        lopCol = colNumber;
+      } else if (cellValue.includes("ngaysinh") || cellValue.includes("ngay sinh")) {
+        ngaySinhCol = colNumber;
+      }
+    });
+  });
+
+  sheet.eachRow((row, rowNumber) => {
+    if (rowNumber <= headerRowNum) return;
+
+    const hoTen = String(row.getCell(hoTenCol).value || "").trim();
+    const lop = String(row.getCell(lopCol).value || "").trim();
+    if (!hoTen && !lop) return;
+
+    const rawNgaySinh = row.getCell(ngaySinhCol).value;
+    let ngaySinh: string | undefined = undefined;
+    
+    if (rawNgaySinh) {
+        const parsed = parseDateValue(rawNgaySinh);
+        ngaySinh = parsed ? parsed.display : undefined;
+    }
+
+    if (!hoTen) errors.push({ row: rowNumber, column: "HoTen", message: "Họ Tên không được để trống" });
+    if (!lop) errors.push({ row: rowNumber, column: "Lop", message: "Lớp không được để trống" });
+
+    data.push({
+      stt: rowNumber - headerRowNum,
+      hoTen,
+      lop,
+      ngaySinh
+    });
+  });
+
+  return { data, errors, isValid: errors.length === 0 };
+}
+
+/**
+ * Template 5: Danh sách Cắt suất ăn bán trú
+ */
+export async function generateMealCancelTemplate(): Promise<Buffer> {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = "BAN-TRU-TLM";
+  workbook.created = new Date();
+
+  const sheet = workbook.addWorksheet("CatSuatAn", {
+    properties: { defaultColWidth: 15 },
+  });
+
+  const headerStyle: Partial<ExcelJS.Style> = {
+    font: { bold: true, color: { argb: "FFFFFFFF" }, size: 12 },
+    fill: { type: "pattern", pattern: "solid", fgColor: { argb: "FF2563EB" } },
+    alignment: { horizontal: "center", vertical: "middle" },
+    border: {
+      top: { style: "thin" },
+      left: { style: "thin" },
+      bottom: { style: "thin" },
+      right: { style: "thin" },
+    },
+  };
+
+  sheet.mergeCells("A1:D1");
+  const titleCell = sheet.getCell("A1");
+  titleCell.value = "DANH SÁCH CẮT SUẤT ĂN BÁN TRÚ";
+  titleCell.font = { bold: true, size: 14, color: { argb: "FF2563EB" } };
+  titleCell.alignment = { horizontal: "center" };
+
+  sheet.mergeCells("A2:D2");
+  const instrCell = sheet.getCell("A2");
+  instrCell.value = "Hướng dẫn: Điền Họ tên và Lớp học sinh cần cắt suất. Cột Ngày sinh không bắt buộc nhưng giúp phân biệt trùng tên.";
+  instrCell.font = { italic: true, color: { argb: "FF6B7280" } };
+
+  const headers = ["STT", "HoTen (*)", "Lop (*)", "NgaySinh"];
+  const headerRow = sheet.addRow(headers);
+  headerRow.eachCell((cell) => {
+    cell.style = headerStyle;
+  });
+
+  sheet.getColumn(1).width = 8;
+  sheet.getColumn(2).width = 30;
+  sheet.getColumn(3).width = 12;
+  sheet.getColumn(4).width = 15;
+
+  sheet.addRow([1, "Nguyễn Văn A", "10A1", "15/05/2010"]);
+  sheet.addRow([2, "Trần Thị B", "10A2", ""]);
+  sheet.addRow([3, "Lê Hoàng C", "11B1", "20/11/2009"]);
 
   const buffer = await workbook.xlsx.writeBuffer();
   return Buffer.from(buffer);

@@ -6,6 +6,7 @@ export type RealtimeChannel =
   | 'payment_transactions'
   | 'meal_cancellations'
   | 'daily_meals'
+  | 'daily_dining_courts'
   | 'students'
   | 'classes'
   | 'schedules'
