@@ -242,6 +242,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
   // Cài đặt hiển thị tab theo cấu hình Quản trị viên Admin
   const [showDebtTab, setShowDebtTab] = useState<boolean>(false);
   const [showHistoryTab, setShowHistoryTab] = useState<boolean>(false);
+  const [mealLockTime, setMealLockTime] = useState<string>('07:00');
   const [loadingSettings, setLoadingSettings] = useState<boolean>(true);
 
   const formatMoney = (val: number | string) =>
@@ -326,16 +327,28 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
   const [overrideError, setOverrideError] = useState<string | null>(null);
   const [overrideSuccess, setOverrideSuccess] = useState<string | null>(null);
 
-  const getTomorrowDateString = () => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    // Nếu ngày mai là Chủ nhật (0), chuyển sang Thứ Hai vì Chủ nhật không có suất ăn
-    if (tomorrow.getDay() === 0) {
-      tomorrow.setDate(tomorrow.getDate() + 1);
+  const getMinDateString = () => {
+    // Lấy thời gian hiện tại theo múi giờ Việt Nam
+    const now = new Date();
+    const vnNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+    const [hours, minutes] = (mealLockTime || '07:00').split(':').map(Number);
+    const isPastCutoff = !isNaN(hours) && (
+      vnNow.getHours() > hours || 
+      (vnNow.getHours() === hours && vnNow.getMinutes() >= (minutes || 0))
+    );
+
+    const target = new Date(vnNow);
+    if (isPastCutoff) {
+      // Đã qua giờ chốt → ngày sớm nhất là ngày mai
+      target.setDate(target.getDate() + 1);
     }
-    const yyyy = tomorrow.getFullYear();
-    const mm = String(tomorrow.getMonth() + 1).padStart(2, "0");
-    const dd = String(tomorrow.getDate()).padStart(2, "0");
+    // Nếu rơi vào Chủ nhật → chuyển sang Thứ Hai
+    if (target.getDay() === 0) {
+      target.setDate(target.getDate() + 1);
+    }
+    const yyyy = target.getFullYear();
+    const mm = String(target.getMonth() + 1).padStart(2, "0");
+    const dd = String(target.getDate()).padStart(2, "0");
     return `${yyyy}-${mm}-${dd}`;
   };
 
@@ -357,7 +370,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
     return `${yyyy}-${mm}-${dd}`;
   };
 
-  const minDate = getTomorrowDateString();
+  const minDate = getMinDateString();
   const maxDate = getEndOfWeekDateString();
 
   const isSunday = (dateStr: string) => {
@@ -461,6 +474,9 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
         const data = await res.json();
         setShowDebtTab(data.STUDENT_SHOW_DEBT_TAB === 'true');
         setShowHistoryTab(data.STUDENT_SHOW_HISTORY_TAB === 'true');
+        // Lấy giờ chốt suất để xác định ngày tối thiểu cho cắt suất
+        const lockTime = data.MEAL_LOCK_TIME_2 || data.CUTOFF_TIME || '07:00';
+        setMealLockTime(lockTime);
       }
     } catch (err) {
       console.error('Lỗi khi tải cài đặt hệ thống cho học sinh:', err);
