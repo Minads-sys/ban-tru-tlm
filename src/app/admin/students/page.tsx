@@ -33,6 +33,7 @@ import {
   ArrowRightLeft,
   ShieldAlert,
   GitMerge,
+  GraduationCap,
 } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
@@ -116,6 +117,7 @@ export default function AdminStudentsPage() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedClass, setSelectedClass] = useState<string>('ALL');
   const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
+  const [selectedGrade, setSelectedGrade] = useState<'ALL' | '10' | '11' | '12'>('ALL');
 
   // Cancel dialog states
   const [cancellingStudent, setCancellingStudent] = useState<StudentItem | null>(null);
@@ -383,7 +385,50 @@ export default function AdminStudentsPage() {
     onChanged: () => fetchClasses(),
   });
 
+  // Xác định khối học của học sinh dựa vào tên lớp hoặc mã lớp (10A1 -> 10, 11A2 -> 11, 12A3 -> 12)
+  const getStudentGrade = useCallback((student: StudentItem): string => {
+    const className = (student.class?.name || student.classId || '').trim();
+    if (className.startsWith('10')) return '10';
+    if (className.startsWith('11')) return '11';
+    if (className.startsWith('12')) return '12';
+    return 'OTHER';
+  }, []);
+
+  // Đếm số lượng học sinh theo từng khối
+  const gradeCounts = useMemo(() => {
+    let count10 = 0;
+    let count11 = 0;
+    let count12 = 0;
+    students.forEach((s) => {
+      const g = getStudentGrade(s);
+      if (g === '10') count10++;
+      else if (g === '11') count11++;
+      else if (g === '12') count12++;
+    });
+    return {
+      ALL: students.length,
+      '10': count10,
+      '11': count11,
+      '12': count12,
+    };
+  }, [students, getStudentGrade]);
+
+  // Xử lý chuyển đổi Khối
+  const handleGradeChange = (newGrade: 'ALL' | '10' | '11' | '12') => {
+    setSelectedGrade(newGrade);
+    setCurrentPage(1);
+    // Nếu lớp đang chọn không thuộc khối mới -> reset về ALL
+    if (selectedClass !== 'ALL' && newGrade !== 'ALL') {
+      const isClassInNewGrade = selectedClass.startsWith(newGrade) ||
+        classes.find((c) => c.id === selectedClass)?.name?.startsWith(newGrade);
+      if (!isClassInNewGrade) {
+        setSelectedClass('ALL');
+      }
+    }
+  };
+
   // Tổng hợp danh sách lớp từ bảng classes + students, sắp xếp tự nhiên (10A1, 10A2... TEST 1)
+  // Tự động lọc danh sách lớp theo khối đã chọn
   const classOptions = useMemo(() => {
     const list: { id: string; name: string }[] = [];
     const seenIds = new Set<string>();
@@ -406,16 +451,28 @@ export default function AdminStudentsPage() {
       }
     });
 
-    return list.sort((a, b) =>
+    // Nếu đang chọn một khối cụ thể (10, 11, 12), chỉ hiển thị các lớp của khối đó trong dropdown
+    const filteredByGrade = selectedGrade === 'ALL'
+      ? list
+      : list.filter((cls) => cls.name.startsWith(selectedGrade) || cls.id.startsWith(selectedGrade));
+
+    return filteredByGrade.sort((a, b) =>
       a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
     );
-  }, [classes, students]);
+  }, [classes, students, selectedGrade]);
 
-  // Filter students by search term (Mã HS, Mã Bán Trú, Tên HS)
+  // Filter students by grade, class, search term
   const filteredStudents = useMemo(() => {
-    if (!searchQuery.trim()) return students;
+    let result = students;
+
+    // Lọc theo Khối (10, 11, 12)
+    if (selectedGrade !== 'ALL') {
+      result = result.filter((s) => getStudentGrade(s) === selectedGrade);
+    }
+
+    if (!searchQuery.trim()) return result;
     const q = searchQuery.toLowerCase().trim();
-    return students.filter(
+    return result.filter(
       (s) =>
         s.studentCode.toLowerCase().includes(q) ||
         (s.boardingCode && s.boardingCode.toLowerCase().includes(q)) ||
@@ -423,7 +480,7 @@ export default function AdminStudentsPage() {
         s.user.username.toLowerCase().includes(q) ||
         (s.parentPhone && s.parentPhone.includes(q))
     );
-  }, [students, searchQuery]);
+  }, [students, selectedGrade, searchQuery, getStudentGrade]);
 
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
@@ -432,7 +489,7 @@ export default function AdminStudentsPage() {
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, selectedClass, selectedStatus]);
+  }, [searchQuery, selectedGrade, selectedClass, selectedStatus]);
 
   const paginatedStudents = useMemo(() => {
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -1177,6 +1234,100 @@ export default function AdminStudentsPage() {
          ======================================================== */}
       <Card className="border-slate-200 shadow-xs bg-white">
         <CardContent className="p-4 sm:p-5">
+          {/* Grade selection tabs (Khối 10, 11, 12) - Phương án B */}
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4 pb-3.5 border-b border-slate-100">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-semibold text-slate-600 flex items-center gap-1.5 mr-1">
+                <GraduationCap className="h-4 w-4 text-blue-600" />
+                Khối học:
+              </span>
+              <div className="inline-flex rounded-lg bg-slate-100 p-1 gap-1">
+                <button
+                  type="button"
+                  onClick={() => handleGradeChange('ALL')}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all flex items-center gap-1.5 cursor-pointer ${
+                    selectedGrade === 'ALL'
+                      ? 'bg-white text-blue-700 shadow-2xs font-semibold'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                  }`}
+                >
+                  <span>Tất cả khối</span>
+                  <Badge
+                    variant="secondary"
+                    className={`px-1.5 py-0 text-[10px] font-bold ${
+                      selectedGrade === 'ALL' ? 'bg-blue-100 text-blue-800' : 'bg-slate-200/80 text-slate-700'
+                    }`}
+                  >
+                    {gradeCounts.ALL}
+                  </Badge>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleGradeChange('10')}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all flex items-center gap-1.5 cursor-pointer ${
+                    selectedGrade === '10'
+                      ? 'bg-blue-600 text-white shadow-2xs font-semibold'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                  }`}
+                >
+                  <span>Khối 10</span>
+                  <Badge
+                    variant="secondary"
+                    className={`px-1.5 py-0 text-[10px] font-bold ${
+                      selectedGrade === '10' ? 'bg-white/25 text-white' : 'bg-slate-200/80 text-slate-700'
+                    }`}
+                  >
+                    {gradeCounts['10']}
+                  </Badge>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleGradeChange('11')}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all flex items-center gap-1.5 cursor-pointer ${
+                    selectedGrade === '11'
+                      ? 'bg-indigo-600 text-white shadow-2xs font-semibold'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                  }`}
+                >
+                  <span>Khối 11</span>
+                  <Badge
+                    variant="secondary"
+                    className={`px-1.5 py-0 text-[10px] font-bold ${
+                      selectedGrade === '11' ? 'bg-white/25 text-white' : 'bg-slate-200/80 text-slate-700'
+                    }`}
+                  >
+                    {gradeCounts['11']}
+                  </Badge>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleGradeChange('12')}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all flex items-center gap-1.5 cursor-pointer ${
+                    selectedGrade === '12'
+                      ? 'bg-emerald-600 text-white shadow-2xs font-semibold'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                  }`}
+                >
+                  <span>Khối 12</span>
+                  <Badge
+                    variant="secondary"
+                    className={`px-1.5 py-0 text-[10px] font-bold ${
+                      selectedGrade === '12' ? 'bg-white/25 text-white' : 'bg-slate-200/80 text-slate-700'
+                    }`}
+                  >
+                    {gradeCounts['12']}
+                  </Badge>
+                </button>
+              </div>
+            </div>
+
+            {selectedGrade !== 'ALL' && (
+              <span className="text-xs text-slate-500 italic">
+                Đang lọc học sinh và lớp thuộc <strong>Khối {selectedGrade}</strong>
+              </span>
+            )}
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
             {/* Search input */}
             <div className="lg:col-span-2 relative">
@@ -1200,7 +1351,9 @@ export default function AdminStudentsPage() {
                   </div>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="ALL">Tất cả các lớp</SelectItem>
+                  <SelectItem value="ALL">
+                    {selectedGrade === 'ALL' ? 'Tất cả các lớp' : `Tất cả lớp Khối ${selectedGrade}`}
+                  </SelectItem>
                   {classOptions.map((cls) => (
                     <SelectItem key={cls.id} value={cls.id}>
                       Lớp {cls.name}
@@ -1230,23 +1383,60 @@ export default function AdminStudentsPage() {
           </div>
 
           {/* Active Filter Indicator */}
-          {(selectedClass !== 'ALL' || selectedStatus !== 'ALL' || searchQuery.trim()) && (
+          {(selectedGrade !== 'ALL' || selectedClass !== 'ALL' || selectedStatus !== 'ALL' || searchQuery.trim()) && (
             <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3 text-xs text-slate-500">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span>Bộ lọc đang áp dụng:</span>
+                {selectedGrade !== 'ALL' && (
+                  <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 flex items-center gap-1">
+                    <span>Khối: {selectedGrade}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleGradeChange('ALL')}
+                      className="ml-0.5 hover:text-blue-900 font-bold cursor-pointer"
+                      title="Bỏ lọc khối"
+                    >
+                      ×
+                    </button>
+                  </Badge>
+                )}
                 {selectedClass !== 'ALL' && (
-                  <Badge variant="outline" className="bg-slate-50 text-slate-700">
-                    Lớp: {selectedClass}
+                  <Badge variant="outline" className="bg-slate-50 text-slate-700 flex items-center gap-1">
+                    <span>Lớp: {selectedClass}</span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedClass('ALL')}
+                      className="ml-0.5 hover:text-slate-900 font-bold cursor-pointer"
+                      title="Bỏ lọc lớp"
+                    >
+                      ×
+                    </button>
                   </Badge>
                 )}
                 {selectedStatus !== 'ALL' && (
-                  <Badge variant="outline" className="bg-slate-50 text-slate-700">
-                    Trạng thái: {selectedStatus}
+                  <Badge variant="outline" className="bg-slate-50 text-slate-700 flex items-center gap-1">
+                    <span>Trạng thái: {selectedStatus}</span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedStatus('ALL')}
+                      className="ml-0.5 hover:text-slate-900 font-bold cursor-pointer"
+                      title="Bỏ lọc trạng thái"
+                    >
+                      ×
+                    </button>
                   </Badge>
                 )}
                 {searchQuery.trim() && (
-                  <Badge variant="outline" className="bg-slate-50 text-slate-700">
-                    Từ khóa: &quot;{searchQuery}&quot;
+                  <Badge variant="outline" className="bg-slate-50 text-slate-700 flex items-center gap-1">
+                    <span>Từ khóa: &quot;{searchQuery}&quot;</span>
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      className="ml-0.5 hover:text-slate-900 font-bold cursor-pointer"
+                      title="Xóa từ khóa"
+                    >
+                      ×
+                    </button>
                   </Badge>
                 )}
               </div>
@@ -1255,11 +1445,12 @@ export default function AdminStudentsPage() {
                 variant="ghost"
                 size="sm"
                 onClick={() => {
+                  setSelectedGrade('ALL');
                   setSelectedClass('ALL');
                   setSelectedStatus('ALL');
                   setSearchQuery('');
                 }}
-                className="h-6 text-xs text-blue-600 hover:text-blue-800 p-0"
+                className="h-6 text-xs text-blue-600 hover:text-blue-800 p-0 cursor-pointer"
               >
                 Xóa tất cả bộ lọc
               </Button>
@@ -1280,6 +1471,7 @@ export default function AdminStudentsPage() {
               </CardTitle>
               <CardDescription className="text-xs text-muted-foreground">
                 Hiển thị {filteredStudents.length} / {students.length} học sinh
+                {selectedGrade !== 'ALL' && ` (Khối ${selectedGrade})`}
               </CardDescription>
             </div>
           </div>
