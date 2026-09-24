@@ -274,6 +274,12 @@ export async function GET(request: NextRequest) {
     // =========================================================================
     // E. TIẾN ĐỘ THU TIỀN ĂN & KÊNH THANH TOÁN (BILLING PROGRESS)
     // =========================================================================
+    // 1. Lấy đơn giá suất ăn từ cài đặt hệ thống (mặc định 45.000đ)
+    const unitPriceSetting = await prisma.systemSetting.findUnique({
+      where: { key: "MEAL_UNIT_PRICE" },
+    });
+    const defaultUnitPrice = unitPriceSetting ? parseFloat(unitPriceSetting.value) : 45000;
+
     const bills = await prisma.monthlyBill.findMany({
       where: {
         month,
@@ -288,11 +294,15 @@ export async function GET(request: NextRequest) {
       },
     });
 
+    const mealUnitPrice = bills.length > 0 && bills[0].unitPrice ? Number(bills[0].unitPrice) : defaultUnitPrice;
+
     let totalReceivable = 0;
     let totalCollected = 0;
     let bankTransferAmount = 0;
     let cashAmount = 0;
     let paidStudentsCount = 0;
+    let unpaidStudentsCount = 0;
+    let totalRemainingDebt = 0;
 
     for (const b of bills) {
       const billFinal = Number(b.finalAmount);
@@ -310,9 +320,61 @@ export async function GET(request: NextRequest) {
         }
       }
 
+      const debt = Math.max(0, billFinal - billPaid);
+      totalRemainingDebt += debt;
+
       if (billPaid >= billFinal && billFinal > 0) {
         paidStudentsCount += 1;
+      } else if (debt > 0) {
+        unpaidStudentsCount += 1;
       }
+    }
+
+    // Nếu chưa tạo hóa đơn (bills.length === 0), tạm tính dự kiến thu theo Thời khóa biểu của học sinh ACTIVE
+    let isEstimatedFromSchedule = false;
+    if (bills.length === 0) {
+      const numDaysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+      const dayFieldMap: Record<number, "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday"> = {
+        1: "monday", 2: "tuesday", 3: "wednesday", 4: "thursday", 5: "friday", 6: "saturday",
+      };
+      const getWkNumber = (d: Date, targetYear: number): number => {
+        const startOfYear = new Date(Date.UTC(targetYear, 0, 1));
+        return Math.ceil(((d.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getUTCDay() + 1) / 7);
+      };
+
+      const [schedules, activeStudents] = await Promise.all([
+        prisma.classWeeklySchedule.findMany({ where: { year } }),
+        prisma.student.findMany({
+          where: { boardingStatus: "ACTIVE", ...classFilter },
+          select: { id: true, classId: true, mealStartDate: true },
+        }),
+      ]);
+
+      const schedMap = new Map<string, (typeof schedules)[0]>();
+      schedules.forEach((s) => schedMap.set(`${s.classId}_${s.year}_${s.weekNumber}`, s));
+
+      let totalPlannedDays = 0;
+      for (const st of activeStudents) {
+        for (let day = 1; day <= numDaysInMonth; day++) {
+          const date = new Date(Date.UTC(year, month - 1, day));
+          if (st.mealStartDate && date < new Date(st.mealStartDate)) continue;
+          const dow = date.getUTCDay();
+          if (dow === 0) continue;
+          const df = dayFieldMap[dow];
+          if (!df) continue;
+          const wn = getWkNumber(date, year);
+          const sch = schedMap.get(`${st.classId}_${year}_${wn}`);
+          if (sch && sch[df] && sch[df] !== "NONE") {
+            totalPlannedDays++;
+          }
+        }
+      }
+
+      if (totalPlannedDays > 0) {
+        totalReceivable = totalPlannedDays * mealUnitPrice;
+        isEstimatedFromSchedule = true;
+      }
+      totalRemainingDebt = Math.max(0, totalReceivable - totalCollected);
     }
 
     const percentCollected = totalReceivable > 0
@@ -350,6 +412,7 @@ export async function GET(request: NextRequest) {
     ]);
 
     const totalMealsCount = dailyTrend.reduce((sum, d) => sum + d.finalTotal, 0);
+    const totalServedMealsAmount = totalMealsCount * mealUnitPrice;
     const totalScheduleRegisteredCount = dailyTrend.reduce((sum, d) => sum + d.totalRegistered, 0);
     const overallCancellationRate = totalScheduleRegisteredCount > 0
       ? Math.round((totalCancellationsCount / totalScheduleRegisteredCount) * 1000) / 10
@@ -380,16 +443,21 @@ export async function GET(request: NextRequest) {
       mealDistribution,
       topCancellationReasons,
       financialOverview: {
-        totalReceivable,
-        totalCollected,
-        remainingDebt: Math.max(0, totalReceivable - totalCollected),
+        totalReceivable, // 1. Tổng tiền dự kiến thu
+        totalServedMealsAmount, // 2. Tổng tiền số suất ăn đã phục vụ
+        totalCollected, // 3. Tổng tiền học sinh đã thanh toán
+        remainingDebt: totalRemainingDebt, // 4. Tổng tiền dự kiến còn phải thu
+        unitPrice: mealUnitPrice,
+        totalMealsServed: totalMealsCount,
         percentCollected,
         paidStudentsCount,
-        totalStudentsCount: bills.length,
+        unpaidStudentsCount,
+        totalStudentsCount: bills.length || (isEstimatedFromSchedule ? totalActiveStudents : 0),
         bankTransferAmount,
         bankTransferPercent,
         cashAmount,
         cashPercent,
+        isEstimatedFromSchedule,
       },
     });
   } catch (error) {

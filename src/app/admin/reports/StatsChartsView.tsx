@@ -46,6 +46,12 @@ import {
   Building2,
   Calendar,
   Sparkles,
+  Receipt,
+  CheckCircle2,
+  Clock,
+  Banknote,
+  ArrowRight,
+  ShieldCheck,
 } from "lucide-react";
 import Swal from "sweetalert2";
 
@@ -95,15 +101,20 @@ interface StatisticsData {
   }>;
   financialOverview: {
     totalReceivable: number;
+    totalServedMealsAmount: number;
     totalCollected: number;
     remainingDebt: number;
+    unitPrice: number;
+    totalMealsServed: number;
     percentCollected: number;
     paidStudentsCount: number;
+    unpaidStudentsCount: number;
     totalStudentsCount: number;
     bankTransferAmount: number;
     bankTransferPercent: number;
     cashAmount: number;
     cashPercent: number;
+    isEstimatedFromSchedule?: boolean;
   };
 }
 
@@ -189,14 +200,24 @@ export default function StatsChartsView() {
         note: "Toàn trường",
       });
       wsKPI.addRow({
-        metric: "Tiền ăn phải thu",
+        metric: "1. Tổng tiền dự kiến thu",
         value: `${data.financialOverview.totalReceivable.toLocaleString("vi-VN")} đ`,
-        note: `Đã thu ${data.financialOverview.percentCollected}%`,
+        note: data.financialOverview.isEstimatedFromSchedule ? "Tạm tính theo Thời khóa biểu" : "Theo hóa đơn bán trú phát hành",
       });
       wsKPI.addRow({
-        metric: "Tiền ăn đã thu",
+        metric: "2. Tổng tiền số suất ăn đã phục vụ",
+        value: `${(data.financialOverview.totalServedMealsAmount || 0).toLocaleString("vi-VN")} đ`,
+        note: `${(data.financialOverview.totalMealsServed || data.kpis.totalMeals).toLocaleString("vi-VN")} suất × ${(data.financialOverview.unitPrice || 45000).toLocaleString("vi-VN")} đ/suất`,
+      });
+      wsKPI.addRow({
+        metric: "3. Tổng tiền học sinh đã thanh toán",
         value: `${data.financialOverview.totalCollected.toLocaleString("vi-VN")} đ`,
-        note: `Còn nợ: ${data.financialOverview.remainingDebt.toLocaleString("vi-VN")} đ`,
+        note: `Đạt ${data.financialOverview.percentCollected}% (CK SePay: ${(data.financialOverview.bankTransferAmount || 0).toLocaleString("vi-VN")} đ, Tiền mặt: ${(data.financialOverview.cashAmount || 0).toLocaleString("vi-VN")} đ)`,
+      });
+      wsKPI.addRow({
+        metric: "4. Tổng tiền dự kiến còn phải thu",
+        value: `${data.financialOverview.remainingDebt.toLocaleString("vi-VN")} đ`,
+        note: `${data.financialOverview.unpaidStudentsCount || 0} học sinh còn nợ tiền ăn`,
       });
 
       // Sheet 2: Suất ăn theo ngày
@@ -284,15 +305,20 @@ export default function StatsChartsView() {
 
   const fin = data?.financialOverview || {
     totalReceivable: 0,
+    totalServedMealsAmount: 0,
     totalCollected: 0,
     remainingDebt: 0,
+    unitPrice: 45000,
+    totalMealsServed: 0,
     percentCollected: 0,
     paidStudentsCount: 0,
+    unpaidStudentsCount: 0,
     totalStudentsCount: 0,
     bankTransferAmount: 0,
     bankTransferPercent: 0,
     cashAmount: 0,
     cashPercent: 0,
+    isEstimatedFromSchedule: false,
   };
 
   return (
@@ -874,80 +900,248 @@ export default function StatsChartsView() {
             <div>
               <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
                 <CreditCard className="h-5 w-5 text-blue-600" />
-                Tình hình Thu phí Tiền ăn & Phương thức Thanh toán (Tháng {month}/{year})
+                Tình hình Thu phí Tiền ăn & Đối soát Quyết toán (Tháng {month}/{year})
               </CardTitle>
               <CardDescription className="text-xs text-slate-500">
-                Tổng hợp dòng tiền nộp qua ngân hàng SePay QR và Tiền mặt tại văn phòng
+                Tổng hợp dòng tiền dự kiến thu, giá trị suất ăn đã phục vụ, tiền thực thu và công nợ còn lại
               </CardDescription>
             </div>
-            <div className="text-left sm:text-right">
-              <span className="text-xs text-slate-400 block">Tổng tiền ăn phải thu</span>
-              <span className="text-lg font-black text-slate-900">
-                {fin.totalReceivable.toLocaleString("vi-VN")} đ
-              </span>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="text-xs font-semibold px-2.5 py-1 bg-slate-50">
+                Đơn giá: {fin.unitPrice.toLocaleString("vi-VN")} đ/suất
+              </Badge>
             </div>
           </div>
         </CardHeader>
-        <CardContent className="pt-5">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Box 1: Đã thu hoàn tất */}
-            <div className="p-4 rounded-xl bg-emerald-50/70 border border-emerald-200">
-              <div className="flex justify-between text-xs font-semibold text-emerald-800 mb-2">
-                <span>ĐÃ THU HOÀN TẤT ({fin.percentCollected}%)</span>
-                <span className="text-emerald-900 font-black">
-                  {fin.totalCollected.toLocaleString("vi-VN")} đ
+        <CardContent className="pt-5 space-y-6">
+          {/* HÀNG 1: 4 CHỈ SỐ TÀI CHÍNH TRỌNG TÂM */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* 1. Tổng tiền dự kiến thu */}
+            <div className="p-4 rounded-xl bg-blue-50/60 border border-blue-200 relative overflow-hidden flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-blue-700">
+                    1. Tổng tiền dự kiến thu
+                  </span>
+                  <div className="h-7 w-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center">
+                    <Receipt className="h-4 w-4" />
+                  </div>
+                </div>
+                <div className="mt-2.5">
+                  <span className="text-2xl font-black text-slate-900 tracking-tight">
+                    {fin.totalReceivable.toLocaleString("vi-VN")}
+                  </span>
+                  <span className="text-xs font-bold text-slate-500 ml-1">đ</span>
+                </div>
+              </div>
+              <div className="mt-3 pt-2.5 border-t border-blue-200/60 flex items-center justify-between text-[11px]">
+                <span className="text-slate-600 truncate">
+                  {fin.isEstimatedFromSchedule ? "Dự kiến theo TKB tháng" : "Theo hóa đơn phát hành"}
                 </span>
+                <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100 border-0 text-[10px] font-semibold shrink-0">
+                  {fin.totalStudentsCount} HS
+                </Badge>
               </div>
-              <div className="w-full h-2.5 bg-emerald-200 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-emerald-600 rounded-full transition-all duration-500"
-                  style={{ width: `${Math.min(100, fin.percentCollected)}%` }}
-                />
-              </div>
-              <div className="flex items-center justify-between text-[11px] text-emerald-700 mt-2">
-                <span>
-                  {fin.paidStudentsCount} / {fin.totalStudentsCount} học sinh hoàn thành
-                </span>
-                <span>Còn nợ: {fin.remainingDebt.toLocaleString("vi-VN")} đ</span>
-              </div>
+              <div className="absolute bottom-0 left-0 right-0 h-1 bg-blue-600" />
             </div>
 
-            {/* Box 2: Chuyển khoản QR SePay */}
-            <div className="p-4 rounded-xl bg-blue-50/70 border border-blue-200">
-              <div className="flex justify-between text-xs font-semibold text-blue-800 mb-2">
-                <span>CHUYỂN KHOẢN SEPAY QR ({fin.bankTransferPercent}%)</span>
-                <span className="text-blue-900 font-black">
-                  {fin.bankTransferAmount.toLocaleString("vi-VN")} đ
+            {/* 2. Tổng tiền số suất ăn đã phục vụ */}
+            <div className="p-4 rounded-xl bg-indigo-50/60 border border-indigo-200 relative overflow-hidden flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-700">
+                    2. Tiền suất ăn đã phục vụ
+                  </span>
+                  <div className="h-7 w-7 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center">
+                    <ChefHat className="h-4 w-4" />
+                  </div>
+                </div>
+                <div className="mt-2.5">
+                  <span className="text-2xl font-black text-indigo-950 tracking-tight">
+                    {fin.totalServedMealsAmount.toLocaleString("vi-VN")}
+                  </span>
+                  <span className="text-xs font-bold text-slate-500 ml-1">đ</span>
+                </div>
+              </div>
+              <div className="mt-3 pt-2.5 border-t border-indigo-200/60 flex items-center justify-between text-[11px]">
+                <span className="text-indigo-800 font-medium truncate">
+                  {fin.totalMealsServed.toLocaleString("vi-VN")} suất × {fin.unitPrice.toLocaleString("vi-VN")} đ
                 </span>
+                <Badge className="bg-indigo-100 text-indigo-800 hover:bg-indigo-100 border-0 text-[10px] font-semibold shrink-0">
+                  Bếp thực nấu
+                </Badge>
               </div>
-              <div className="w-full h-2.5 bg-blue-200 rounded-full overflow-hidden">
+              <div className="absolute bottom-0 left-0 right-0 h-1 bg-indigo-600" />
+            </div>
+
+            {/* 3. Tổng tiền học sinh đã thanh toán */}
+            <div className="p-4 rounded-xl bg-emerald-50/60 border border-emerald-200 relative overflow-hidden flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-800">
+                    3. Tiền HS đã thanh toán
+                  </span>
+                  <div className="h-7 w-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                    <CheckCircle2 className="h-4 w-4" />
+                  </div>
+                </div>
+                <div className="mt-2.5 flex items-baseline justify-between">
+                  <div>
+                    <span className="text-2xl font-black text-emerald-800 tracking-tight">
+                      {fin.totalCollected.toLocaleString("vi-VN")}
+                    </span>
+                    <span className="text-xs font-bold text-slate-500 ml-1">đ</span>
+                  </div>
+                  <span className="text-xs font-black text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                    {fin.percentCollected}%
+                  </span>
+                </div>
+              </div>
+              <div className="mt-3 pt-2.5 border-t border-emerald-200/60">
+                <div className="w-full h-1.5 bg-emerald-200 rounded-full overflow-hidden mb-1.5">
+                  <div
+                    className="h-full bg-emerald-600 rounded-full transition-all duration-500"
+                    style={{ width: `${Math.min(100, fin.percentCollected)}%` }}
+                  />
+                </div>
+                <div className="flex items-center justify-between text-[11px] text-emerald-800 font-medium">
+                  <span>Hoàn tất: {fin.paidStudentsCount}/{fin.totalStudentsCount} HS</span>
+                  <span>CK & Tiền mặt</span>
+                </div>
+              </div>
+              <div className="absolute bottom-0 left-0 right-0 h-1 bg-emerald-600" />
+            </div>
+
+            {/* 4. Tổng tiền dự kiến còn phải thu */}
+            <div className="p-4 rounded-xl bg-rose-50/60 border border-rose-200 relative overflow-hidden flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-rose-700">
+                    4. Tiền dự kiến còn phải thu
+                  </span>
+                  <div className="h-7 w-7 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center">
+                    <Clock className="h-4 w-4" />
+                  </div>
+                </div>
+                <div className="mt-2.5">
+                  <span className="text-2xl font-black text-rose-700 tracking-tight">
+                    {fin.remainingDebt.toLocaleString("vi-VN")}
+                  </span>
+                  <span className="text-xs font-bold text-slate-500 ml-1">đ</span>
+                </div>
+              </div>
+              <div className="mt-3 pt-2.5 border-t border-rose-200/60 flex items-center justify-between text-[11px]">
+                <span className="text-rose-800 font-medium">Công nợ chưa nộp</span>
+                <Badge className="bg-rose-100 text-rose-800 hover:bg-rose-100 border-0 text-[10px] font-semibold shrink-0">
+                  {fin.unpaidStudentsCount} HS còn nợ
+                </Badge>
+              </div>
+              <div className="absolute bottom-0 left-0 right-0 h-1 bg-rose-600" />
+            </div>
+          </div>
+
+          {/* HÀNG 2: ĐỐI SOÁT DÒNG TIỀN & PHÂN BỔ KÊNH THANH TOÁN */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Box 1: Đối soát Cân đối dòng tiền */}
+            {(() => {
+              const balance = fin.totalCollected - fin.totalServedMealsAmount;
+              const isPositive = balance >= 0;
+              return (
                 <div
-                  className="h-full bg-blue-600 rounded-full transition-all duration-500"
-                  style={{ width: `${Math.min(100, fin.bankTransferPercent)}%` }}
-                />
+                  className={`p-4 rounded-xl border flex flex-col justify-between ${
+                    isPositive
+                      ? "bg-slate-50/80 border-slate-200"
+                      : "bg-amber-50/80 border-amber-300"
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between text-xs font-bold text-slate-700 mb-1">
+                      <span className="flex items-center gap-1.5">
+                        <ShieldCheck className={`h-4 w-4 ${isPositive ? "text-emerald-600" : "text-amber-600"}`} />
+                        ĐỐI SOÁT CÂN ĐỐI DÒNG TIỀN
+                      </span>
+                      <span
+                        className={`text-xs font-black px-2 py-0.5 rounded-full ${
+                          isPositive
+                            ? "bg-emerald-100 text-emerald-800"
+                            : "bg-amber-200 text-amber-900"
+                        }`}
+                      >
+                        {isPositive ? "Thặng dư an toàn" : "Cần tăng thu"}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex items-baseline gap-2">
+                      <span
+                        className={`text-xl font-black ${
+                          isPositive ? "text-emerald-700" : "text-amber-700"
+                        }`}
+                      >
+                        {isPositive ? `+${balance.toLocaleString("vi-VN")}` : balance.toLocaleString("vi-VN")} đ
+                      </span>
+                      <span className="text-[11px] text-slate-500">(Đã thu − Thực nấu)</span>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-slate-600 mt-2 leading-relaxed">
+                    {isPositive
+                      ? "Dòng tiền an toàn: Số tiền học sinh đã đóng đủ chi trả toàn bộ suất ăn bếp đã phục vụ."
+                      : "Cảnh báo dòng tiền: Số tiền đã thu chưa đủ bù đắp giá trị suất ăn đã nấu, cần đẩy nhanh thu tiền ăn."}
+                  </p>
+                </div>
+              );
+            })()}
+
+            {/* Box 2: Chuyển khoản QR SePay */}
+            <div className="p-4 rounded-xl bg-blue-50/40 border border-blue-200 flex flex-col justify-between">
+              <div>
+                <div className="flex justify-between text-xs font-bold text-blue-900 mb-1.5">
+                  <span className="flex items-center gap-1.5">
+                    <Receipt className="h-4 w-4 text-blue-600" />
+                    CHUYỂN KHOẢN VIETQR SEPAY
+                  </span>
+                  <span className="text-blue-800 font-extrabold">{fin.bankTransferPercent}%</span>
+                </div>
+                <div className="text-xl font-black text-blue-950 mt-1">
+                  {fin.bankTransferAmount.toLocaleString("vi-VN")} đ
+                </div>
               </div>
-              <p className="text-[11px] text-blue-700 mt-2">
-                Giao dịch quét mã QR tự động khớp lệnh
-              </p>
+              <div className="mt-2.5">
+                <div className="w-full h-2 bg-blue-100 rounded-full overflow-hidden mb-1.5">
+                  <div
+                    className="h-full bg-blue-600 rounded-full transition-all duration-500"
+                    style={{ width: `${Math.min(100, fin.bankTransferPercent)}%` }}
+                  />
+                </div>
+                <p className="text-[11px] text-blue-700">
+                  Giao dịch quét mã QR VietQR tự động khớp lệnh
+                </p>
+              </div>
             </div>
 
             {/* Box 3: Tiền mặt thủ quỹ */}
-            <div className="p-4 rounded-xl bg-amber-50/70 border border-amber-200">
-              <div className="flex justify-between text-xs font-semibold text-amber-800 mb-2">
-                <span>TIỀN MẶT THỦ QUỸ ({fin.cashPercent}%)</span>
-                <span className="text-amber-900 font-black">
+            <div className="p-4 rounded-xl bg-amber-50/40 border border-amber-200 flex flex-col justify-between">
+              <div>
+                <div className="flex justify-between text-xs font-bold text-amber-900 mb-1.5">
+                  <span className="flex items-center gap-1.5">
+                    <Banknote className="h-4 w-4 text-amber-600" />
+                    TIỀN MẶT THỦ QUỸ
+                  </span>
+                  <span className="text-amber-800 font-extrabold">{fin.cashPercent}%</span>
+                </div>
+                <div className="text-xl font-black text-amber-950 mt-1">
                   {fin.cashAmount.toLocaleString("vi-VN")} đ
-                </span>
+                </div>
               </div>
-              <div className="w-full h-2.5 bg-amber-200 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-amber-500 rounded-full transition-all duration-500"
-                  style={{ width: `${Math.min(100, fin.cashPercent)}%` }}
-                />
+              <div className="mt-2.5">
+                <div className="w-full h-2 bg-amber-100 rounded-full overflow-hidden mb-1.5">
+                  <div
+                    className="h-full bg-amber-500 rounded-full transition-all duration-500"
+                    style={{ width: `${Math.min(100, fin.cashPercent)}%` }}
+                  />
+                </div>
+                <p className="text-[11px] text-amber-800">
+                  Biên lai nộp tiền mặt trực tiếp tại văn phòng
+                </p>
               </div>
-              <p className="text-[11px] text-amber-700 mt-2">
-                Biên lai nộp tiền mặt trực tiếp tại văn phòng
-              </p>
             </div>
           </div>
         </CardContent>
