@@ -1,6 +1,14 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Nâng giới hạn body size: mặc định Next.js chỉ cho 10MB
+  // Thực tế upload tối đa ~13MB (26 ảnh × 500KB đã nén), đặt 25MB là dư dả và an toàn cho VPS 2GB RAM
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "25mb",
+    },
+  },
+
   async headers() {
     return [
       {
@@ -41,3 +49,4 @@ const nextConfig: NextConfig = {
 };
 
 export default nextConfig;
+

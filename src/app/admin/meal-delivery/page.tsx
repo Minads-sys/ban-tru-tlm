@@ -203,9 +203,9 @@ export default function MealDeliveryPage() {
       for (let i = 0; i < filesToProcess.length; i++) {
         setCompressingProgress({ current: i + 1, total: filesToProcess.length });
         const result = await compressImage(filesToProcess[i], {
-          maxWidth: 1800,
-          maxHeight: 1800,
-          quality: 0.78,
+          maxWidth: 1200,
+          maxHeight: 1200,
+          quality: 0.55,
           format: "image/webp",
         });
         newCompressedList.push(result);
@@ -249,6 +249,9 @@ export default function MealDeliveryPage() {
     : 0;
 
   // Submit phiếu giao nhận
+  // Hỗ trợ 2 chế độ:
+  //   - Nếu > 8 ảnh: batch upload ảnh trước qua /api/meal-delivery/upload-photos, rồi gửi JSON
+  //   - Nếu <= 8 ảnh: gửi FormData trực tiếp (chế độ truyền thống, đảm bảo < 10MB)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -273,62 +276,233 @@ export default function MealDeliveryPage() {
     }
 
     setSubmitting(true);
+
+    const BATCH_THRESHOLD = 8; // Ngưỡng chuyển sang batch upload mode
+
     try {
-      const formData = new FormData();
-      formData.append("deliveryDate", deliveryDate);
-      formData.append("shift", shift);
-      formData.append("receiverName", receiverName.trim());
-      formData.append("receiverPhone", receiverPhone.trim());
-      formData.append("deliveredMan", String(Number(deliveredMan) || 0));
-      formData.append("deliveredChay", String(Number(deliveredChay) || 0));
-      formData.append("deliveredChao", String(Number(deliveredChao) || 0));
-      if (expectedSummary?.expectedTotal) {
-        formData.append("expectedTotal", String(expectedSummary.expectedTotal));
-      }
-      formData.append("note", note.trim());
+      // ============================================================
+      // CHẾ ĐỘ BATCH UPLOAD: > 8 ảnh → upload từng batch 5 ảnh, rồi gửi JSON
+      // ============================================================
+      if (compressedPhotos.length > BATCH_THRESHOLD) {
+        const BATCH_SIZE = 5;
+        const totalBatches = Math.ceil(compressedPhotos.length / BATCH_SIZE);
+        const allPhotoUrls: string[] = [];
+        let totalPhotoSizeKb = 0;
 
-      // Gửi từng file ảnh đã nén (tối đa 40 file)
-      for (const item of compressedPhotos) {
-        formData.append("photos", item.file);
-      }
-
-      const res = await fetch("/api/meal-delivery", {
-        method: "POST",
-        body: formData,
-      });
-
-      const data = await res.json();
-
-      if (res.ok) {
+        // Hiển thị dialog tiến trình batch upload
         Swal.fire({
-          title: "Giao nhận thành công!",
-          text: `Đã lưu phiếu giao ${totalDelivered} suất cơm cho "${receiverName.trim()}" kèm ${compressedPhotos.length} ảnh ký nhận.`,
-          icon: "success",
-          confirmButtonColor: "#16a34a",
-          confirmButtonText: "Đồng ý",
+          title: "Đang tải ảnh lên máy chủ...",
+          html: `<p>Chuẩn bị tải <b>${compressedPhotos.length}</b> ảnh theo ${totalBatches} đợt...</p>
+                 <p style="font-size:12px;color:#64748b;margin-top:4px">Mỗi đợt tối đa ${BATCH_SIZE} ảnh. Vui lòng không đóng trang này.</p>`,
+          allowOutsideClick: false,
+          allowEscapeKey: false,
+          showConfirmButton: false,
+          didOpen: () => Swal.showLoading(),
         });
 
-        // Reset form
-        setReceiverName("");
-        setReceiverPhone("");
-        setDeliveredMan(0);
-        setDeliveredChay(0);
-        setDeliveredChao(0);
-        setNote("");
-        setCompressedPhotos([]);
+        // Upload tuần tự từng batch
+        for (let batchIdx = 0; batchIdx < totalBatches; batchIdx++) {
+          const batchStart = batchIdx * BATCH_SIZE;
+          const batchEnd = Math.min(batchStart + BATCH_SIZE, compressedPhotos.length);
+          const batchPhotos = compressedPhotos.slice(batchStart, batchEnd);
 
-        // Chuyển sang tab lịch sử để xem lại
-        setActiveTab("history");
-        fetchRecords();
+          // Cập nhật dialog tiến trình
+          Swal.update({
+            title: "Đang tải ảnh lên máy chủ...",
+            html: `<p style="font-size:15px;font-weight:600">Đang tải ảnh: đợt <b>${batchIdx + 1}/${totalBatches}</b></p>
+                   <p style="font-size:13px;color:#475569;margin-top:4px">Ảnh ${batchStart + 1}–${batchEnd} / ${compressedPhotos.length} ảnh</p>
+                   <div style="margin-top:10px;background:#e2e8f0;border-radius:8px;height:8px;overflow:hidden">
+                     <div style="width:${Math.round(((batchIdx) / totalBatches) * 100)}%;height:100%;background:#2563eb;border-radius:8px;transition:width 0.3s"></div>
+                   </div>
+                   <p style="font-size:11px;color:#94a3b8;margin-top:6px">Vui lòng không đóng trang này cho đến khi hoàn tất</p>`,
+          });
+
+          // Tạo FormData cho batch
+          const batchFormData = new FormData();
+          batchFormData.append("deliveryDate", deliveryDate);
+          for (const item of batchPhotos) {
+            batchFormData.append("photos", item.file);
+          }
+
+          // Gửi batch
+          let batchRes: Response;
+          try {
+            batchRes = await fetch("/api/meal-delivery/upload-photos", {
+              method: "POST",
+              body: batchFormData,
+            });
+          } catch (networkError) {
+            Swal.fire({
+              title: "Lỗi kết nối mạng",
+              html: `<p>Không thể gửi đợt ảnh thứ <b>${batchIdx + 1}/${totalBatches}</b> (ảnh ${batchStart + 1}–${batchEnd}).</p>
+                     <p style="margin-top:8px;font-size:13px;color:#64748b">Lỗi: ${String(networkError)}</p>
+                     <p style="margin-top:8px;font-size:12px;color:#94a3b8">${allPhotoUrls.length > 0 ? `Đã tải thành công ${allPhotoUrls.length} ảnh trước đó.` : ""} Vui lòng kiểm tra kết nối mạng và thử lại.</p>`,
+              icon: "error",
+              confirmButtonColor: "#dc2626",
+            });
+            setSubmitting(false);
+            return;
+          }
+
+          let batchData: any = {};
+          try {
+            batchData = await batchRes.json();
+          } catch {
+            batchData = { error: `Máy chủ phản hồi không đúng định dạng (HTTP ${batchRes.status})` };
+          }
+
+          if (!batchRes.ok) {
+            Swal.fire({
+              title: `Lỗi tải ảnh đợt ${batchIdx + 1}/${totalBatches}`,
+              html: `<p>${batchData.error || "Đã xảy ra lỗi khi tải ảnh lên máy chủ"}</p>
+                     <p style="margin-top:8px;font-size:13px;color:#64748b">Ảnh ${batchStart + 1}–${batchEnd} không tải được.</p>
+                     <p style="margin-top:8px;font-size:12px;color:#94a3b8">${allPhotoUrls.length > 0 ? `Đã tải thành công ${allPhotoUrls.length} ảnh trước đó.` : ""} Vui lòng thử lại.</p>`,
+              icon: "error",
+              confirmButtonColor: "#dc2626",
+            });
+            setSubmitting(false);
+            return;
+          }
+
+          // Thu thập URLs từ batch thành công
+          allPhotoUrls.push(...(batchData.photoUrls || []));
+          totalPhotoSizeKb += batchData.photoSizeKb || 0;
+        }
+
+        // Cập nhật dialog: đang lưu phiếu giao nhận
+        Swal.update({
+          title: "Đang lưu phiếu giao nhận...",
+          html: `<p style="font-size:14px">Đã tải xong <b>${allPhotoUrls.length}</b> ảnh. Đang lưu phiếu giao nhận...</p>
+                 <div style="margin-top:10px;background:#e2e8f0;border-radius:8px;height:8px;overflow:hidden">
+                   <div style="width:95%;height:100%;background:#16a34a;border-radius:8px;transition:width 0.3s"></div>
+                 </div>`,
+        });
+
+        // Gửi JSON POST để tạo record với các photoUrls đã upload
+        const jsonBody = {
+          deliveryDate,
+          shift,
+          receiverName: receiverName.trim(),
+          receiverPhone: receiverPhone.trim(),
+          deliveredMan: String(Number(deliveredMan) || 0),
+          deliveredChay: String(Number(deliveredChay) || 0),
+          deliveredChao: String(Number(deliveredChao) || 0),
+          expectedTotal: expectedSummary?.expectedTotal ? String(expectedSummary.expectedTotal) : undefined,
+          note: note.trim(),
+          photoUrls: allPhotoUrls,
+          photoSizeKb: String(totalPhotoSizeKb),
+        };
+
+        const res = await fetch("/api/meal-delivery", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(jsonBody),
+        });
+
+        let data: any = {};
+        try {
+          data = await res.json();
+        } catch {
+          data = { error: `Máy chủ phản hồi không đúng định dạng (HTTP ${res.status})` };
+        }
+
+        if (res.ok) {
+          Swal.fire({
+            title: "Giao nhận thành công!",
+            text: `Đã lưu phiếu giao ${totalDelivered} suất cơm cho "${receiverName.trim()}" kèm ${allPhotoUrls.length} ảnh ký nhận (tải theo ${totalBatches} đợt).`,
+            icon: "success",
+            confirmButtonColor: "#16a34a",
+            confirmButtonText: "Đồng ý",
+          });
+
+          // Reset form
+          setReceiverName("");
+          setReceiverPhone("");
+          setDeliveredMan(0);
+          setDeliveredChay(0);
+          setDeliveredChao(0);
+          setNote("");
+          setCompressedPhotos([]);
+
+          // Chuyển sang tab lịch sử để xem lại
+          setActiveTab("history");
+          fetchRecords();
+        } else {
+          Swal.fire({
+            title: "Không thể lưu phiếu",
+            html: `<p>${data.error || "Đã xảy ra lỗi khi lưu phiếu giao nhận"}</p>
+                   <p style="margin-top:8px;font-size:12px;color:#94a3b8">Ảnh đã được tải lên thành công (${allPhotoUrls.length} ảnh). Lỗi xảy ra khi tạo phiếu trong hệ thống.</p>
+                   ${data.details ? `<p style="margin-top:8px;font-size:12px;color:#888;word-break:break-all">Chi tiết: ${data.details}</p>` : ""}`,
+            icon: "error",
+            confirmButtonColor: "#dc2626",
+          });
+        }
       } else {
-        Swal.fire({
-          title: "Không thể lưu phiếu",
-          text: data.error || "Đã xảy ra lỗi khi lưu phiếu giao nhận",
-          icon: "error",
-          confirmButtonColor: "#dc2626",
+        // ============================================================
+        // CHẾ ĐỘ FORMDATA TRUYỀN THỐNG: <= 8 ảnh → gửi trực tiếp 1 request
+        // ============================================================
+        const formData = new FormData();
+        formData.append("deliveryDate", deliveryDate);
+        formData.append("shift", shift);
+        formData.append("receiverName", receiverName.trim());
+        formData.append("receiverPhone", receiverPhone.trim());
+        formData.append("deliveredMan", String(Number(deliveredMan) || 0));
+        formData.append("deliveredChay", String(Number(deliveredChay) || 0));
+        formData.append("deliveredChao", String(Number(deliveredChao) || 0));
+        if (expectedSummary?.expectedTotal) {
+          formData.append("expectedTotal", String(expectedSummary.expectedTotal));
+        }
+        formData.append("note", note.trim());
+
+        // Gửi từng file ảnh đã nén
+        for (const item of compressedPhotos) {
+          formData.append("photos", item.file);
+        }
+
+        const res = await fetch("/api/meal-delivery", {
+          method: "POST",
+          body: formData,
         });
+
+        let data: any = {};
+        try {
+          data = await res.json();
+        } catch {
+          data = { error: `Máy chủ phản hồi không đúng định dạng (HTTP ${res.status})` };
+        }
+
+        if (res.ok) {
+          Swal.fire({
+            title: "Giao nhận thành công!",
+            text: `Đã lưu phiếu giao ${totalDelivered} suất cơm cho "${receiverName.trim()}" kèm ${compressedPhotos.length} ảnh ký nhận.`,
+            icon: "success",
+            confirmButtonColor: "#16a34a",
+            confirmButtonText: "Đồng ý",
+          });
+
+          // Reset form
+          setReceiverName("");
+          setReceiverPhone("");
+          setDeliveredMan(0);
+          setDeliveredChay(0);
+          setDeliveredChao(0);
+          setNote("");
+          setCompressedPhotos([]);
+
+          // Chuyển sang tab lịch sử để xem lại
+          setActiveTab("history");
+          fetchRecords();
+        } else {
+          Swal.fire({
+            title: "Không thể lưu phiếu",
+            html: `<p>${data.error || "Đã xảy ra lỗi khi lưu phiếu giao nhận"}</p>${data.details ? `<p style="margin-top:8px;font-size:12px;color:#888;word-break:break-all">Chi tiết: ${data.details}</p>` : ""}`,
+            icon: "error",
+            confirmButtonColor: "#dc2626",
+          });
+        }
       }
     } catch (err) {
+      Swal.close();
       toast.error("Lỗi kết nối máy chủ: " + String(err));
     } finally {
       setSubmitting(false);

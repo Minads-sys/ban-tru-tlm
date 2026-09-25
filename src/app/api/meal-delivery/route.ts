@@ -8,6 +8,9 @@ import path from "path";
 import fs from "fs/promises";
 import crypto from "crypto";
 
+// Route segment config: cho phép xử lý upload lâu hơn (tối đa 60 giây)
+export const maxDuration = 60;
+
 // GET: Lấy danh sách phiếu giao nhận hoặc số suất kế hoạch đối chiếu
 export async function GET(request: NextRequest) {
   try {
@@ -132,7 +135,10 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST: Tạo phiếu giao nhận mới kèm upload ảnh ký nhận đã nén
+// POST: Tạo phiếu giao nhận mới
+// Hỗ trợ 2 chế độ:
+//   1. FormData mode (truyền thống): Upload ảnh trực tiếp kèm dữ liệu form — dùng cho upload nhỏ (<=8 ảnh)
+//   2. JSON mode: Ảnh đã được upload trước qua /api/meal-delivery/upload-photos, chỉ gửi photoUrls — dùng cho upload lớn (>8 ảnh)
 export async function POST(request: NextRequest) {
   try {
     const session = await auth();
@@ -148,7 +154,132 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Không có quyền thực hiện giao nhận suất cơm" }, { status: 403 });
     }
 
-    const formData = await request.formData();
+    // Xác định chế độ: JSON mode hay FormData mode dựa trên Content-Type
+    const contentType = request.headers.get("content-type") || "";
+    const isJsonMode = contentType.includes("application/json");
+
+    // ============================================================
+    // CHẾ ĐỘ JSON: Ảnh đã upload trước qua batch API upload-photos
+    // ============================================================
+    if (isJsonMode) {
+      let body: any;
+      try {
+        body = await request.json();
+      } catch (parseError) {
+        return NextResponse.json({ error: "Dữ liệu JSON không hợp lệ" }, { status: 400 });
+      }
+
+      const deliveryDateStr = body.deliveryDate as string;
+      const shift = (body.shift as string) || "ALL";
+      const receiverName = ((body.receiverName as string) || "").trim();
+      const receiverPhone = ((body.receiverPhone as string) || "").trim();
+      const note = ((body.note as string) || "").trim();
+
+      const deliveredMan = parseInt(body.deliveredMan) || 0;
+      const deliveredChay = parseInt(body.deliveredChay) || 0;
+      const deliveredChao = parseInt(body.deliveredChao) || 0;
+      const totalDelivered = deliveredMan + deliveredChay + deliveredChao;
+      const expectedTotal = body.expectedTotal ? parseInt(body.expectedTotal) : null;
+
+      const photoUrls: string[] = body.photoUrls || [];
+      const totalPhotoSizeKb: number = parseInt(body.photoSizeKb) || 0;
+
+      // Validate cơ bản
+      if (!deliveryDateStr) {
+        return NextResponse.json({ error: "Vui lòng chọn ngày giao nhận" }, { status: 400 });
+      }
+      if (!receiverName) {
+        return NextResponse.json({ error: "Vui lòng nhập tên người ký nhận cơm" }, { status: 400 });
+      }
+      if (totalDelivered <= 0) {
+        return NextResponse.json({ error: "Tổng số suất cơm giao phải lớn hơn 0" }, { status: 400 });
+      }
+      if (!Array.isArray(photoUrls) || photoUrls.length === 0) {
+        return NextResponse.json({ error: "Vui lòng tải lên ít nhất 1 ảnh phiếu ký nhận" }, { status: 400 });
+      }
+      if (photoUrls.length > 40) {
+        return NextResponse.json({ error: "Tối đa chỉ được tải lên 40 ảnh cho một phiếu giao nhận" }, { status: 400 });
+      }
+
+      // Validate từng photoUrl: phải là đường dẫn hợp lệ trong thư mục delivery-receipts và file phải tồn tại trên đĩa
+      const validPathPattern = /^\/uploads\/delivery-receipts\/\d{4}-\d{2}\/receipt_[a-zA-Z0-9_]+\.(webp|jpg|png)$/;
+      for (const url of photoUrls) {
+        if (typeof url !== "string" || !validPathPattern.test(url)) {
+          return NextResponse.json({
+            error: `Đường dẫn ảnh không hợp lệ: "${url}". Ảnh phải được upload qua hệ thống.`,
+          }, { status: 400 });
+        }
+        // Kiểm tra file tồn tại trên đĩa
+        const fullPath = path.join(process.cwd(), "public", url);
+        try {
+          await fs.access(fullPath);
+        } catch {
+          return NextResponse.json({
+            error: `File ảnh không tồn tại trên máy chủ: "${url}". Có thể ảnh chưa được upload thành công.`,
+          }, { status: 400 });
+        }
+      }
+
+      // Lưu bản ghi vào CSDL
+      const [y, m, d] = deliveryDateStr.split("-").map(Number);
+      const deliveryDate = new Date(Date.UTC(y, m - 1, d));
+
+      const record = await prisma.mealDeliveryRecord.create({
+        data: {
+          deliveryDate,
+          shift,
+          receiverName,
+          receiverPhone: receiverPhone || null,
+          deliveredMan,
+          deliveredChay,
+          deliveredChao,
+          totalDelivered,
+          expectedTotal,
+          photoUrl: photoUrls[0],
+          photoUrls,
+          photoSizeKb: totalPhotoSizeKb,
+          deliveredById: session.user.id,
+          note: note || null,
+        },
+        include: {
+          deliveredBy: {
+            select: { id: true, fullName: true, username: true },
+          },
+        },
+      });
+
+      logAudit({
+        userId: session.user.id,
+        userName: session.user.name || (session.user as any)?.username || "",
+        userRole: session.user.role,
+        action: AUDIT_ACTIONS.CREATE,
+        module: AUDIT_MODULES.MEALS,
+        description: `Giao nhận ${totalDelivered} suất cơm ngày ${deliveryDateStr} (Mặn: ${deliveredMan}, Chay: ${deliveredChay}, Cháo: ${deliveredChao}). Người nhận: ${receiverName}. Ảnh: ${photoUrls.length} file (~${totalPhotoSizeKb}KB) [batch upload]`,
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: "Đã lưu phiếu giao nhận và upload ảnh ký nhận thành công!",
+        record,
+      });
+    }
+
+    // ============================================================
+    // CHẾ ĐỘ FORMDATA (TRUYỀN THỐNG): Upload ảnh trực tiếp kèm form
+    // Dùng cho upload nhỏ (<=8 ảnh, đảm bảo < 10MB)
+    // ============================================================
+
+    // Parse formData - có thể lỗi nếu body quá lớn
+    let formData: FormData;
+    try {
+      formData = await request.formData();
+    } catch (parseError) {
+      console.error("Lỗi parse formData (có thể body quá lớn):", parseError);
+      return NextResponse.json({
+        error: "Dữ liệu gửi lên quá lớn hoặc bị lỗi kết nối. Hãy thử giảm số lượng ảnh (tối đa 15-20 ảnh mỗi lần) rồi gửi lại.",
+      }, { status: 413 });
+    }
+
     const deliveryDateStr = formData.get("deliveryDate") as string;
     const shift = (formData.get("shift") as string) || "ALL";
     const receiverName = ((formData.get("receiverName") as string) || "").trim();
@@ -207,20 +338,33 @@ export async function POST(request: NextRequest) {
 
     // Lưu tuần tự từng file ảnh đã nén xuống ổ cứng (mỗi file chỉ ~150-200KB)
     const photoUrls: string[] = [];
+    const savedFilePaths: string[] = []; // Theo dõi để cleanup nếu lỗi
     let totalPhotoSizeKb = 0;
 
-    for (let i = 0; i < files.length; i++) {
-      const f = files[i];
-      const ext = f.type === "image/webp" ? "webp" : f.type === "image/png" ? "png" : "jpg";
-      const randomSuffix = crypto.randomBytes(6).toString("hex");
-      const fileName = `receipt_${yearStr}${monthStr}${dayStr}_${Date.now()}_${i + 1}_${randomSuffix}.${ext}`;
-      const filePath = path.join(uploadDir, fileName);
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i];
+        const ext = f.type === "image/webp" ? "webp" : f.type === "image/png" ? "png" : "jpg";
+        const randomSuffix = crypto.randomBytes(6).toString("hex");
+        const fileName = `receipt_${yearStr}${monthStr}${dayStr}_${Date.now()}_${i + 1}_${randomSuffix}.${ext}`;
+        const filePath = path.join(uploadDir, fileName);
 
-      const arrayBuffer = await f.arrayBuffer();
-      await fs.writeFile(filePath, Buffer.from(arrayBuffer));
+        const arrayBuffer = await f.arrayBuffer();
+        await fs.writeFile(filePath, Buffer.from(arrayBuffer));
 
-      photoUrls.push(`/uploads/delivery-receipts/${subFolder}/${fileName}`);
-      totalPhotoSizeKb += Math.round(f.size / 1024);
+        savedFilePaths.push(filePath);
+        photoUrls.push(`/uploads/delivery-receipts/${subFolder}/${fileName}`);
+        totalPhotoSizeKb += Math.round(f.size / 1024);
+      }
+    } catch (fileError) {
+      // Cleanup: Xóa các file đã lưu nếu quá trình ghi file bị lỗi giữa chừng
+      console.error(`Lỗi khi ghi file ảnh (đã lưu ${savedFilePaths.length}/${files.length} file):`, fileError);
+      for (const fp of savedFilePaths) {
+        try { await fs.unlink(fp); } catch { /* bỏ qua */ }
+      }
+      return NextResponse.json({
+        error: `Lỗi khi lưu ảnh lên máy chủ (ảnh thứ ${savedFilePaths.length + 1}/${files.length}). Vui lòng thử lại.`,
+      }, { status: 500 });
     }
 
     // Lưu bản ghi vào CSDL
@@ -257,7 +401,7 @@ export async function POST(request: NextRequest) {
       userRole: session.user.role,
       action: AUDIT_ACTIONS.CREATE,
       module: AUDIT_MODULES.MEALS,
-      description: `Giao nhận ${totalDelivered} suất cơm ngày ${deliveryDateStr} (Mặn: ${deliveredMan}, Chay: ${deliveredChay}, Cháo: ${deliveredChao}). Người nhận: ${receiverName}`,
+      description: `Giao nhận ${totalDelivered} suất cơm ngày ${deliveryDateStr} (Mặn: ${deliveredMan}, Chay: ${deliveredChay}, Cháo: ${deliveredChao}). Người nhận: ${receiverName}. Ảnh: ${files.length} file (~${totalPhotoSizeKb}KB)`,
     });
 
     return NextResponse.json({
@@ -267,7 +411,19 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("Lỗi khi tạo phiếu giao nhận:", error);
-    return NextResponse.json({ error: "Lỗi máy chủ khi lưu phiếu giao nhận", details: String(error) }, { status: 500 });
+    const errMsg = String(error);
+    // Phân biệt các loại lỗi phổ biến
+    if (errMsg.includes("PAYLOAD_TOO_LARGE") || errMsg.includes("body exceeded") || errMsg.includes("entity too large")) {
+      return NextResponse.json({
+        error: "Tổng dung lượng ảnh quá lớn. Hãy giảm số lượng ảnh hoặc nén thêm rồi thử lại.",
+      }, { status: 413 });
+    }
+    if (errMsg.includes("ENOSPC") || errMsg.includes("no space")) {
+      return NextResponse.json({
+        error: "Ổ đĩa máy chủ đã đầy, không thể lưu ảnh. Vui lòng liên hệ quản trị viên.",
+      }, { status: 507 });
+    }
+    return NextResponse.json({ error: "Lỗi máy chủ khi lưu phiếu giao nhận", details: errMsg }, { status: 500 });
   }
 }
 
