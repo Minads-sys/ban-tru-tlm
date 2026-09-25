@@ -72,6 +72,7 @@ model Class {
   id          String @id // VD: "1A", "2B", "3C"
   name        String
   teacherId   String? @unique @map("teacher_id")
+  isTest      Boolean @default(false) @map("is_test")
 
   // Quan hệ
   teacher          User?                @relation("ClassTeacher", fields: [teacherId], references: [id])

@@ -38,6 +38,7 @@ interface ClassData {
   name: string;
   teacherId: string | null;
   teacher: { fullName: string } | null;
+  isTest?: boolean;
   _count: { students: number };
 }
 
@@ -308,9 +309,16 @@ export default function ClassesPage() {
                   <TableRow key={cls.id}>
                     <TableCell>{(currentPage - 1) * ITEMS_PER_PAGE + idx + 1}</TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="font-mono text-slate-600">
-                        {cls.id}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="font-mono text-slate-600">
+                          {cls.id}
+                        </Badge>
+                        {(cls.id === "T01" || (cls as any).isTest) && (
+                          <Badge className="bg-amber-100 text-amber-800 border border-amber-300 font-normal text-xs">
+                            Lớp Test (Ẩn báo cáo)
+                          </Badge>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell 
                       className="font-medium text-blue-700 cursor-pointer hover:underline"

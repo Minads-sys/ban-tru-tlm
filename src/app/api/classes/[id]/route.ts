@@ -5,6 +5,8 @@ import { hasPermission } from "@/lib/permissions";
 import { logAudit, AUDIT_ACTIONS, AUDIT_MODULES } from "@/lib/audit-log";
 import { invalidateClassesCache } from "@/lib/classes-cache";
 
+import { isTestClassId } from "@/lib/test-classes";
+
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (session?.user?.role === "ACCOUNTANT") {
@@ -16,7 +18,11 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
   try {
     const { id } = await params;
-    const { name, teacherId } = await req.json();
+    if (session.user.role !== "ADMIN" && isTestClassId(id)) {
+      return NextResponse.json({ error: "Lớp học không tồn tại" }, { status: 404 });
+    }
+
+    const { name, teacherId, isTest } = await req.json();
 
     if (!name) {
       return NextResponse.json({ error: "Tên lớp không được để trống" }, { status: 400 });
@@ -27,6 +33,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       data: {
         name,
         teacherId: teacherId || null,
+        ...(typeof isTest === "boolean" ? { isTest } : {}),
       },
     });
 
@@ -61,6 +68,9 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
 
   try {
     const { id } = await params;
+    if (session.user.role !== "ADMIN" && isTestClassId(id)) {
+      return NextResponse.json({ error: "Lớp học không tồn tại" }, { status: 404 });
+    }
     
     // Check if class has students
     const classWithStudents = await prisma.class.findUnique({

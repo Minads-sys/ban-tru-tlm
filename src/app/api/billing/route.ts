@@ -1,9 +1,10 @@
-// API Route: Quản lý và Tính toán Hóa đơn tiền ăn bán trú hàng tháng (Billing)
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 import { BoardingStatus, CancellationStatus, PaymentStatus } from '@prisma/client';
 import { generateMealPaymentQR } from '@/lib/vietqr';
 import { broadcastChange } from '@/lib/realtime-hub';
+import { auth } from '@/lib/auth';
+import { isTestClassId, prismaExcludeTestClasses, prismaExcludeTestStudents } from '@/lib/test-classes';
 
 const dayFieldMap: Record<number, 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday'> = {
   1: 'monday',
@@ -71,14 +72,38 @@ export async function GET(request: NextRequest) {
       where.paymentStatus = paymentStatus as PaymentStatus;
     }
 
+    const session = await auth();
+    const isAdmin = session?.user?.role === 'ADMIN';
+
     if (studentId) {
       where.studentId = studentId;
     }
 
     if (classId && classId !== 'ALL' && classId !== 'all') {
+      if (!isAdmin && isTestClassId(classId)) {
+        return NextResponse.json({
+          data: [],
+          total: 0,
+          page,
+          limit,
+          totalPages: 0,
+          unlinkedTransactions: [],
+          stats: {
+            totalBills: 0,
+            totalAmount: '0',
+            paidCount: 0,
+            unpaidCount: 0,
+            draftCount: 0,
+            publishedCount: 0,
+          },
+        });
+      }
       where.student = {
         classId,
       };
+    } else {
+      // Khi xem toàn trường hoặc thống kê tổng hợp: loại trừ các lớp test
+      where.student = prismaExcludeTestStudents;
     }
 
     let mealCancellationsQuery: any = false;
@@ -370,6 +395,9 @@ export async function POST(request: NextRequest) {
     };
     if (classId) {
       studentWhere.classId = classId;
+    } else {
+      // Khi tạo hóa đơn toàn trường, tự động loại trừ các lớp test như T01
+      studentWhere.classId = prismaExcludeTestClasses;
     }
 
     const activeStudents = await prisma.student.findMany({
@@ -462,7 +490,7 @@ export async function POST(request: NextRequest) {
     }
     const sortedRequiredWeeks = Array.from(requiredWeekNumbers).sort((a, b) => a - b);
 
-    const classesToCheck = classId ? [classId] : uniqueClassIds;
+    const classesToCheck = classId ? [classId] : uniqueClassIds.filter((c) => !isTestClassId(c));
     const missingScheduleInfo: { classId: string; className: string; missingWeeks: number[] }[] = [];
 
     for (const cId of classesToCheck) {

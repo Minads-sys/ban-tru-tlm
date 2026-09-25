@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db";
+import { isTestClassId, prismaExcludeTestClasses, prismaExcludeTestStudents } from "@/lib/test-classes";
 
 export const dynamic = "force-dynamic";
 
@@ -13,11 +14,15 @@ export async function GET(request: NextRequest) {
     const classId = searchParams.get("classId") || "ALL";
     const preset = searchParams.get("preset") || "month"; // "today" | "week" | "month"
 
-    // 1. Lấy danh sách lớp để render Dropdown bộ lọc
-    const classes = await prisma.class.findMany({
+    // 1. Lấy danh sách lớp để render Dropdown bộ lọc (loại trừ các lớp test như T01)
+    const rawClasses = await prisma.class.findMany({
+      where: {
+        id: prismaExcludeTestClasses,
+      },
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     });
+    const classes = rawClasses.filter((c) => !isTestClassId(c.id));
 
     // 2. Xác định khoảng thời gian truy vấn
     let startDate: Date;
@@ -46,9 +51,13 @@ export async function GET(request: NextRequest) {
       endDate = new Date(year, month, 0, 23, 59, 59, 999);
     }
 
-    // Bộ lọc lớp học cho các bảng
-    const classFilter = classId && classId !== "ALL" ? { classId } : {};
-    const studentClassFilter = classId && classId !== "ALL" ? { student: { classId } } : {};
+    // Bộ lọc lớp học cho các bảng: Loại trừ toàn bộ các lớp test khỏi mọi tính toán báo cáo
+    const classFilter = classId && classId !== "ALL"
+      ? { classId }
+      : { classId: prismaExcludeTestClasses };
+    const studentClassFilter = classId && classId !== "ALL"
+      ? { student: { classId } }
+      : { student: prismaExcludeTestStudents };
 
     // =========================================================================
     // A. BIỂU ĐỒ 1: SUẤT ĂN & CẮT SUẤT THEO NGÀY (DAILY TREND)

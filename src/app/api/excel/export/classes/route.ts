@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db";
+import { auth } from "@/lib/auth";
 import ExcelJS from "exceljs";
+import { prismaExcludeTestClasses } from "@/lib/test-classes";
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await auth();
+    const isAdmin = session?.user?.role === "ADMIN";
+
     const classes = await prisma.class.findMany({
+      where: isAdmin ? {} : { id: prismaExcludeTestClasses },
       orderBy: { id: "asc" },
     });
 

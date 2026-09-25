@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import prisma from "@/lib/db";
 import { hasPermission } from "@/lib/permissions";
 import { logAudit, AUDIT_ACTIONS, AUDIT_MODULES } from "@/lib/audit-log";
+import { prismaExcludeTestClasses } from "@/lib/test-classes";
 import path from "path";
 import fs from "fs/promises";
 import crypto from "crypto";
@@ -34,7 +35,7 @@ export async function GET(request: NextRequest) {
 
       // Lấy từ bảng DailyMealSummary nếu đã chốt
       const summaries = await prisma.dailyMealSummary.findMany({
-        where: { summaryDate: targetDate },
+        where: { summaryDate: targetDate, classId: prismaExcludeTestClasses },
       });
 
       let expectedMan = 0;
@@ -62,6 +63,7 @@ export async function GET(request: NextRequest) {
             where: {
               year: y,
               [dayField]: { not: "NONE" },
+              classId: prismaExcludeTestClasses,
             },
             select: { classId: true },
           });

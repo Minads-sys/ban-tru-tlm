@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db";
+import { prismaExcludeTestStudents } from "@/lib/test-classes";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   try {
-    // Tìm tất cả các hóa đơn UNPAID hoặc PARTIAL (còn nợ tiền)
+    // Tìm tất cả các hóa đơn UNPAID hoặc PARTIAL (còn nợ tiền), loại trừ các lớp test
     const unpaidBills = await prisma.monthlyBill.findMany({
       where: {
         paymentStatus: { in: ["UNPAID", "PARTIAL"] },
-        finalAmount: { gt: 0 }
+        finalAmount: { gt: 0 },
+        student: prismaExcludeTestStudents,
       },
       include: {
         student: {

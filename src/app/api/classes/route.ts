@@ -8,34 +8,38 @@ import { logAudit, AUDIT_ACTIONS, AUDIT_MODULES } from "@/lib/audit-log";
 import { compareClassNames } from "@/lib/utils";
 import { getCachedClasses, setCachedClasses, invalidateClassesCache } from "@/lib/classes-cache";
 
+import { isTestClassId } from "@/lib/test-classes";
+
 export async function GET() {
-  const cached = getCachedClasses();
-  if (cached) {
-    return NextResponse.json(cached, {
-      headers: {
-        "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60",
+  const session = await auth();
+  const isAdmin = session?.user?.role === "ADMIN";
+
+  let classes = getCachedClasses();
+  if (!classes) {
+    classes = await prisma.class.findMany({
+      include: {
+        teacher: {
+          select: { fullName: true },
+        },
+        _count: {
+          select: { students: true },
+        },
       },
+      orderBy: { id: "asc" },
     });
+
+    classes.sort((a: any, b: any) => compareClassNames(a.id, b.id));
+    setCachedClasses(classes);
   }
 
-  const classes = await prisma.class.findMany({
-    include: {
-      teacher: {
-        select: { fullName: true },
-      },
-      _count: {
-        select: { students: true },
-      },
-    },
-    orderBy: { id: "asc" },
-  });
+  // Lớp T01 (và các lớp test) chỉ hiển thị với tài khoản ADMIN toàn quyền
+  const filteredClasses = isAdmin
+    ? classes
+    : classes.filter((c: any) => !isTestClassId(c.id) && !c.isTest);
 
-  classes.sort((a, b) => compareClassNames(a.id, b.id));
-  setCachedClasses(classes);
-
-  return NextResponse.json(classes, {
+  return NextResponse.json(filteredClasses, {
     headers: {
-      "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60",
+      "Cache-Control": "private, no-cache",
     },
   });
 }

@@ -2,6 +2,7 @@ import prisma from '@/lib/db';
 import { getWeekNumber } from '@/lib/utils';
 import { BoardingStatus, CancellationStatus } from '@prisma/client';
 import { broadcastChange } from '@/lib/realtime-hub';
+import { prismaExcludeTestClasses } from '@/lib/test-classes';
 
 /**
  * Đồng bộ và tính toán lại bảng DailyMealSummary cho một ngày nhất định
@@ -11,7 +12,7 @@ export async function syncDailyMealSummaryForDate(date: Date) {
   try {
     // 1. Kiểm tra xem ngày này đã có dữ liệu tổng hợp (DailyMealSummary) chưa
     const existingSummaries = await prisma.dailyMealSummary.findMany({
-      where: { summaryDate: date },
+      where: { summaryDate: date, classId: prismaExcludeTestClasses },
     });
 
     if (existingSummaries.length === 0) {
@@ -44,6 +45,7 @@ export async function syncDailyMealSummaryForDate(date: Date) {
         year: y,
         weekNumber,
         [dayField]: { not: 'NONE' },
+        classId: prismaExcludeTestClasses,
       },
       include: {
         class: {

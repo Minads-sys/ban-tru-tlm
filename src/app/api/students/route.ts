@@ -8,8 +8,13 @@ import { removeVietnameseTones, getVietnamTodayUTC, isPastCutoffTime } from "@/l
 import { logAudit, AUDIT_ACTIONS, AUDIT_MODULES } from "@/lib/audit-log";
 import { syncDailyMealSummaryForDate } from "@/lib/daily-meals";
 
+import { isTestClassId, prismaExcludeTestClasses } from "@/lib/test-classes";
+
 // GET: Lấy danh sách học sinh
 export async function GET(request: NextRequest) {
+  const session = await auth();
+  const isAdmin = session?.user?.role === "ADMIN";
+
   const { searchParams } = new URL(request.url);
   const classId = searchParams.get("classId");
   const status = searchParams.get("status") as BoardingStatus | null;
@@ -21,6 +26,14 @@ export async function GET(request: NextRequest) {
   if (studentId) where.id = studentId;
   if (classId) where.classId = classId;
   if (status) where.boardingStatus = status;
+
+  // Lớp T01 (và học sinh thuộc lớp test) chỉ hiển thị với tài khoản ADMIN toàn quyền
+  if (!isAdmin) {
+    if (classId && isTestClassId(classId)) {
+      return NextResponse.json([]);
+    }
+    where.classId = prismaExcludeTestClasses;
+  }
 
   // Nếu không có tìm kiếm -> Lấy danh sách thông thường theo filter
   if (!search) {

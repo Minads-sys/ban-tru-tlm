@@ -8,6 +8,7 @@ import { auth } from "@/lib/auth";
 import { logAudit, AUDIT_ACTIONS, AUDIT_MODULES } from "@/lib/audit-log";
 import { autoApproveExpiredCancellations } from "@/app/admin/meal-cancel/actions";
 import { syncDailyMealSummaryForDate } from "@/lib/daily-meals";
+import { prismaExcludeTestClasses } from "@/lib/test-classes";
 
 // GET: Lấy tổng hợp suất ăn cho 1 ngày
 export async function GET(request: NextRequest) {
@@ -50,6 +51,7 @@ export async function GET(request: NextRequest) {
       year: y,
       weekNumber,
       [dayField]: { not: "NONE" },
+      classId: prismaExcludeTestClasses,
     },
     include: {
       class: {
@@ -131,7 +133,7 @@ export async function GET(request: NextRequest) {
 
   // Kiểm tra đã chốt chưa và lấy số dự kiến
   let existingSummaries = await prisma.dailyMealSummary.findMany({
-    where: { summaryDate: date },
+    where: { summaryDate: date, classId: prismaExcludeTestClasses },
   });
   const lockedClasses = new Set(
     existingSummaries.filter((s) => s.isLocked).map((s) => s.classId)
@@ -189,7 +191,7 @@ export async function GET(request: NextRequest) {
       }
       // Nạp lại danh sách summaries sau khi auto-lock
       existingSummaries = await prisma.dailyMealSummary.findMany({
-        where: { summaryDate: date },
+        where: { summaryDate: date, classId: prismaExcludeTestClasses },
       });
     }
   }
@@ -451,6 +453,7 @@ export async function POST(request: NextRequest) {
         year: y,
         weekNumber,
         [dayField]: { not: "NONE" },
+        classId: prismaExcludeTestClasses,
       },
       include: {
         class: {

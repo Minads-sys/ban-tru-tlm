@@ -1,15 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db";
+import { auth } from "@/lib/auth";
 import ExcelJS from "exceljs";
+import { isTestClassId, prismaExcludeTestClasses } from "@/lib/test-classes";
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await auth();
+    const isAdmin = session?.user?.role === "ADMIN";
+
     const { searchParams } = new URL(request.url);
     const classId = searchParams.get("classId");
     const status = searchParams.get("status") as any;
     
     const where: any = {};
-    if (classId && classId !== "ALL") where.classId = classId;
+    if (classId && classId !== "ALL") {
+      if (!isAdmin && isTestClassId(classId)) {
+        where.classId = "__NONE__";
+      } else {
+        where.classId = classId;
+      }
+    } else {
+      where.classId = prismaExcludeTestClasses;
+    }
     if (status && status !== "ALL") where.boardingStatus = status;
 
     const students = await prisma.student.findMany({

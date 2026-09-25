@@ -1,6 +1,7 @@
 import prisma from "@/lib/db";
 import { BoardingStatus, CancellationStatus } from "@prisma/client";
 import { getWeekNumber, getVietnamTodayUTC, isPastCutoffTime, splitVietnameseName, compareVietnameseNames, getSchoolWeekInfo, SchoolWeekInfo } from "@/lib/utils";
+import { prismaExcludeTestClasses } from "@/lib/test-classes";
 
 export interface StudentMealInfo {
   id: string;
@@ -519,6 +520,7 @@ export async function getDayMealClasses(dateStr: string) {
       year: y,
       weekNumber,
       [dayField]: { not: "NONE" },
+      classId: prismaExcludeTestClasses,
     },
     include: {
       class: {
@@ -1267,8 +1269,9 @@ export async function getWeeklyDiningMatrix(referenceDate: Date | string): Promi
   const weekInfo = getSchoolWeekInfo(referenceDate);
   const { startDate, endDate, days } = weekInfo;
 
-  // 1. Lấy tất cả các lớp học
+  // 1. Lấy tất cả các lớp học (loại trừ các lớp test)
   const allClasses = await prisma.class.findMany({
+    where: { id: prismaExcludeTestClasses },
     orderBy: { id: "asc" },
     include: {
       _count: {
@@ -1494,6 +1497,7 @@ export async function getWeeklyDiningMatrix(referenceDate: Date | string): Promi
       where: {
         weekNumber,
         year,
+        classId: prismaExcludeTestClasses,
         OR: [
           { monday: { not: "NONE" } },
           { tuesday: { not: "NONE" } },

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { BoardingStatus, SettlementType } from "@prisma/client";
+import { isTestClassId, prismaExcludeTestClasses } from "@/lib/test-classes";
 
 export const dynamic = "force-dynamic";
 
@@ -12,17 +13,23 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Chưa đăng nhập" }, { status: 401 });
     }
 
+    const isAdmin = session.user.role === "ADMIN";
     const { searchParams } = new URL(request.url);
     const search = searchParams.get("search")?.trim().toLowerCase();
     const classId = searchParams.get("classId");
 
-    // 1. Tìm tất cả học sinh đã hủy ăn bán trú
+    // 1. Tìm tất cả học sinh đã hủy ăn bán trú (loại trừ các lớp test)
     const whereStudent: any = {
       boardingStatus: BoardingStatus.CANCELLED,
     };
 
     if (classId && classId !== "all") {
+      if (!isAdmin && isTestClassId(classId)) {
+        return NextResponse.json({ success: true, count: 0, data: [] });
+      }
       whereStudent.classId = classId;
+    } else {
+      whereStudent.classId = prismaExcludeTestClasses;
     }
 
     const cancelledStudents = await prisma.student.findMany({
