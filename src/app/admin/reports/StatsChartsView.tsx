@@ -99,6 +99,17 @@ interface StatisticsData {
     count: number;
     percentage: number;
   }>;
+  classDebtSummary?: Array<{
+    classId: string;
+    className: string;
+    totalStudents: number;
+    paidStudents: number;
+    unpaidStudents: number;
+    totalReceivable: number;
+    totalCollected: number;
+    remainingDebt: number;
+    percentCollected: number;
+  }>;
   financialOverview: {
     totalReceivable: number;
     totalServedMealsAmount: number;
@@ -167,112 +178,560 @@ export default function StatsChartsView() {
       workbook.creator = "Phần mềm Bán trú TLM";
       workbook.created = new Date();
 
-      // Sheet 1: Tổng quan KPI
+      const selectedClassObj = data?.classes?.find((c) => c.id === classId);
+      const scopeText = classId === "ALL" || !selectedClassObj ? "Toàn trường" : `Lớp ${selectedClassObj.name}`;
+      const periodText =
+        preset === "month"
+          ? `Tháng ${month}/${year}`
+          : preset === "week"
+          ? `Tuần này (${now.toLocaleDateString("vi-VN")})`
+          : `Hôm nay (${now.toLocaleDateString("vi-VN")})`;
+      const exportDateText = `${new Date().toLocaleDateString("vi-VN")} ${new Date().toLocaleTimeString("vi-VN", {
+        hour: "2-digit",
+        minute: "2-digit",
+      })}`;
+
+      // ==========================================
+      // SHEET 1: TỔNG QUAN KPI
+      // ==========================================
       const wsKPI = workbook.addWorksheet("Tổng quan KPI");
-      wsKPI.columns = [
-        { header: "Chỉ số thống kê", key: "metric", width: 35 },
-        { header: "Giá trị", key: "value", width: 25 },
-        { header: "Ghi chú", key: "note", width: 30 },
-      ];
-      wsKPI.addRow({
-        metric: "Tổng số suất ăn phục vụ trong kỳ",
-        value: data.kpis.totalMeals.toLocaleString("vi-VN"),
-        note: `Thời gian: ${preset === "month" ? `Tháng ${month}/${year}` : preset}`,
-      });
-      wsKPI.addRow({
-        metric: "Tổng số suất cắt / nghỉ ăn",
-        value: data.kpis.totalCancellations.toLocaleString("vi-VN"),
-        note: `Tỷ lệ cắt: ${data.kpis.cancellationRate}%`,
-      });
-      wsKPI.addRow({
-        metric: "Đăng ký bán trú mới",
-        value: `+${data.kpis.newStudents}`,
-        note: "Học sinh mới tham gia bán trú",
-      });
-      wsKPI.addRow({
-        metric: "Hủy đăng ký bán trú",
-        value: `-${data.kpis.cancelledStudents}`,
-        note: `Tăng trưởng thuần: ${data.kpis.netGrowth >= 0 ? "+" : ""}${data.kpis.netGrowth} HS`,
-      });
-      wsKPI.addRow({
-        metric: "Tổng học sinh bán trú đang hoạt động",
-        value: data.kpis.totalActiveStudents.toLocaleString("vi-VN"),
-        note: "Toàn trường",
-      });
-      wsKPI.addRow({
-        metric: "1. Tổng tiền dự kiến thu",
-        value: `${data.financialOverview.totalReceivable.toLocaleString("vi-VN")} đ`,
-        note: data.financialOverview.isEstimatedFromSchedule ? "Tạm tính theo Thời khóa biểu" : "Theo hóa đơn bán trú phát hành",
-      });
-      wsKPI.addRow({
-        metric: "2. Tổng tiền số suất ăn đã phục vụ",
-        value: `${(data.financialOverview.totalServedMealsAmount || 0).toLocaleString("vi-VN")} đ`,
-        note: `${(data.financialOverview.totalMealsServed || data.kpis.totalMeals).toLocaleString("vi-VN")} suất × ${(data.financialOverview.unitPrice || 45000).toLocaleString("vi-VN")} đ/suất`,
-      });
-      wsKPI.addRow({
-        metric: "3. Tổng tiền học sinh đã thanh toán",
-        value: `${data.financialOverview.totalCollected.toLocaleString("vi-VN")} đ`,
-        note: `Đạt ${data.financialOverview.percentCollected}% (CK SePay: ${(data.financialOverview.bankTransferAmount || 0).toLocaleString("vi-VN")} đ, Tiền mặt: ${(data.financialOverview.cashAmount || 0).toLocaleString("vi-VN")} đ)`,
-      });
-      wsKPI.addRow({
-        metric: "4. Tổng tiền dự kiến còn phải thu",
-        value: `${data.financialOverview.remainingDebt.toLocaleString("vi-VN")} đ`,
-        note: `${data.financialOverview.unpaidStudentsCount || 0} học sinh còn nợ tiền ăn`,
-      });
+      wsKPI.views = [{ showGridLines: true }];
 
-      // Sheet 2: Suất ăn theo ngày
-      const wsDaily = workbook.addWorksheet("Suất ăn theo ngày");
-      wsDaily.columns = [
-        { header: "Ngày", key: "date", width: 16 },
-        { header: "Thứ", key: "day", width: 15 },
-        { header: "Đăng ký TKB", key: "reg", width: 15 },
-        { header: "Cắt suất", key: "cancel", width: 15 },
-        { header: "Tỷ lệ cắt (%)", key: "rate", width: 15 },
-        { header: "Suất Mặn", key: "man", width: 14 },
-        { header: "Suất Chay", key: "chay", width: 14 },
-        { header: "Suất Cháo", key: "chao", width: 14 },
-        { header: "Tổng suất thực tế", key: "total", width: 18 },
-      ];
-      data.dailyTrend.forEach((d) => {
-        wsDaily.addRow({
-          date: d.dateStr,
-          day: d.dayName,
-          reg: d.totalRegistered,
-          cancel: d.totalCanceled,
-          rate: `${d.cancelRate}%`,
-          man: d.finalMan,
-          chay: d.finalChay,
-          chao: d.finalChao,
-          total: d.finalTotal,
-        });
-      });
+      // Tiêu đề Sheet 1
+      wsKPI.mergeCells("A1:C1");
+      const titleKPI = wsKPI.getCell("A1");
+      titleKPI.value = `BÁO CÁO TỔNG QUAN CHỈ SỐ BÁN TRÚ - ${periodText.toUpperCase()}`;
+      titleKPI.font = { bold: true, size: 14, color: { argb: "FF1E3A8A" } };
+      titleKPI.alignment = { vertical: "middle", horizontal: "center" };
+      wsKPI.getRow(1).height = 28;
 
-      // Sheet 3: Biến động sĩ số
-      const wsGrowth = workbook.addWorksheet("Biến động sĩ số theo tháng");
-      wsGrowth.columns = [
-        { header: "Tháng", key: "month", width: 20 },
-        { header: "Đăng ký mới", key: "new", width: 18 },
-        { header: "Hủy bán trú", key: "cancelled", width: 18 },
-        { header: "Tăng trưởng thuần", key: "net", width: 20 },
-      ];
-      data.monthlyGrowth.forEach((m) => {
-        wsGrowth.addRow({
-          month: m.label,
-          new: m.newStudents,
-          cancelled: m.cancelledStudents,
-          net: m.netGrowth,
-        });
-      });
+      // Phụ đề Sheet 1
+      wsKPI.mergeCells("A2:C2");
+      const subKPI = wsKPI.getCell("A2");
+      subKPI.value = `Phạm vi: ${scopeText} | Thời gian: ${periodText} | Ngày xuất file: ${exportDateText}`;
+      subKPI.font = { italic: true, size: 10, color: { argb: "FF475569" } };
+      subKPI.alignment = { vertical: "middle", horizontal: "center" };
+      wsKPI.getRow(2).height = 20;
 
-      // Style headers
-      [wsKPI, wsDaily, wsGrowth].forEach((ws) => {
-        const headerRow = ws.getRow(1);
-        headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
-        headerRow.fill = {
+      wsKPI.getRow(3).height = 10;
+
+      // Header Bảng (Dòng 4)
+      const headerRowKPI = wsKPI.getRow(4);
+      headerRowKPI.values = ["Chỉ số thống kê", "Giá trị", "Ghi chú giải trình"];
+      headerRowKPI.height = 24;
+      for (let col = 1; col <= 3; col++) {
+        const cell = headerRowKPI.getCell(col);
+        cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+        cell.fill = {
           type: "pattern",
           pattern: "solid",
           fgColor: { argb: "FF2563EB" },
         };
+        cell.alignment = {
+          vertical: "middle",
+          horizontal: col === 1 ? "left" : col === 2 ? "right" : "left",
+        };
+      }
+
+      wsKPI.columns = [
+        { key: "metric", width: 40 },
+        { key: "value", width: 28 },
+        { key: "note", width: 55 },
+      ];
+
+      const kpiItems = [
+        {
+          metric: "Tổng số suất ăn phục vụ trong kỳ",
+          value: data.kpis.totalMeals.toLocaleString("vi-VN"),
+          note: `Thời gian áp dụng: ${periodText}`,
+        },
+        {
+          metric: "Tổng số suất cắt / nghỉ ăn",
+          value: data.kpis.totalCancellations.toLocaleString("vi-VN"),
+          note: `Tỷ lệ cắt trung bình: ${data.kpis.cancellationRate}%`,
+        },
+        {
+          metric: "Đăng ký bán trú mới trong kỳ",
+          value: `+${data.kpis.newStudents}`,
+          note: "Học sinh mới tham gia bán trú",
+        },
+        {
+          metric: "Hủy đăng ký bán trú trong kỳ",
+          value: `-${data.kpis.cancelledStudents}`,
+          note: `Tăng trưởng thuần: ${data.kpis.netGrowth >= 0 ? "+" : ""}${data.kpis.netGrowth} HS`,
+        },
+        {
+          metric: "Tổng học sinh bán trú đang hoạt động",
+          value: data.kpis.totalActiveStudents.toLocaleString("vi-VN"),
+          note: `Học sinh trạng thái ACTIVE (${scopeText})`,
+        },
+        {
+          metric: "1. Tổng tiền dự kiến thu",
+          value: `${data.financialOverview.totalReceivable.toLocaleString("vi-VN")} đ`,
+          note: data.financialOverview.isEstimatedFromSchedule
+            ? "Tạm tính theo Thời khóa biểu của học sinh ACTIVE"
+            : "Theo tổng tiền hóa đơn bán trú phát hành trong tháng",
+        },
+        {
+          metric: "2. Tổng tiền số suất ăn đã phục vụ",
+          value: `${(data.financialOverview.totalServedMealsAmount || 0).toLocaleString("vi-VN")} đ`,
+          note: `${(data.financialOverview.totalMealsServed || data.kpis.totalMeals).toLocaleString("vi-VN")} suất × ${(data.financialOverview.unitPrice || 45000).toLocaleString("vi-VN")} đ/suất`,
+        },
+        {
+          metric: "3. Tổng tiền học sinh đã thanh toán",
+          value: `${data.financialOverview.totalCollected.toLocaleString("vi-VN")} đ`,
+          note: `Đạt ${data.financialOverview.percentCollected}% (CK SePay: ${(data.financialOverview.bankTransferAmount || 0).toLocaleString("vi-VN")} đ, Tiền mặt: ${(data.financialOverview.cashAmount || 0).toLocaleString("vi-VN")} đ)`,
+        },
+        {
+          metric: "4. Tổng tiền dự kiến còn phải thu",
+          value: `${data.financialOverview.remainingDebt.toLocaleString("vi-VN")} đ`,
+          note: `${data.financialOverview.unpaidStudentsCount || 0} học sinh chưa hoàn tất tiền ăn`,
+        },
+      ];
+
+      kpiItems.forEach((item) => {
+        const row = wsKPI.addRow([item.metric, item.value, item.note]);
+        const isHighlight =
+          item.metric.startsWith("1.") ||
+          item.metric.startsWith("2.") ||
+          item.metric.startsWith("3.") ||
+          item.metric.startsWith("4.");
+        row.getCell(1).font = { bold: isHighlight };
+        row.getCell(2).alignment = { horizontal: "right" };
+        row.getCell(2).font = {
+          bold: true,
+          color:
+            item.metric.startsWith("4.") && data.financialOverview.remainingDebt > 0
+              ? { argb: "FFDC2626" }
+              : item.metric.startsWith("3.")
+              ? { argb: "FF16A34A" }
+              : undefined,
+        };
+      });
+
+      wsKPI.eachRow((row, rowNumber) => {
+        if (rowNumber >= 4) {
+          row.eachCell((cell) => {
+            cell.border = {
+              top: { style: "thin", color: { argb: "FFE2E8F0" } },
+              left: { style: "thin", color: { argb: "FFE2E8F0" } },
+              bottom: { style: "thin", color: { argb: "FFE2E8F0" } },
+              right: { style: "thin", color: { argb: "FFE2E8F0" } },
+            };
+          });
+        }
+      });
+
+      // ==========================================
+      // SHEET 2: SUẤT ĂN THEO NGÀY
+      // ==========================================
+      const wsDaily = workbook.addWorksheet("Suất ăn theo ngày");
+      wsDaily.views = [{ showGridLines: true }];
+
+      const totalManCount = data.mealDistribution?.find((m) => m.key === "MAN")?.count || 0;
+      const totalChayCount = data.mealDistribution?.find((m) => m.key === "CHAY")?.count || 0;
+      const totalChaoCount = data.mealDistribution?.find((m) => m.key === "CHAO")?.count || 0;
+
+      // Tiêu đề Sheet 2
+      wsDaily.mergeCells("A1:I1");
+      const titleDaily = wsDaily.getCell("A1");
+      titleDaily.value = `BÁO CÁO CHI TIẾT SUẤT ĂN HÀNG NGÀY - ${periodText.toUpperCase()}`;
+      titleDaily.font = { bold: true, size: 14, color: { argb: "FF1E3A8A" } };
+      titleDaily.alignment = { vertical: "middle", horizontal: "center" };
+      wsDaily.getRow(1).height = 28;
+
+      // Phụ đề Sheet 2
+      wsDaily.mergeCells("A2:I2");
+      const subDaily = wsDaily.getCell("A2");
+      subDaily.value = `Phạm vi: ${scopeText} | Tổng suất: ${data.kpis.totalMeals.toLocaleString("vi-VN")} | Cắt: ${data.kpis.totalCancellations.toLocaleString("vi-VN")} (${data.kpis.cancellationRate}%) | Mặn: ${totalManCount.toLocaleString("vi-VN")}, Chay: ${totalChayCount.toLocaleString("vi-VN")}, Cháo: ${totalChaoCount.toLocaleString("vi-VN")} | Ngày xuất: ${exportDateText}`;
+      subDaily.font = { italic: true, size: 10, color: { argb: "FF475569" } };
+      subDaily.alignment = { vertical: "middle", horizontal: "center" };
+      wsDaily.getRow(2).height = 20;
+
+      wsDaily.getRow(3).height = 10;
+
+      // Header Bảng (Dòng 4)
+      const headerRowDaily = wsDaily.getRow(4);
+      headerRowDaily.values = [
+        "Ngày",
+        "Thứ",
+        "Đăng ký TKB",
+        "Cắt suất",
+        "Tỷ lệ cắt (%)",
+        "Suất Mặn",
+        "Suất Chay",
+        "Suất Cháo",
+        "Tổng suất thực tế",
+      ];
+      headerRowDaily.height = 24;
+      for (let col = 1; col <= 9; col++) {
+        const cell = headerRowDaily.getCell(col);
+        cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+        cell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "FF2563EB" },
+        };
+        cell.alignment = { vertical: "middle", horizontal: "center" };
+      }
+
+      wsDaily.columns = [
+        { key: "date", width: 15 },
+        { key: "day", width: 14 },
+        { key: "reg", width: 15 },
+        { key: "cancel", width: 14 },
+        { key: "rate", width: 15 },
+        { key: "man", width: 14 },
+        { key: "chay", width: 14 },
+        { key: "chao", width: 14 },
+        { key: "total", width: 18 },
+      ];
+
+      let sumReg = 0;
+      let sumCancel = 0;
+      let sumManDay = 0;
+      let sumChayDay = 0;
+      let sumChaoDay = 0;
+      let sumTotalDay = 0;
+
+      data.dailyTrend.forEach((d) => {
+        sumReg += d.totalRegistered;
+        sumCancel += d.totalCanceled;
+        sumManDay += d.finalMan;
+        sumChayDay += d.finalChay;
+        sumChaoDay += d.finalChao;
+        sumTotalDay += d.finalTotal;
+
+        const row = wsDaily.addRow([
+          d.dateStr,
+          d.dayName,
+          d.totalRegistered,
+          d.totalCanceled,
+          `${d.cancelRate}%`,
+          d.finalMan,
+          d.finalChay,
+          d.finalChao,
+          d.finalTotal,
+        ]);
+
+        row.getCell(1).alignment = { horizontal: "center" };
+        row.getCell(2).alignment = { horizontal: "center" };
+        row.getCell(3).alignment = { horizontal: "center" };
+        row.getCell(4).alignment = { horizontal: "center" };
+        if (d.totalCanceled > 0) {
+          row.getCell(4).font = { color: { argb: "FFDC2626" } };
+        }
+        row.getCell(5).alignment = { horizontal: "center" };
+        row.getCell(6).alignment = { horizontal: "center" };
+        row.getCell(7).alignment = { horizontal: "center" };
+        row.getCell(8).alignment = { horizontal: "center" };
+        row.getCell(9).alignment = { horizontal: "center" };
+        row.getCell(9).font = { bold: true, color: { argb: "FF2563EB" } };
+      });
+
+      // Dòng Tổng cộng Sheet 2
+      const totalDailyRate = sumReg > 0 ? `${(Math.round((sumCancel / sumReg) * 1000) / 10)}%` : "0%";
+      const totalDailyRow = wsDaily.addRow([
+        "TỔNG CỘNG",
+        "",
+        sumReg,
+        sumCancel,
+        totalDailyRate,
+        sumManDay,
+        sumChayDay,
+        sumChaoDay,
+        sumTotalDay,
+      ]);
+      totalDailyRow.font = { bold: true };
+      totalDailyRow.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FFF1F5F9" },
+      };
+      totalDailyRow.getCell(1).alignment = { horizontal: "center" };
+      totalDailyRow.getCell(3).alignment = { horizontal: "center" };
+      totalDailyRow.getCell(4).alignment = { horizontal: "center" };
+      totalDailyRow.getCell(5).alignment = { horizontal: "center" };
+      totalDailyRow.getCell(6).alignment = { horizontal: "center" };
+      totalDailyRow.getCell(7).alignment = { horizontal: "center" };
+      totalDailyRow.getCell(8).alignment = { horizontal: "center" };
+      totalDailyRow.getCell(9).alignment = { horizontal: "center" };
+      totalDailyRow.getCell(9).font = { bold: true, color: { argb: "FF2563EB" } };
+
+      wsDaily.eachRow((row, rowNumber) => {
+        if (rowNumber >= 4) {
+          row.eachCell((cell) => {
+            cell.border = {
+              top: { style: "thin", color: { argb: "FFE2E8F0" } },
+              left: { style: "thin", color: { argb: "FFE2E8F0" } },
+              bottom: { style: "thin", color: { argb: "FFE2E8F0" } },
+              right: { style: "thin", color: { argb: "FFE2E8F0" } },
+            };
+          });
+        }
+      });
+
+      // ==========================================
+      // SHEET 3: BIẾN ĐỘNG SĨ SỐ THEO THÁNG
+      // ==========================================
+      const wsGrowth = workbook.addWorksheet("Biến động sĩ số theo tháng");
+      wsGrowth.views = [{ showGridLines: true }];
+
+      // Tiêu đề Sheet 3
+      wsGrowth.mergeCells("A1:D1");
+      const titleGrowth = wsGrowth.getCell("A1");
+      titleGrowth.value = "BÁO CÁO BIẾN ĐỘNG SĨ SỐ BÁN TRÚ (6 THÁNG GẦN NHẤT)";
+      titleGrowth.font = { bold: true, size: 14, color: { argb: "FF1E3A8A" } };
+      titleGrowth.alignment = { vertical: "middle", horizontal: "center" };
+      wsGrowth.getRow(1).height = 28;
+
+      // Phụ đề Sheet 3
+      wsGrowth.mergeCells("A2:D2");
+      const subGrowth = wsGrowth.getCell("A2");
+      subGrowth.value = `Phạm vi: ${scopeText} | Sĩ số bán trú đang hoạt động: ${data.kpis.totalActiveStudents.toLocaleString("vi-VN")} HS | Ngày xuất: ${exportDateText}`;
+      subGrowth.font = { italic: true, size: 10, color: { argb: "FF475569" } };
+      subGrowth.alignment = { vertical: "middle", horizontal: "center" };
+      wsGrowth.getRow(2).height = 20;
+
+      wsGrowth.getRow(3).height = 10;
+
+      // Header Bảng (Dòng 4)
+      const headerRowGrowth = wsGrowth.getRow(4);
+      headerRowGrowth.values = [
+        "Tháng",
+        "Đăng ký mới (HS)",
+        "Hủy bán trú (HS)",
+        "Tăng trưởng thuần (HS)",
+      ];
+      headerRowGrowth.height = 24;
+      for (let col = 1; col <= 4; col++) {
+        const cell = headerRowGrowth.getCell(col);
+        cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+        cell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "FF2563EB" },
+        };
+        cell.alignment = { vertical: "middle", horizontal: "center" };
+      }
+
+      wsGrowth.columns = [
+        { key: "month", width: 22 },
+        { key: "new", width: 20 },
+        { key: "cancelled", width: 20 },
+        { key: "net", width: 24 },
+      ];
+
+      let sumNewAll = 0;
+      let sumCancelledAll = 0;
+      let sumNetAll = 0;
+
+      data.monthlyGrowth.forEach((m) => {
+        sumNewAll += m.newStudents;
+        sumCancelledAll += m.cancelledStudents;
+        sumNetAll += m.netGrowth;
+
+        const row = wsGrowth.addRow([
+          m.label,
+          m.newStudents,
+          m.cancelledStudents,
+          `${m.netGrowth >= 0 ? "+" : ""}${m.netGrowth}`,
+        ]);
+
+        row.getCell(1).alignment = { horizontal: "center" };
+        row.getCell(2).alignment = { horizontal: "center" };
+        row.getCell(2).font = { color: { argb: "FF16A34A" }, bold: true };
+        row.getCell(3).alignment = { horizontal: "center" };
+        row.getCell(3).font = { color: { argb: "FFDC2626" } };
+        row.getCell(4).alignment = { horizontal: "center" };
+        row.getCell(4).font = {
+          bold: true,
+          color: m.netGrowth >= 0 ? { argb: "FF16A34A" } : { argb: "FFDC2626" },
+        };
+      });
+
+      // Dòng Tổng cộng Sheet 3
+      const totalGrowthRow = wsGrowth.addRow([
+        "TỔNG CỘNG 6 THÁNG",
+        sumNewAll,
+        sumCancelledAll,
+        `${sumNetAll >= 0 ? "+" : ""}${sumNetAll}`,
+      ]);
+      totalGrowthRow.font = { bold: true };
+      totalGrowthRow.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FFF1F5F9" },
+      };
+      totalGrowthRow.getCell(1).alignment = { horizontal: "center" };
+      totalGrowthRow.getCell(2).alignment = { horizontal: "center" };
+      totalGrowthRow.getCell(3).alignment = { horizontal: "center" };
+      totalGrowthRow.getCell(4).alignment = { horizontal: "center" };
+
+      wsGrowth.eachRow((row, rowNumber) => {
+        if (rowNumber >= 4) {
+          row.eachCell((cell) => {
+            cell.border = {
+              top: { style: "thin", color: { argb: "FFE2E8F0" } },
+              left: { style: "thin", color: { argb: "FFE2E8F0" } },
+              bottom: { style: "thin", color: { argb: "FFE2E8F0" } },
+              right: { style: "thin", color: { argb: "FFE2E8F0" } },
+            };
+          });
+        }
+      });
+
+      // ==========================================
+      // SHEET 4: CÔNG NỢ THEO LỚP
+      // ==========================================
+      const wsClassDebt = workbook.addWorksheet("Công nợ theo lớp");
+      wsClassDebt.views = [{ showGridLines: true }];
+
+      // Tiêu đề Sheet 4
+      wsClassDebt.mergeCells("A1:J1");
+      const titleClassDebt = wsClassDebt.getCell("A1");
+      titleClassDebt.value = `BÁO CÁO THỐNG KÊ CÔNG NỢ BÁN TRÚ THEO LỚP - ${periodText.toUpperCase()}`;
+      titleClassDebt.font = { bold: true, size: 14, color: { argb: "FF1E3A8A" } };
+      titleClassDebt.alignment = { vertical: "middle", horizontal: "center" };
+      wsClassDebt.getRow(1).height = 28;
+
+      let sumStudents = 0;
+      let sumPaidStudents = 0;
+      let sumUnpaidStudents = 0;
+      let sumReceivable = 0;
+      let sumCollected = 0;
+      let sumDebt = 0;
+
+      (data.classDebtSummary || []).forEach((c) => {
+        sumStudents += c.totalStudents;
+        sumPaidStudents += c.paidStudents;
+        sumUnpaidStudents += c.unpaidStudents;
+        sumReceivable += c.totalReceivable;
+        sumCollected += c.totalCollected;
+        sumDebt += c.remainingDebt;
+      });
+
+      // Phụ đề Sheet 4
+      wsClassDebt.mergeCells("A2:J2");
+      const subClassDebt = wsClassDebt.getCell("A2");
+      subClassDebt.value = `Tổng số: ${(data.classDebtSummary || []).length} lớp | Tổng phải thu: ${sumReceivable.toLocaleString("vi-VN")} đ | Đã thu: ${sumCollected.toLocaleString("vi-VN")} đ | Còn nợ: ${sumDebt.toLocaleString("vi-VN")} đ (${sumUnpaidStudents} HS nợ) | Ngày xuất: ${exportDateText}`;
+      subClassDebt.font = { italic: true, size: 10, color: { argb: "FF475569" } };
+      subClassDebt.alignment = { vertical: "middle", horizontal: "center" };
+      wsClassDebt.getRow(2).height = 20;
+
+      wsClassDebt.getRow(3).height = 10;
+
+      // Header Bảng (Dòng 4)
+      const headerRowClass = wsClassDebt.getRow(4);
+      headerRowClass.values = [
+        "STT",
+        "Tên Lớp",
+        "Sĩ số bán trú",
+        "HS đã nộp đủ",
+        "HS còn nợ",
+        "Tổng phải thu",
+        "Đã thu",
+        "Còn nợ",
+        "Tỷ lệ thu (%)",
+        "Tình trạng",
+      ];
+      headerRowClass.height = 24;
+      for (let col = 1; col <= 10; col++) {
+        const cell = headerRowClass.getCell(col);
+        cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+        cell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "FF2563EB" },
+        };
+        cell.alignment = { vertical: "middle", horizontal: "center" };
+      }
+
+      wsClassDebt.columns = [
+        { key: "stt", width: 6 },
+        { key: "className", width: 14 },
+        { key: "totalStudents", width: 16 },
+        { key: "paidStudents", width: 16 },
+        { key: "unpaidStudents", width: 15 },
+        { key: "totalReceivable", width: 20 },
+        { key: "totalCollected", width: 20 },
+        { key: "remainingDebt", width: 20 },
+        { key: "percentCollected", width: 15 },
+        { key: "status", width: 20 },
+      ];
+
+      (data.classDebtSummary || []).forEach((c, idx) => {
+        const row = wsClassDebt.addRow([
+          idx + 1,
+          c.className,
+          c.totalStudents,
+          c.paidStudents,
+          c.unpaidStudents,
+          c.totalReceivable,
+          c.totalCollected,
+          c.remainingDebt,
+          `${c.percentCollected}%`,
+          c.totalStudents === 0 ? "Chưa có HS" : c.remainingDebt === 0 ? "Hoàn tất 100%" : `Còn ${c.unpaidStudents} HS nợ`,
+        ]);
+
+        row.getCell(1).alignment = { horizontal: "center" };
+        row.getCell(2).alignment = { horizontal: "center" };
+        row.getCell(3).alignment = { horizontal: "center" };
+        row.getCell(4).alignment = { horizontal: "center" };
+        row.getCell(5).alignment = { horizontal: "center" };
+        row.getCell(6).numFmt = '#,##0" đ"';
+        row.getCell(7).numFmt = '#,##0" đ"';
+        row.getCell(8).numFmt = '#,##0" đ"';
+        if (c.remainingDebt > 0) {
+          row.getCell(8).font = { bold: true, color: { argb: "FFDC2626" } };
+        }
+        row.getCell(9).alignment = { horizontal: "center" };
+        row.getCell(10).alignment = { horizontal: "center" };
+      });
+
+      // Dòng Tổng Cộng toàn trường của Sheet 4
+      const totalClassRow = wsClassDebt.addRow([
+        "TỔNG CỘNG",
+        `${(data.classDebtSummary || []).length} lớp`,
+        sumStudents,
+        sumPaidStudents,
+        sumUnpaidStudents,
+        sumReceivable,
+        sumCollected,
+        sumDebt,
+        sumReceivable > 0 ? `${(Math.round((sumCollected / sumReceivable) * 1000) / 10)}%` : "0%",
+        sumDebt === 0 && sumStudents > 0 ? "Hoàn tất 100%" : `Còn ${sumUnpaidStudents} HS nợ`,
+      ]);
+      totalClassRow.font = { bold: true };
+      totalClassRow.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FFF1F5F9" },
+      };
+      totalClassRow.getCell(1).alignment = { horizontal: "center" };
+      totalClassRow.getCell(2).alignment = { horizontal: "center" };
+      totalClassRow.getCell(3).alignment = { horizontal: "center" };
+      totalClassRow.getCell(4).alignment = { horizontal: "center" };
+      totalClassRow.getCell(5).alignment = { horizontal: "center" };
+      totalClassRow.getCell(6).numFmt = '#,##0" đ"';
+      totalClassRow.getCell(7).numFmt = '#,##0" đ"';
+      totalClassRow.getCell(8).numFmt = '#,##0" đ"';
+      totalClassRow.getCell(8).font = { bold: true, color: { argb: "FFDC2626" } };
+      totalClassRow.getCell(9).alignment = { horizontal: "center" };
+      totalClassRow.getCell(10).alignment = { horizontal: "center" };
+
+      // Kẻ viền (border) cho wsClassDebt
+      wsClassDebt.eachRow((row, rowNumber) => {
+        if (rowNumber >= 4) {
+          row.eachCell((cell) => {
+            cell.border = {
+              top: { style: "thin", color: { argb: "FFE2E8F0" } },
+              left: { style: "thin", color: { argb: "FFE2E8F0" } },
+              bottom: { style: "thin", color: { argb: "FFE2E8F0" } },
+              right: { style: "thin", color: { argb: "FFE2E8F0" } },
+            };
+          });
+        }
       });
 
       const buffer = await workbook.xlsx.writeBuffer();

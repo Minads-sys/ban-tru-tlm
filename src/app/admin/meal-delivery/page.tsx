@@ -31,6 +31,9 @@ import {
   Images,
   Layers,
   ExternalLink,
+  Download,
+  FolderArchive,
+  FileDown,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -41,6 +44,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import {
+  Table,
+  TableHeader,
+  TableRow,
+  TableHead,
+  TableBody,
+  TableCell,
+} from "@/components/ui/table";
 import { toast } from "@/lib/toast";
 import Swal from "sweetalert2";
 import { compressImage, CompressedImageResult } from "@/lib/image-compressor";
@@ -370,6 +381,81 @@ export default function MealDeliveryPage() {
   };
 
   const activeGalleryPhotos = galleryRecord ? getRecordPhotos(galleryRecord) : [];
+
+  // Tải ảnh đơn đang xem
+  const [downloadingSingle, setDownloadingSingle] = useState(false);
+  const handleDownloadCurrentPhoto = async () => {
+    const url = activeGalleryPhotos[activePhotoIndex];
+    if (!url || !galleryRecord) return;
+    setDownloadingSingle(true);
+    try {
+      const res = await fetch(url);
+      const blob = await res.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      const ext = url.split(".").pop()?.split("?")[0] || "webp";
+      const cleanDate = galleryRecord.deliveryDate ? galleryRecord.deliveryDate.replace(/-/g, "") : "ngay";
+      a.download = `BienBan_GiaoNhan_${cleanDate}_trang_${activePhotoIndex + 1}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(blobUrl);
+      toast.success(`Đã tải ảnh trang #${activePhotoIndex + 1}!`);
+    } catch (err) {
+      console.error("Lỗi khi tải ảnh:", err);
+      window.open(url, "_blank");
+    } finally {
+      setDownloadingSingle(false);
+    }
+  };
+
+  // Tải tất cả ảnh dạng file ZIP
+  const [downloadingZip, setDownloadingZip] = useState(false);
+  const handleDownloadAllPhotos = async () => {
+    if (!galleryRecord || activeGalleryPhotos.length === 0) return;
+    setDownloadingZip(true);
+    Swal.fire({
+      title: "Đang đóng gói file ZIP...",
+      text: `Đang tải và nén ${activeGalleryPhotos.length} ảnh biên bản ký nhận...`,
+      allowOutsideClick: false,
+      didOpen: () => Swal.showLoading(),
+    });
+
+    try {
+      const JSZip = (await import("jszip")).default;
+      const zip = new JSZip();
+      const cleanDate = galleryRecord.deliveryDate ? galleryRecord.deliveryDate.replace(/-/g, "") : "ngay";
+      const folder = zip.folder(`BienBan_${cleanDate}`) || zip;
+
+      for (let i = 0; i < activeGalleryPhotos.length; i++) {
+        const pUrl = activeGalleryPhotos[i];
+        const res = await fetch(pUrl);
+        const blob = await res.blob();
+        const ext = pUrl.split(".").pop()?.split("?")[0] || "webp";
+        const fileName = `Trang_${String(i + 1).padStart(2, "0")}.${ext}`;
+        folder.file(fileName, blob);
+      }
+
+      const zipContent = await zip.generateAsync({ type: "blob" });
+      const zipUrl = window.URL.createObjectURL(zipContent);
+      const a = document.createElement("a");
+      a.href = zipUrl;
+      a.download = `Bien_Ban_Giao_Nhan_${cleanDate}_${activeGalleryPhotos.length}_anh.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(zipUrl);
+
+      Swal.close();
+      toast.success(`Đã tải về thành công ${activeGalleryPhotos.length} ảnh trong file ZIP!`);
+    } catch (err) {
+      console.error("Lỗi tải file ZIP:", err);
+      Swal.fire("Lỗi", "Không thể nén ảnh: " + String(err), "error");
+    } finally {
+      setDownloadingZip(false);
+    }
+  };
 
   // Điều hướng bằng phím mũi tên khi mở modal gallery
   useEffect(() => {
@@ -858,133 +944,201 @@ export default function MealDeliveryPage() {
               </p>
             </Card>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {records.map((r) => {
-                const photos = getRecordPhotos(r);
-                return (
-                  <Card key={r.id} className="border-slate-200 dark:border-slate-800 shadow-xs hover:border-blue-300 dark:hover:border-blue-800 transition-all">
-                    <CardHeader className="pb-2.5 border-b border-slate-100 dark:border-slate-800/60 flex flex-row items-center justify-between">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-slate-900 dark:text-slate-100 font-mono text-base">
-                            {formatDate(r.deliveryDate)}
-                          </span>
-                          <Badge variant="outline" className="text-xs bg-slate-50 text-slate-700">
-                            {r.shift === "TIET_4" ? "Ca Tiết 4" : r.shift === "TIET_5" ? "Ca Tiết 5" : "Cả ngày"}
-                          </Badge>
-                        </div>
-                        <p className="text-xs text-slate-400 mt-0.5">
-                          Giao bởi: <b>{r.deliveredBy?.fullName || r.deliveredBy?.username || "Nhân viên"}</b> • {new Date(r.createdAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
-                        </p>
-                      </div>
-
-                      {(isAdmin || r.deliveredBy?.id === session?.user?.id) && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeleteRecord(r)}
-                          className="text-rose-500 hover:text-rose-700 hover:bg-rose-50 h-8 w-8 p-0 cursor-pointer"
-                          title="Xóa phiếu"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </CardHeader>
-                    <CardContent className="pt-3 space-y-3">
-                      {/* Người nhận */}
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-slate-500">Người ký nhận:</span>
-                        <span className="font-bold text-slate-800 dark:text-slate-200">
-                          {r.receiverName} {r.receiverPhone ? `(${r.receiverPhone})` : ""}
-                        </span>
-                      </div>
-
-                      {/* Thống kê suất */}
-                      <div className="grid grid-cols-4 gap-1.5 text-center p-2 rounded-lg bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 text-xs">
-                        <div>
-                          <div className="text-slate-400 text-[10px]">Mặn</div>
-                          <div className="font-bold text-slate-700 dark:text-slate-300">{r.deliveredMan}</div>
-                        </div>
-                        <div>
-                          <div className="text-emerald-600 text-[10px]">Chay</div>
-                          <div className="font-bold text-emerald-600">{r.deliveredChay}</div>
-                        </div>
-                        <div>
-                          <div className="text-amber-600 text-[10px]">Cháo</div>
-                          <div className="font-bold text-amber-600">{r.deliveredChao}</div>
-                        </div>
-                        <div className="border-l border-slate-200 dark:border-slate-700 pl-1">
-                          <div className="text-blue-600 text-[10px] font-semibold">TỔNG</div>
-                          <div className="font-extrabold text-blue-700 dark:text-blue-400 text-sm">{r.totalDelivered}</div>
-                        </div>
-                      </div>
-
-                      {r.note && (
-                        <p className="text-xs text-slate-600 dark:text-slate-400 bg-amber-50/60 dark:bg-amber-950/20 p-2 rounded border border-amber-100 dark:border-amber-900/40 italic">
-                          "{r.note}"
-                        </p>
-                      )}
-
-                      {/* Danh sách ảnh ký nhận */}
-                      {photos.length > 0 && (
-                        <div className="pt-1 space-y-1.5">
-                          <div className="flex items-center justify-between text-xs text-slate-500">
-                            <span className="flex items-center gap-1 font-medium text-slate-700 dark:text-slate-300">
-                              <Images className="h-3.5 w-3.5 text-blue-600" />
-                              Biên bản ký nhận ({photos.length} ảnh):
-                            </span>
-                            <span className="text-[11px] text-slate-400">
-                              {r.photoSizeKb ? `Tổng ~${r.photoSizeKb} KB` : ""}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center gap-2 overflow-x-auto pb-1">
-                            {photos.map((pUrl, pIdx) => (
-                              <button
-                                key={pIdx}
-                                type="button"
-                                onClick={() => handleOpenGallery(r, pIdx)}
-                                className="relative shrink-0 w-14 h-14 rounded-lg overflow-hidden border border-slate-200 hover:border-blue-500 hover:shadow-md transition-all group cursor-pointer"
-                              >
-                                <img
-                                  src={pUrl}
-                                  alt={`Ảnh ${pIdx + 1}`}
-                                  className="w-full h-full object-cover group-hover:scale-110 transition-transform"
-                                />
-                                <span className="absolute bottom-0 right-0 bg-black/70 text-white text-[9px] px-1 rounded-tl">
-                                  #{pIdx + 1}
+            <Card className="border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden">
+              <CardHeader className="py-3 px-4 bg-slate-50/60 dark:bg-slate-900/40 border-b border-slate-100 dark:border-slate-800 flex flex-row items-center justify-between">
+                <CardTitle className="text-sm font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-blue-600" />
+                  <span>Danh Sách Phiếu Giao Nhận ({records.length} phiếu)</span>
+                </CardTitle>
+                <span className="text-xs text-slate-400 hidden sm:inline">
+                  Bấm nút &quot;Xem ảnh&quot; để mở popup xem chi tiết biên bản ký nhận
+                </span>
+              </CardHeader>
+              <CardContent className="p-0">
+                {/* 1. Phiên bản Bảng (Table) cho Tablet & PC */}
+                <div className="hidden sm:block overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-slate-50/80 dark:bg-slate-900/80 text-xs">
+                        <TableHead className="w-12 text-center">STT</TableHead>
+                        <TableHead>Ngày & Buổi</TableHead>
+                        <TableHead>Người giao</TableHead>
+                        <TableHead>Người ký nhận</TableHead>
+                        <TableHead className="text-center">Chi tiết suất (Mặn - Chay - Cháo)</TableHead>
+                        <TableHead className="text-center font-bold">Tổng suất</TableHead>
+                        <TableHead>Ghi chú</TableHead>
+                        <TableHead className="text-center">Biên bản ký nhận</TableHead>
+                        <TableHead className="w-16 text-right">Thao tác</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {records.map((r, idx) => {
+                        const photos = getRecordPhotos(r);
+                        return (
+                          <TableRow key={r.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-900/50 text-xs">
+                            <TableCell className="text-center font-medium text-slate-400">{idx + 1}</TableCell>
+                            <TableCell>
+                              <div className="font-bold text-slate-900 dark:text-slate-100 font-mono text-sm">
+                                {formatDate(r.deliveryDate)}
+                              </div>
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal">
+                                  {r.shift === "TIET_4" ? "Tiết 4" : r.shift === "TIET_5" ? "Tiết 5" : "Cả ngày"}
+                                </Badge>
+                                <span className="text-[11px] text-slate-400">
+                                  {new Date(r.createdAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
                                 </span>
-                              </button>
-                            ))}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <span className="font-medium text-slate-700 dark:text-slate-300">
+                                {r.deliveredBy?.fullName || r.deliveredBy?.username || "Nhân viên"}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <div className="font-bold text-slate-800 dark:text-slate-200">
+                                {r.receiverName}
+                              </div>
+                              {r.receiverPhone && (
+                                <div className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
+                                  <Phone className="h-3 w-3" />
+                                  <span>{r.receiverPhone}</span>
+                                </div>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <div className="inline-flex items-center gap-1.5 font-mono text-xs">
+                                <span className="text-slate-700 font-bold" title="Mặn">{r.deliveredMan} M</span>
+                                <span className="text-slate-300">•</span>
+                                <span className="text-emerald-600 font-bold" title="Chay">{r.deliveredChay} C</span>
+                                <span className="text-slate-300">•</span>
+                                <span className="text-amber-600 font-bold" title="Cháo">{r.deliveredChao} Ch</span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <span className="inline-block px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 font-black font-mono text-sm">
+                                {r.totalDelivered}
+                              </span>
+                            </TableCell>
+                            <TableCell className="max-w-[160px] truncate text-slate-500 italic" title={r.note || ""}>
+                              {r.note || "—"}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              {photos.length > 0 ? (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleOpenGallery(r, 0)}
+                                  className="h-8 text-xs font-semibold bg-blue-50/80 hover:bg-blue-100 text-blue-700 border-blue-200 gap-1.5 cursor-pointer shadow-2xs"
+                                >
+                                  <Eye className="h-3.5 w-3.5 text-blue-600" />
+                                  <span>Xem ảnh ({photos.length})</span>
+                                </Button>
+                              ) : (
+                                <span className="text-slate-400 text-xs italic">Không có ảnh</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {(isAdmin || r.deliveredBy?.id === session?.user?.id) && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleDeleteRecord(r)}
+                                  className="text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/50 h-8 w-8 p-0 cursor-pointer"
+                                  title="Xóa phiếu này"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {/* 2. Phiên bản Compact Card cho Mobile */}
+                <div className="sm:hidden divide-y divide-slate-100 dark:divide-slate-800">
+                  {records.map((r) => {
+                    const photos = getRecordPhotos(r);
+                    return (
+                      <div key={r.id} className="p-3.5 space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-slate-900 font-mono text-sm">
+                              {formatDate(r.deliveryDate)}
+                            </span>
+                            <Badge variant="outline" className="text-[10px]">
+                              {r.shift === "TIET_4" ? "Tiết 4" : r.shift === "TIET_5" ? "Tiết 5" : "Cả ngày"}
+                            </Badge>
                           </div>
+                          {(isAdmin || r.deliveredBy?.id === session?.user?.id) && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDeleteRecord(r)}
+                              className="text-rose-500 hover:text-rose-700 h-7 w-7 p-0 cursor-pointer"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
                         </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
+                        <div className="flex items-center justify-between text-xs text-slate-600">
+                          <span>Nhận: <b>{r.receiverName}</b></span>
+                          <span className="font-bold text-blue-700 text-sm">{r.totalDelivered} suất</span>
+                        </div>
+                        <div className="flex items-center justify-between pt-1">
+                          <span className="text-[11px] text-slate-400">
+                            {r.deliveredMan}M • {r.deliveredChay}C • {r.deliveredChao}Ch
+                          </span>
+                          {photos.length > 0 && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleOpenGallery(r, 0)}
+                              className="h-7 text-xs bg-blue-50 text-blue-700 border-blue-200 gap-1 cursor-pointer"
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                              <span>Xem {photos.length} ảnh</span>
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
           )}
         </TabsContent>
       </Tabs>
 
-      {/* Modal Lightbox Gallery Phóng to ảnh ký nhận (Hỗ trợ duyệt nhiều ảnh qua lại) */}
+      {/* Modal Lightbox Gallery Phóng to ảnh ký nhận - Bố cục chuẩn PC (Ảnh dọc bên trái, Thumbnail bên phải, Nút tải ảnh) */}
       <Dialog open={!!galleryRecord} onOpenChange={(open) => !open && setGalleryRecord(null)}>
-        <DialogContent className="max-w-5xl w-[96vw] max-h-[95vh] p-3 sm:p-5 bg-slate-950 text-white border border-slate-800 shadow-2xl flex flex-col min-w-0 overflow-hidden rounded-2xl">
+        <DialogContent className="max-w-7xl w-[98vw] h-[92vh] max-h-[95vh] p-3 sm:p-5 bg-slate-950 text-white border border-slate-800 shadow-2xl flex flex-col min-w-0 overflow-hidden rounded-2xl">
+          {/* Header Modal */}
           <DialogHeader className="text-left space-y-2 pb-3 border-b border-slate-800/80 pr-10 shrink-0">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-              <DialogTitle className="text-base sm:text-lg font-bold text-slate-100 flex items-center gap-2">
-                <span className="truncate">Ảnh Biên Bản Ký Nhận Suất Cơm</span>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <DialogTitle className="text-base sm:text-lg font-bold text-slate-100 flex items-center gap-2">
+                  <Images className="h-5 w-5 text-blue-500" />
+                  <span>Ảnh Biên Bản Ký Nhận Suất Cơm</span>
+                </DialogTitle>
                 {activeGalleryPhotos.length > 0 && (
                   <Badge className="bg-blue-600 hover:bg-blue-600 text-white text-xs font-mono shrink-0">
-                    Ảnh {activePhotoIndex + 1} / {activeGalleryPhotos.length}
+                    Trang {activePhotoIndex + 1} / {activeGalleryPhotos.length}
                   </Badge>
                 )}
-              </DialogTitle>
+              </div>
 
+              {/* Thông tin phiếu & Nút tải nhanh ở Header */}
               {galleryRecord && (
-                <div className="flex items-center gap-1.5 flex-wrap">
+                <div className="flex items-center gap-2 flex-wrap">
                   <Badge variant="outline" className="text-[11px] sm:text-xs bg-slate-900 text-slate-300 border-slate-700 font-normal">
                     <Calendar className="h-3 w-3 mr-1 inline text-blue-400" />
                     {formatDate(galleryRecord.deliveryDate)}
@@ -996,95 +1150,195 @@ export default function MealDeliveryPage() {
                   <Badge variant="outline" className="text-[11px] sm:text-xs bg-emerald-950/80 text-emerald-300 border-emerald-800 font-medium">
                     {galleryRecord.totalDelivered} suất
                   </Badge>
+
+                  {/* Nút tải ảnh nhanh */}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={handleDownloadCurrentPhoto}
+                    disabled={downloadingSingle}
+                    className="h-7 text-xs bg-slate-900 hover:bg-slate-800 border-slate-700 text-slate-200 gap-1.5 cursor-pointer"
+                    title="Tải ảnh trang đang xem"
+                  >
+                    {downloadingSingle ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3 text-blue-400" />}
+                    <span className="hidden md:inline">Tải ảnh này</span>
+                  </Button>
+
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleDownloadAllPhotos}
+                    disabled={downloadingZip}
+                    className="h-7 text-xs bg-blue-600 hover:bg-blue-700 text-white font-semibold gap-1.5 cursor-pointer"
+                    title={`Tải toàn bộ ${activeGalleryPhotos.length} ảnh trong file ZIP`}
+                  >
+                    {downloadingZip ? <Loader2 className="h-3 w-3 animate-spin" /> : <FolderArchive className="h-3 w-3" />}
+                    <span className="hidden md:inline">Tải tất cả ZIP</span>
+                  </Button>
                 </div>
               )}
             </div>
           </DialogHeader>
 
+          {/* Thân Modal: Bố cục 2 Cột trên PC (Ảnh chính dọc bên trái, Thumbnail bên phải) */}
           {activeGalleryPhotos.length > 0 && (
-            <div className="flex-1 min-h-0 min-w-0 flex flex-col space-y-3 py-2 overflow-hidden">
-              {/* Vùng xem ảnh phóng to */}
-              <div
-                className="relative w-full flex-1 min-h-[42vh] max-h-[58vh] sm:max-h-[66vh] overflow-hidden rounded-xl border border-slate-800 bg-black flex items-center justify-center select-none"
-                onTouchStart={handleTouchStart}
-                onTouchMove={handleTouchMove}
-                onTouchEnd={handleTouchEnd}
-              >
-                <img
-                  src={activeGalleryPhotos[activePhotoIndex]}
-                  alt={`Ảnh ký nhận ${activePhotoIndex + 1}`}
-                  className="max-h-full max-w-full w-auto h-auto object-contain mx-auto transition-opacity duration-150"
-                />
+            <div className="flex-1 min-h-0 min-w-0 flex flex-col lg:flex-row gap-3 pt-2 overflow-hidden">
+              {/* CỘT TRÁI: KHUNG XEM ẢNH CHÍNH (Đảm bảo hiển thị trọn vẹn văn bản dọc A4) */}
+              <div className="flex-1 min-w-0 h-full flex flex-col justify-between overflow-hidden bg-black/95 rounded-xl border border-slate-800/80 relative">
+                {/* Vùng hiển thị ảnh chính với object-contain */}
+                <div
+                  className="relative w-full flex-1 h-full min-h-0 overflow-hidden flex items-center justify-center p-2 sm:p-4 select-none"
+                  onTouchStart={handleTouchStart}
+                  onTouchMove={handleTouchMove}
+                  onTouchEnd={handleTouchEnd}
+                >
+                  <img
+                    src={activeGalleryPhotos[activePhotoIndex]}
+                    alt={`Ảnh ký nhận ${activePhotoIndex + 1}`}
+                    className="max-h-full max-w-full w-auto h-auto object-contain mx-auto shadow-2xl rounded select-none transition-opacity duration-150"
+                  />
 
-                {/* Nút Prev trên ảnh */}
-                {activeGalleryPhotos.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => setActivePhotoIndex((prev) => (prev > 0 ? prev - 1 : activeGalleryPhotos.length - 1))}
-                    className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 p-2 sm:p-3 bg-black/60 hover:bg-blue-600/90 text-white rounded-full backdrop-blur-md cursor-pointer transition-all active:scale-95 shadow-lg border border-white/10 z-10"
-                    title="Ảnh trước đó (Phím ←)"
-                  >
-                    <ChevronLeft className="h-5 w-5 sm:h-6 sm:w-6" />
-                  </button>
-                )}
+                  {/* Nút Prev trên ảnh */}
+                  {activeGalleryPhotos.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setActivePhotoIndex((prev) => (prev > 0 ? prev - 1 : activeGalleryPhotos.length - 1))}
+                      className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 p-2 sm:p-3 bg-black/70 hover:bg-blue-600 text-white rounded-full backdrop-blur-md cursor-pointer transition-all active:scale-95 shadow-xl border border-white/10 z-10"
+                      title="Trang trước đó (Phím ←)"
+                    >
+                      <ChevronLeft className="h-5 w-5 sm:h-6 sm:w-6" />
+                    </button>
+                  )}
 
-                {/* Nút Next trên ảnh */}
-                {activeGalleryPhotos.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => setActivePhotoIndex((prev) => (prev < activeGalleryPhotos.length - 1 ? prev + 1 : 0))}
-                    className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 p-2 sm:p-3 bg-black/60 hover:bg-blue-600/90 text-white rounded-full backdrop-blur-md cursor-pointer transition-all active:scale-95 shadow-lg border border-white/10 z-10"
-                    title="Ảnh tiếp theo (Phím →)"
-                  >
-                    <ChevronRight className="h-5 w-5 sm:h-6 sm:w-6" />
-                  </button>
-                )}
+                  {/* Nút Next trên ảnh */}
+                  {activeGalleryPhotos.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setActivePhotoIndex((prev) => (prev < activeGalleryPhotos.length - 1 ? prev + 1 : 0))}
+                      className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 p-2 sm:p-3 bg-black/70 hover:bg-blue-600 text-white rounded-full backdrop-blur-md cursor-pointer transition-all active:scale-95 shadow-xl border border-white/10 z-10"
+                      title="Trang tiếp theo (Phím →)"
+                    >
+                      <ChevronRight className="h-5 w-5 sm:h-6 sm:w-6" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Footer ảnh: thông tin tỉ lệ & nút mở ảnh gốc */}
+                <div className="flex items-center justify-between px-3 py-1.5 bg-slate-900/60 border-t border-slate-800/80 text-[11px] text-slate-400 shrink-0">
+                  <div className="flex items-center gap-1.5 truncate">
+                    <span className="hidden sm:inline">Phím <strong>← →</strong> hoặc vuốt màn hình để chuyển trang</span>
+                    <span className="sm:hidden">Vuốt ngang để chuyển trang</span>
+                    <span>• Toàn trang dọc vừa vặn</span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <a
+                      href={activeGalleryPhotos[activePhotoIndex]}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-blue-400 hover:text-blue-300 rounded text-[11px] transition-colors"
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                      <span>Mở ảnh gốc</span>
+                    </a>
+                  </div>
+                </div>
               </div>
 
-              {/* Dải thumbnail bên dưới modal */}
-              {activeGalleryPhotos.length > 1 && (
-                <div className="w-full min-w-0 overflow-hidden">
-                  <div
-                    ref={thumbnailContainerRef}
-                    className="flex items-center gap-1.5 sm:gap-2 max-w-full overflow-x-auto py-1 px-1 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent"
-                  >
-                    {activeGalleryPhotos.map((thumbUrl, idx) => (
+              {/* CỘT PHẢI: DANH SÁCH THUMBNAIL DỌC VÀ KHỐI NÚT DOWNLOAD */}
+              <div className="w-full lg:w-72 xl:w-80 shrink-0 h-auto lg:h-full flex flex-col bg-slate-900/80 rounded-xl border border-slate-800/80 overflow-hidden">
+                {/* Header cột phải */}
+                <div className="p-3 border-b border-slate-800 flex items-center justify-between text-xs font-bold text-slate-200 shrink-0">
+                  <div className="flex items-center gap-1.5">
+                    <Images className="h-4 w-4 text-blue-400" />
+                    <span>Danh Sách Trang Ký Nhận</span>
+                  </div>
+                  <Badge variant="outline" className="bg-slate-800 text-slate-300 border-slate-700 text-[10px] font-mono">
+                    {activeGalleryPhotos.length} trang
+                  </Badge>
+                </div>
+
+                {/* Danh sách Thumbnail: Dọc trên PC, Ngang trên Mobile */}
+                <div
+                  ref={thumbnailContainerRef}
+                  className="lg:flex-1 lg:overflow-y-auto max-lg:flex max-lg:overflow-x-auto p-2 sm:p-2.5 gap-2 space-y-0 lg:space-y-2 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent"
+                >
+                  {activeGalleryPhotos.map((thumbUrl, idx) => {
+                    const isSelected = activePhotoIndex === idx;
+                    return (
                       <button
                         key={idx}
                         type="button"
                         onClick={() => setActivePhotoIndex(idx)}
-                        className={`relative shrink-0 w-11 h-11 sm:w-14 sm:h-14 rounded-lg overflow-hidden border-2 transition-all cursor-pointer ${
-                          activePhotoIndex === idx
-                            ? "border-blue-500 scale-105 shadow-md shadow-blue-500/30 ring-2 ring-blue-500/40"
-                            : "border-slate-800 opacity-60 hover:opacity-100 hover:border-slate-600"
+                        className={`w-full flex items-center gap-2.5 p-1.5 sm:p-2 rounded-lg border transition-all text-left cursor-pointer shrink-0 max-lg:w-20 max-lg:flex-col ${
+                          isSelected
+                            ? "border-blue-500 bg-blue-950/60 ring-2 ring-blue-500/40 text-white shadow-md"
+                            : "border-slate-800/90 bg-slate-950/40 opacity-70 hover:opacity-100 hover:border-slate-700 text-slate-300"
                         }`}
                       >
-                        <img src={thumbUrl} alt={`Thumb ${idx + 1}`} className="w-full h-full object-cover" />
-                        <span className="absolute bottom-0 right-0 bg-black/80 text-[9px] text-white font-mono px-1 rounded-tl">
-                          #{idx + 1}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+                        {/* Ảnh thumbnail */}
+                        <div className="relative w-12 h-16 sm:w-14 sm:h-18 rounded overflow-hidden shrink-0 bg-black border border-slate-800">
+                          <img
+                            src={thumbUrl}
+                            alt={`Trang ${idx + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                          <span className="absolute bottom-0 right-0 bg-black/85 text-[9px] text-white font-mono px-1 rounded-tl">
+                            #{idx + 1}
+                          </span>
+                        </div>
 
-              {/* Thanh thông tin và thao tác dưới cùng */}
-              <div className="flex items-center justify-between w-full text-xs text-slate-400 pt-1.5 border-t border-slate-800/80 gap-2 shrink-0">
-                <div className="flex items-center gap-1.5 text-slate-400 text-[11px] sm:text-xs truncate">
-                  <span className="hidden sm:inline">Phím <strong>← →</strong> hoặc vuốt màn hình để chuyển ảnh</span>
-                  <span className="sm:hidden">Vuốt sang ngang để chuyển ảnh</span>
+                        {/* Thông tin mô tả trang (hiển thị trên PC) */}
+                        <div className="flex-1 min-w-0 hidden lg:block">
+                          <div className="font-bold text-xs flex items-center justify-between">
+                            <span>Trang #{idx + 1}</span>
+                            {isSelected && (
+                              <Badge className="bg-blue-600 text-white text-[9px] px-1 py-0 h-4">
+                                Đang xem
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-slate-400 truncate mt-0.5">
+                            Biên bản bàn giao
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <a
-                    href={activeGalleryPhotos[activePhotoIndex]}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-blue-400 hover:text-blue-300 rounded-md text-[11px] sm:text-xs transition-colors font-medium"
+
+                {/* Footer Cột Phải: KHỐI NÚT DOWNLOAD TIỆN LỢI */}
+                <div className="p-3 border-t border-slate-800 bg-slate-950/90 space-y-2 shrink-0">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleDownloadCurrentPhoto}
+                    disabled={downloadingSingle}
+                    className="w-full h-9 bg-slate-900 hover:bg-slate-800 border-slate-700 text-slate-200 text-xs font-semibold gap-1.5 cursor-pointer shadow-xs"
                   >
-                    <ExternalLink className="h-3.5 w-3.5" />
-                    <span>Mở ảnh gốc</span>
-                  </a>
+                    {downloadingSingle ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Download className="h-3.5 w-3.5 text-blue-400" />
+                    )}
+                    <span>Tải ảnh đang xem (Trang #{activePhotoIndex + 1})</span>
+                  </Button>
+
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleDownloadAllPhotos}
+                    disabled={downloadingZip}
+                    className="w-full h-9 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold gap-1.5 cursor-pointer shadow-md"
+                  >
+                    {downloadingZip ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <FolderArchive className="h-3.5 w-3.5" />
+                    )}
+                    <span>Tải tất cả ({activeGalleryPhotos.length} ảnh ZIP)</span>
+                  </Button>
                 </div>
               </div>
             </div>

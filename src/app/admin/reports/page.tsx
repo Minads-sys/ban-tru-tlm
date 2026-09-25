@@ -40,6 +40,9 @@ import {
   ShieldCheck,
   Search,
   FileDown,
+  CheckCircle2,
+  ArrowRight,
+  GraduationCap,
 } from "lucide-react";
 import { formatDate, formatCurrency } from "@/lib/utils";
 import StatsChartsView from "./StatsChartsView";
@@ -162,7 +165,8 @@ export default function ReportsPage() {
       studentCode: string;
       boardingCode?: string | null;
       user: { fullName: string };
-      class?: { name: string } | null;
+      class?: { id?: string; name: string } | null;
+      classId?: string;
     };
     finalAmount: string | number;
     paymentStatus: string;
@@ -173,6 +177,8 @@ export default function ReportsPage() {
     }>;
   }
   const [debtReport, setDebtReport] = useState<DebtReportBill[]>([]);
+  const [allMonthBills, setAllMonthBills] = useState<any[]>([]);
+  const [debtViewMode, setDebtViewMode] = useState<"class_summary" | "student_detail">("class_summary");
 
   const fetchDailyReport = async () => {
     setLoading(true);
@@ -195,6 +201,7 @@ export default function ReportsPage() {
       );
       const json = await res.json();
       const rawBills: any[] = Array.isArray(json) ? json : (json?.data || []);
+      setAllMonthBills(rawBills);
       // Lọc các học sinh chưa thanh toán (UNPAID) hoặc thanh toán 1 phần (PARTIAL)
       const debts = rawBills.filter(
         (b) => b.paymentStatus === "UNPAID" || b.paymentStatus === "PARTIAL"
@@ -207,6 +214,10 @@ export default function ReportsPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchDebtReport();
+  }, [reportMonth, reportYear]);
 
   // Danh sách lớp học để phục vụ bộ lọc
   const [classes, setClasses] = useState<any[]>([]);
@@ -266,9 +277,127 @@ export default function ReportsPage() {
     }, 0);
   }, [filteredDebts]);
 
-  // Xuất file Excel công nợ theo bộ lọc
+  // Thống kê công nợ theo từng lớp
+  const classDebtStats = useMemo(() => {
+    if (allMonthBills.length === 0) return [];
+
+    const map = new Map<
+      string,
+      {
+        classId: string;
+        className: string;
+        totalStudents: number;
+        paidStudents: number;
+        unpaidStudents: number;
+        totalReceivable: number;
+        totalCollected: number;
+        remainingDebt: number;
+        percentCollected: number;
+      }
+    >();
+
+    // Đưa danh mục lớp vào trước
+    classes.forEach((c) => {
+      map.set(c.id, {
+        classId: c.id,
+        className: c.name || c.id,
+        totalStudents: 0,
+        paidStudents: 0,
+        unpaidStudents: 0,
+        totalReceivable: 0,
+        totalCollected: 0,
+        remainingDebt: 0,
+        percentCollected: 0,
+      });
+    });
+
+    // Duyệt qua toàn bộ hóa đơn trong tháng
+    allMonthBills.forEach((b) => {
+      const billFinal = Number(b.finalAmount) || 0;
+      const billPaid = (b.transactions || []).reduce(
+        (s: number, t: any) => s + (Number(t.amount) || 0),
+        0
+      );
+      const debt = Math.max(0, billFinal - billPaid);
+
+      const clsId = b.student?.classId || b.student?.class?.id || "OTHER";
+      const clsName = b.student?.class?.name || b.student?.classId || "Khác";
+
+      if (!map.has(clsId)) {
+        map.set(clsId, {
+          classId: clsId,
+          className: clsName,
+          totalStudents: 0,
+          paidStudents: 0,
+          unpaidStudents: 0,
+          totalReceivable: 0,
+          totalCollected: 0,
+          remainingDebt: 0,
+          percentCollected: 0,
+        });
+      }
+
+      const rec = map.get(clsId)!;
+      rec.totalStudents += 1;
+      rec.totalReceivable += billFinal;
+      rec.totalCollected += billPaid;
+      rec.remainingDebt += debt;
+
+      if (billPaid >= billFinal && billFinal > 0) {
+        rec.paidStudents += 1;
+      } else if (debt > 0) {
+        rec.unpaidStudents += 1;
+      }
+    });
+
+    return Array.from(map.values())
+      .filter((c) => c.totalStudents > 0)
+      .map((c) => ({
+        ...c,
+        percentCollected:
+          c.totalReceivable > 0
+            ? Math.round((c.totalCollected / c.totalReceivable) * 1000) / 10
+            : c.totalStudents > 0 && c.remainingDebt === 0
+            ? 100
+            : 0,
+      }))
+      .sort((a, b) =>
+        a.className.localeCompare(b.className, undefined, { numeric: true })
+      );
+  }, [allMonthBills, classes]);
+
+  // Tổng hợp chỉ số công nợ toàn trường
+  const overallDebtStats = useMemo(() => {
+    const totalReceivable = classDebtStats.reduce((sum, c) => sum + c.totalReceivable, 0);
+    const totalCollected = classDebtStats.reduce((sum, c) => sum + c.totalCollected, 0);
+    const remainingDebt = classDebtStats.reduce((sum, c) => sum + c.remainingDebt, 0);
+    const totalStudents = classDebtStats.reduce((sum, c) => sum + c.totalStudents, 0);
+    const paidStudents = classDebtStats.reduce((sum, c) => sum + c.paidStudents, 0);
+    const unpaidStudents = classDebtStats.reduce((sum, c) => sum + c.unpaidStudents, 0);
+    const percentCollected =
+      totalReceivable > 0
+        ? Math.round((totalCollected / totalReceivable) * 1000) / 10
+        : 0;
+    const completedClassesCount = classDebtStats.filter(
+      (c) => c.remainingDebt === 0 && c.totalStudents > 0
+    ).length;
+
+    return {
+      totalReceivable,
+      totalCollected,
+      remainingDebt,
+      totalStudents,
+      paidStudents,
+      unpaidStudents,
+      percentCollected,
+      completedClassesCount,
+      totalClassesCount: classDebtStats.length,
+    };
+  }, [classDebtStats]);
+
+  // Xuất file Excel công nợ gồm 2 Sheet: Sheet 1 Tổng hợp theo lớp, Sheet 2 Chi tiết học sinh nợ
   const handleExportDebtExcel = async () => {
-    if (filteredDebts.length === 0) {
+    if (classDebtStats.length === 0 && filteredDebts.length === 0) {
       Swal.fire("Thông báo", "Không có dữ liệu công nợ để xuất file!", "info");
       return;
     }
@@ -278,31 +407,158 @@ export default function ReportsPage() {
       workbook.creator = "Phần mềm Bán trú TLM";
       workbook.created = new Date();
 
+      // ==========================================
+      // SHEET 1: TỔNG HỢP CÔNG NỢ THEO LỚP
+      // ==========================================
+      const wsClass = workbook.addWorksheet("Tổng hợp theo lớp");
+
+      wsClass.mergeCells("A1:J1");
+      const titleClass = wsClass.getCell("A1");
+      titleClass.value = `BÁO CÁO TỔNG HỢP CÔNG NỢ BÁN TRÚ THEO LỚP - THÁNG ${reportMonth}/${reportYear}`;
+      titleClass.font = { bold: true, size: 14, color: { argb: "FF1E3A8A" } };
+      titleClass.alignment = { vertical: "middle", horizontal: "center" };
+      wsClass.getRow(1).height = 28;
+
+      wsClass.mergeCells("A2:J2");
+      const subClass = wsClass.getCell("A2");
+      subClass.value = `Tổng số: ${classDebtStats.length} lớp | Tổng HS bán trú: ${overallDebtStats.totalStudents} | Tổng phải thu: ${overallDebtStats.totalReceivable.toLocaleString("vi-VN")} đ | Đã thu: ${overallDebtStats.totalCollected.toLocaleString("vi-VN")} đ | Còn nợ: ${overallDebtStats.remainingDebt.toLocaleString("vi-VN")} đ (${overallDebtStats.unpaidStudents} HS nợ)`;
+      subClass.font = { italic: true, size: 10, color: { argb: "FF475569" } };
+      subClass.alignment = { vertical: "middle", horizontal: "center" };
+      wsClass.getRow(2).height = 20;
+
+      wsClass.getRow(4).values = [
+        "STT",
+        "Tên Lớp",
+        "Sĩ số BT",
+        "Đã nộp đủ (HS)",
+        "Còn nợ (HS)",
+        "Tổng phải thu",
+        "Đã thu",
+        "Còn nợ",
+        "Tỷ lệ thu",
+        "Trạng thái",
+      ];
+      wsClass.getRow(4).font = { bold: true, color: { argb: "FFFFFFFF" } };
+      wsClass.getRow(4).fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FF2563EB" },
+      };
+      wsClass.getRow(4).alignment = { vertical: "middle", horizontal: "center" };
+      wsClass.getRow(4).height = 24;
+
+      wsClass.columns = [
+        { key: "stt", width: 6 },
+        { key: "className", width: 14 },
+        { key: "totalStudents", width: 14 },
+        { key: "paidStudents", width: 16 },
+        { key: "unpaidStudents", width: 16 },
+        { key: "totalReceivable", width: 20 },
+        { key: "totalCollected", width: 20 },
+        { key: "remainingDebt", width: 20 },
+        { key: "percentCollected", width: 16 },
+        { key: "status", width: 20 },
+      ];
+
+      classDebtStats.forEach((c, idx) => {
+        const row = wsClass.addRow({
+          stt: idx + 1,
+          className: c.className,
+          totalStudents: c.totalStudents,
+          paidStudents: c.paidStudents,
+          unpaidStudents: c.unpaidStudents,
+          totalReceivable: c.totalReceivable,
+          totalCollected: c.totalCollected,
+          remainingDebt: c.remainingDebt,
+          percentCollected: `${c.percentCollected}%`,
+          status:
+            c.totalStudents === 0
+              ? "Chưa có HS"
+              : c.remainingDebt === 0
+              ? "Hoàn tất 100%"
+              : `Còn ${c.unpaidStudents} HS nợ`,
+        });
+
+        row.getCell(1).alignment = { horizontal: "center" };
+        row.getCell(2).alignment = { horizontal: "center" };
+        row.getCell(3).alignment = { horizontal: "center" };
+        row.getCell(4).alignment = { horizontal: "center" };
+        row.getCell(5).alignment = { horizontal: "center" };
+        row.getCell(6).numFmt = '#,##0" đ"';
+        row.getCell(7).numFmt = '#,##0" đ"';
+        row.getCell(8).numFmt = '#,##0" đ"';
+        if (c.remainingDebt > 0) {
+          row.getCell(8).font = { bold: true, color: { argb: "FFDC2626" } };
+        }
+        row.getCell(9).alignment = { horizontal: "center" };
+        row.getCell(10).alignment = { horizontal: "center" };
+      });
+
+      // Dòng Tổng Cộng của Sheet 1
+      const totalClassRow = wsClass.addRow({
+        stt: "TỔNG CỘNG",
+        className: `${classDebtStats.length} lớp`,
+        totalStudents: overallDebtStats.totalStudents,
+        paidStudents: overallDebtStats.paidStudents,
+        unpaidStudents: overallDebtStats.unpaidStudents,
+        totalReceivable: overallDebtStats.totalReceivable,
+        totalCollected: overallDebtStats.totalCollected,
+        remainingDebt: overallDebtStats.remainingDebt,
+        percentCollected: `${overallDebtStats.percentCollected}%`,
+        status:
+          overallDebtStats.remainingDebt === 0 && overallDebtStats.totalStudents > 0
+            ? "Hoàn tất 100%"
+            : `Còn ${overallDebtStats.unpaidStudents} HS nợ`,
+      });
+      totalClassRow.font = { bold: true };
+      totalClassRow.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FFF1F5F9" },
+      };
+      totalClassRow.getCell(6).numFmt = '#,##0" đ"';
+      totalClassRow.getCell(7).numFmt = '#,##0" đ"';
+      totalClassRow.getCell(8).numFmt = '#,##0" đ"';
+      totalClassRow.getCell(8).font = { bold: true, color: { argb: "FFDC2626" } };
+
+      // Kẻ viền cho Sheet 1
+      wsClass.eachRow((row, rowNumber) => {
+        if (rowNumber >= 4) {
+          row.eachCell((cell) => {
+            cell.border = {
+              top: { style: "thin", color: { argb: "FFE2E8F0" } },
+              left: { style: "thin", color: { argb: "FFE2E8F0" } },
+              bottom: { style: "thin", color: { argb: "FFE2E8F0" } },
+              right: { style: "thin", color: { argb: "FFE2E8F0" } },
+            };
+          });
+        }
+      });
+
+      // ==========================================
+      // SHEET 2: CHI TIẾT HỌC SINH CÔNG NỢ
+      // ==========================================
+      const wsStudent = workbook.addWorksheet("Chi tiết học sinh nợ");
       const classNameText =
         debtSelectedClass !== "all" ? `Lớp ${debtSelectedClass}` : "Toàn trường";
-      const sheetName = `Cong_No_T${reportMonth}_${reportYear}`.slice(0, 31);
-      const ws = workbook.addWorksheet(sheetName);
 
-      // Tiêu đề báo cáo
-      ws.mergeCells("A1:I1");
-      const titleRow = ws.getCell("A1");
-      titleRow.value = `BÁO CÁO CÔNG NỢ BÁN TRÚ - THÁNG ${reportMonth}/${reportYear}`;
-      titleRow.font = { bold: true, size: 14, color: { argb: "FF1E3A8A" } };
-      titleRow.alignment = { vertical: "middle", horizontal: "center" };
-      ws.getRow(1).height = 28;
+      wsStudent.mergeCells("A1:I1");
+      const titleStudent = wsStudent.getCell("A1");
+      titleStudent.value = `BÁO CÁO CHI TIẾT HỌC SINH CÔNG NỢ - THÁNG ${reportMonth}/${reportYear}`;
+      titleStudent.font = { bold: true, size: 14, color: { argb: "FF1E3A8A" } };
+      titleStudent.alignment = { vertical: "middle", horizontal: "center" };
+      wsStudent.getRow(1).height = 28;
 
-      // Thông tin bộ lọc
-      ws.mergeCells("A2:I2");
-      const subRow = ws.getCell("A2");
-      subRow.value = `Phạm vi: ${classNameText} | Số lượng: ${filteredDebts.length} học sinh | Tổng nợ: ${totalFilteredRemainingDebt.toLocaleString("vi-VN")} đ${
+      wsStudent.mergeCells("A2:I2");
+      const subStudent = wsStudent.getCell("A2");
+      subStudent.value = `Phạm vi: ${classNameText} | Số lượng: ${filteredDebts.length} học sinh nợ | Tổng nợ: ${totalFilteredRemainingDebt.toLocaleString("vi-VN")} đ${
         debtSearchTerm ? ` | Tìm kiếm: "${debtSearchTerm}"` : ""
       }`;
-      subRow.font = { italic: true, size: 10, color: { argb: "FF475569" } };
-      subRow.alignment = { vertical: "middle", horizontal: "center" };
-      ws.getRow(2).height = 20;
+      subStudent.font = { italic: true, size: 10, color: { argb: "FF475569" } };
+      subStudent.alignment = { vertical: "middle", horizontal: "center" };
+      wsStudent.getRow(2).height = 20;
 
-      // Header bảng
-      ws.getRow(4).values = [
+      wsStudent.getRow(4).values = [
         "STT",
         "Mã Bán Trú",
         "Mã HS / CCCD",
@@ -313,28 +569,27 @@ export default function ReportsPage() {
         "Còn nợ",
         "Trạng thái",
       ];
-      ws.getRow(4).font = { bold: true, color: { argb: "FFFFFFFF" } };
-      ws.getRow(4).fill = {
+      wsStudent.getRow(4).font = { bold: true, color: { argb: "FFFFFFFF" } };
+      wsStudent.getRow(4).fill = {
         type: "pattern",
         pattern: "solid",
         fgColor: { argb: "FF2563EB" },
       };
-      ws.getRow(4).alignment = { vertical: "middle", horizontal: "center" };
-      ws.getRow(4).height = 24;
+      wsStudent.getRow(4).alignment = { vertical: "middle", horizontal: "center" };
+      wsStudent.getRow(4).height = 24;
 
-      ws.columns = [
+      wsStudent.columns = [
         { key: "stt", width: 6 },
         { key: "boardingCode", width: 14 },
         { key: "studentCode", width: 18 },
         { key: "fullName", width: 25 },
-        { key: "className", width: 10 },
+        { key: "className", width: 12 },
         { key: "totalAmount", width: 20 },
         { key: "paidAmount", width: 16 },
         { key: "remainingDebt", width: 20 },
         { key: "status", width: 16 },
       ];
 
-      // Thêm dữ liệu
       let totalBillAmount = 0;
       let totalPaidAmount = 0;
       let totalDebtAmount = 0;
@@ -348,7 +603,7 @@ export default function ReportsPage() {
         totalPaidAmount += paid;
         totalDebtAmount += remaining;
 
-        const row = ws.addRow([
+        const row = wsStudent.addRow([
           idx + 1,
           bill.student.boardingCode || "—",
           bill.student.studentCode || "—",
@@ -371,8 +626,8 @@ export default function ReportsPage() {
         row.getCell(9).alignment = { horizontal: "center" };
       });
 
-      // Dòng Tổng Cộng
-      const totalRow = ws.addRow([
+      // Dòng Tổng Cộng của Sheet 2
+      const totalStudentRow = wsStudent.addRow([
         "TỔNG CỘNG",
         "",
         "",
@@ -383,19 +638,19 @@ export default function ReportsPage() {
         totalDebtAmount,
         "",
       ]);
-      totalRow.font = { bold: true };
-      totalRow.fill = {
+      totalStudentRow.font = { bold: true };
+      totalStudentRow.fill = {
         type: "pattern",
         pattern: "solid",
         fgColor: { argb: "FFF1F5F9" },
       };
-      totalRow.getCell(6).numFmt = '#,##0" đ"';
-      totalRow.getCell(7).numFmt = '#,##0" đ"';
-      totalRow.getCell(8).numFmt = '#,##0" đ"';
-      totalRow.getCell(8).font = { bold: true, color: { argb: "FFDC2626" } };
+      totalStudentRow.getCell(6).numFmt = '#,##0" đ"';
+      totalStudentRow.getCell(7).numFmt = '#,##0" đ"';
+      totalStudentRow.getCell(8).numFmt = '#,##0" đ"';
+      totalStudentRow.getCell(8).font = { bold: true, color: { argb: "FFDC2626" } };
 
-      // Kẻ viền (border)
-      ws.eachRow((row, rowNumber) => {
+      // Kẻ viền cho Sheet 2
+      wsStudent.eachRow((row, rowNumber) => {
         if (rowNumber >= 4) {
           row.eachCell((cell) => {
             cell.border = {
@@ -669,8 +924,8 @@ export default function ReportsPage() {
         </TabsContent>
 
         {/* ============ BÁO CÁO CÔNG NỢ ============ */}
-        <TabsContent value="debt">
-          <Card className="mb-4 shadow-xs border-slate-200">
+        <TabsContent value="debt" className="space-y-4">
+          <Card className="shadow-xs border-slate-200">
             <CardContent className="p-4 sm:p-5 space-y-4">
               {/* Hàng 1: Chọn Tháng / Năm & Nút Tải dữ liệu & In & Xuất Excel */}
               <div className="flex flex-wrap items-end gap-3 pb-3 border-b border-slate-100">
@@ -706,12 +961,12 @@ export default function ReportsPage() {
                 <Button
                   variant="outline"
                   onClick={handleExportDebtExcel}
-                  disabled={debtReport.length === 0}
+                  disabled={classDebtStats.length === 0 && filteredDebts.length === 0}
                   className="h-9 text-xs font-semibold border-emerald-300 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 cursor-pointer"
-                  title="Xuất file Excel theo bộ lọc đã chọn"
+                  title="Xuất file Excel gồm 2 Sheet (Tổng hợp theo lớp & Chi tiết học sinh nợ)"
                 >
                   <FileDown className="h-4 w-4 mr-1.5 text-emerald-600" />
-                  Xuất File Excel
+                  Xuất File Excel (2 Sheet)
                 </Button>
                 <Button variant="outline" onClick={() => window.print()} className="h-9 text-xs cursor-pointer">
                   <Printer className="h-4 w-4 mr-1.5" />
@@ -719,157 +974,423 @@ export default function ReportsPage() {
                 </Button>
               </div>
 
-              {/* Hàng 2: Bộ lọc tìm kiếm, lớp, trạng thái nợ */}
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="relative flex-1 min-w-[200px] max-w-sm">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                  <Input
-                    placeholder="Tìm theo tên học sinh, mã BT, CCCD..."
-                    value={debtSearchTerm}
-                    onChange={(e) => setDebtSearchTerm(e.target.value)}
-                    className="pl-9 h-9 text-xs"
-                  />
-                </div>
-
-                {/* Dropdown lọc theo lớp */}
-                <div className="w-40">
-                  <Select value={debtSelectedClass} onValueChange={setDebtSelectedClass}>
-                    <SelectTrigger className="h-9 text-xs">
-                      <SelectValue placeholder="Tất cả các lớp" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Tất cả các lớp</SelectItem>
-                      {classes.map((c) => (
-                        <SelectItem key={c.id} value={c.name || c.id}>
-                          {c.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Dropdown lọc theo trạng thái nợ */}
-                <div className="w-44">
-                  <Select value={debtPaymentStatus} onValueChange={setDebtPaymentStatus}>
-                    <SelectTrigger className="h-9 text-xs">
-                      <SelectValue placeholder="Trạng thái nợ" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Tất cả trạng thái nợ</SelectItem>
-                      <SelectItem value="UNPAID">Chưa thanh toán</SelectItem>
-                      <SelectItem value="PARTIAL">Đã nộp 1 phần</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {(debtSearchTerm || debtSelectedClass !== "all" || debtPaymentStatus !== "all") && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setDebtSearchTerm("");
-                      setDebtSelectedClass("all");
-                      setDebtPaymentStatus("all");
-                    }}
-                    className="h-9 text-xs text-slate-500 hover:text-slate-700 cursor-pointer"
+              {/* Chuyển đổi chế độ xem: [ Thống kê theo lớp ] vs [ Chi tiết học sinh nợ ] */}
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                <div className="flex items-center bg-slate-100 rounded-xl p-1 border border-slate-200 text-xs font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => setDebtViewMode("class_summary")}
+                    className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
+                      debtViewMode === "class_summary"
+                        ? "bg-white text-blue-700 shadow-xs font-bold"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
                   >
-                    Xóa lọc
-                  </Button>
+                    <GraduationCap className="h-4 w-4" />
+                    Thống kê theo lớp
+                    {classDebtStats.length > 0 && (
+                      <Badge className="ml-1 bg-blue-100 text-blue-800 text-[10px] px-1.5 py-0 h-4 border-none">
+                        {classDebtStats.length}
+                      </Badge>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDebtViewMode("student_detail")}
+                    className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
+                      debtViewMode === "student_detail"
+                        ? "bg-white text-blue-700 shadow-xs font-bold"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    <Users className="h-4 w-4" />
+                    Chi tiết học sinh nợ
+                    {debtReport.length > 0 && (
+                      <Badge className="ml-1 bg-red-100 text-red-800 text-[10px] px-1.5 py-0 h-4 border-none">
+                        {debtReport.length}
+                      </Badge>
+                    )}
+                  </button>
+                </div>
+
+                {debtViewMode === "student_detail" && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* Search */}
+                    <div className="relative w-56">
+                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                      <Input
+                        placeholder="Tìm tên, mã BT, CCCD..."
+                        value={debtSearchTerm}
+                        onChange={(e) => setDebtSearchTerm(e.target.value)}
+                        className="pl-8 h-8 text-xs"
+                      />
+                    </div>
+                    {/* Filter Class */}
+                    <div className="w-36">
+                      <Select value={debtSelectedClass} onValueChange={setDebtSelectedClass}>
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue placeholder="Tất cả các lớp" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Tất cả các lớp</SelectItem>
+                          {classes.map((c) => (
+                            <SelectItem key={c.id} value={c.name || c.id}>
+                              {c.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {/* Filter Status */}
+                    <div className="w-36">
+                      <Select value={debtPaymentStatus} onValueChange={setDebtPaymentStatus}>
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue placeholder="Trạng thái" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Tất cả trạng thái</SelectItem>
+                          <SelectItem value="UNPAID">Chưa thanh toán</SelectItem>
+                          <SelectItem value="PARTIAL">Đã nộp 1 phần</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {(debtSearchTerm || debtSelectedClass !== "all" || debtPaymentStatus !== "all") && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setDebtSearchTerm("");
+                          setDebtSelectedClass("all");
+                          setDebtPaymentStatus("all");
+                        }}
+                        className="h-8 text-xs text-slate-500 hover:text-slate-700 cursor-pointer"
+                      >
+                        Xóa lọc
+                      </Button>
+                    )}
+                  </div>
                 )}
               </div>
             </CardContent>
           </Card>
 
-          <Card className="shadow-xs border-slate-200">
-            <CardHeader className="pb-3 border-b bg-slate-50/60">
-              <CardTitle className="text-base font-bold text-slate-900">
-                Danh sách chưa thanh toán - Tháng {reportMonth}/{reportYear}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-4">
-              {debtReport.length > 0 && (
-                <div className="mb-4 p-3.5 bg-red-50/80 border border-red-200 rounded-xl flex flex-col sm:flex-row justify-between sm:items-center gap-2">
-                  <p className="text-red-800 font-medium text-xs sm:text-sm">
-                    {debtSelectedClass !== "all" ? (
-                      <>Lớp <strong>{debtSelectedClass}</strong>: Có </>
-                    ) : (
-                      <>Tổng: </>
-                    )}
-                    <strong className="text-base font-black text-red-900">{filteredDebts.length}</strong> / {debtReport.length} học sinh chưa hoàn tất công nợ
-                    {debtSearchTerm && <span className="italic text-xs text-red-600"> (theo từ khóa "{debtSearchTerm}")</span>}
+          {/* KPI CARDS CÔNG NỢ */}
+          {allMonthBills.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <Card className="border-slate-200 shadow-xs">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between text-xs text-slate-500 font-semibold">
+                    <span>Tổng dự kiến phải thu</span>
+                    <CreditCard className="h-4 w-4 text-blue-500" />
+                  </div>
+                  <div className="mt-2 text-2xl font-black text-slate-900 font-mono">
+                    {overallDebtStats.totalReceivable.toLocaleString("vi-VN")} đ
+                  </div>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Toàn trường: {overallDebtStats.totalStudents} học sinh bán trú
                   </p>
-                  <p className="text-red-700 font-bold text-sm sm:text-base">
-                    Tổng nợ:{" "}
-                    <span className="text-lg font-black text-red-800 font-mono">
-                      {new Intl.NumberFormat("vi-VN").format(totalFilteredRemainingDebt)} đ
-                    </span>
-                  </p>
-                </div>
-              )}
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-slate-50 text-[11px]">
-                    <TableHead className="w-12 text-center">STT</TableHead>
-                    <TableHead>Mã BT / HS</TableHead>
-                    <TableHead>Họ tên</TableHead>
-                    <TableHead className="text-center">Lớp</TableHead>
-                    <TableHead className="text-right">Tổng tiền</TableHead>
-                    <TableHead className="text-right">Đã nộp</TableHead>
-                    <TableHead className="text-right font-bold text-red-600">Còn nợ</TableHead>
-                    <TableHead className="text-center">Trạng thái</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredDebts.map((bill, idx) => {
-                    const billTotal = Number(bill.finalAmount);
-                    const paidAmount = (bill.transactions || []).reduce((s, t) => s + Number(t.amount), 0);
-                    const remaining = Math.max(0, billTotal - paidAmount);
-                    const isPartial = bill.paymentStatus === "PARTIAL";
+                </CardContent>
+              </Card>
 
-                    return (
-                      <TableRow key={bill.id || bill.studentId || idx} className="hover:bg-slate-50 text-xs">
-                        <TableCell className="text-center font-medium text-slate-500">{idx + 1}</TableCell>
-                        <TableCell className="font-mono text-xs">
-                          {bill.student.boardingCode ? (
-                            <span className="font-bold text-blue-700">{bill.student.boardingCode}</span>
-                          ) : (
-                            bill.student.studentCode
-                          )}
+              <Card className="border-slate-200 shadow-xs bg-emerald-50/40">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between text-xs text-emerald-700 font-semibold">
+                    <span>Đã thu thực tế</span>
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                  </div>
+                  <div className="mt-2 text-2xl font-black text-emerald-700 font-mono">
+                    {overallDebtStats.totalCollected.toLocaleString("vi-VN")} đ
+                  </div>
+                  <p className="text-xs text-emerald-600 mt-1 flex items-center justify-between">
+                    <span>Đạt {overallDebtStats.percentCollected}%</span>
+                    <span>{overallDebtStats.paidStudents} HS đã nộp đủ</span>
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="border-slate-200 shadow-xs bg-red-50/40">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between text-xs text-red-700 font-semibold">
+                    <span>Còn phải thu (Công nợ)</span>
+                    <AlertTriangle className="h-4 w-4 text-red-600" />
+                  </div>
+                  <div className="mt-2 text-2xl font-black text-red-600 font-mono">
+                    {overallDebtStats.remainingDebt.toLocaleString("vi-VN")} đ
+                  </div>
+                  <p className="text-xs text-red-600 mt-1 flex items-center justify-between">
+                    <span>Chưa thu: {(100 - overallDebtStats.percentCollected).toFixed(1)}%</span>
+                    <span>{overallDebtStats.unpaidStudents} HS còn nợ</span>
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="border-slate-200 shadow-xs">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between text-xs text-slate-500 font-semibold">
+                    <span>Tiến độ hoàn tất các lớp</span>
+                    <GraduationCap className="h-4 w-4 text-purple-500" />
+                  </div>
+                  <div className="mt-2 text-2xl font-black text-purple-700">
+                    {overallDebtStats.completedClassesCount} / {overallDebtStats.totalClassesCount} lớp
+                  </div>
+                  <p className="text-xs text-slate-400 mt-1">
+                    {overallDebtStats.completedClassesCount === overallDebtStats.totalClassesCount && overallDebtStats.totalClassesCount > 0
+                      ? "100% các lớp đã hoàn tất"
+                      : `Còn ${overallDebtStats.totalClassesCount - overallDebtStats.completedClassesCount} lớp chưa hoàn tất`}
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* CHẾ ĐỘ 1: THỐNG KÊ CÔNG NỢ THEO LỚP */}
+          {debtViewMode === "class_summary" && (
+            <Card className="shadow-xs border-slate-200">
+              <CardHeader className="pb-3 border-b bg-slate-50/60 flex flex-row items-center justify-between">
+                <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <GraduationCap className="h-5 w-5 text-blue-600" />
+                  Bảng tổng hợp công nợ theo lớp - Tháng {reportMonth}/{reportYear}
+                </CardTitle>
+                <span className="text-xs text-slate-500 italic hidden sm:inline">
+                  Bấm "Xem HS nợ" ở từng lớp để xem danh sách học sinh còn nợ
+                </span>
+              </CardHeader>
+              <CardContent className="p-0 sm:p-2">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-slate-50 text-[11px]">
+                      <TableHead className="w-12 text-center">STT</TableHead>
+                      <TableHead className="font-bold">Lớp</TableHead>
+                      <TableHead className="text-center">Sĩ số BT</TableHead>
+                      <TableHead className="text-center text-emerald-700">Đã nộp đủ</TableHead>
+                      <TableHead className="text-center text-red-600">Còn nợ (HS)</TableHead>
+                      <TableHead className="text-right">Tổng phải thu</TableHead>
+                      <TableHead className="text-right text-emerald-600">Đã thu</TableHead>
+                      <TableHead className="text-right font-bold text-red-600">Còn nợ (VNĐ)</TableHead>
+                      <TableHead className="text-center">Tỷ lệ thu</TableHead>
+                      <TableHead className="text-center">Trạng thái</TableHead>
+                      <TableHead className="text-center w-28">Thao tác</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {classDebtStats.map((c, idx) => {
+                      const isComplete = c.remainingDebt === 0 && c.totalStudents > 0;
+                      return (
+                        <TableRow key={c.classId} className="hover:bg-slate-50 text-xs">
+                          <TableCell className="text-center font-medium text-slate-500">{idx + 1}</TableCell>
+                          <TableCell className="font-bold text-blue-700">{c.className}</TableCell>
+                          <TableCell className="text-center font-semibold">{c.totalStudents}</TableCell>
+                          <TableCell className="text-center text-emerald-700 font-medium">{c.paidStudents}</TableCell>
+                          <TableCell className="text-center text-red-600 font-semibold">
+                            {c.unpaidStudents > 0 ? c.unpaidStudents : "—"}
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-slate-700">
+                            {c.totalReceivable.toLocaleString("vi-VN")}đ
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-emerald-600 font-medium">
+                            {c.totalCollected.toLocaleString("vi-VN")}đ
+                          </TableCell>
+                          <TableCell className="text-right font-mono font-bold text-red-600">
+                            {c.remainingDebt > 0 ? `${c.remainingDebt.toLocaleString("vi-VN")}đ` : "—"}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <span
+                              className={`inline-block px-2 py-0.5 rounded text-[11px] font-bold ${
+                                c.percentCollected === 100
+                                  ? "bg-emerald-100 text-emerald-800"
+                                  : c.percentCollected >= 70
+                                  ? "bg-blue-100 text-blue-800"
+                                  : "bg-red-100 text-red-800"
+                              }`}
+                            >
+                              {c.percentCollected}%
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {isComplete ? (
+                              <Badge className="bg-emerald-100 text-emerald-700 border-emerald-300 text-[10px]">
+                                Hoàn tất 100%
+                              </Badge>
+                            ) : c.remainingDebt > 0 ? (
+                              <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-[10px]">
+                                Còn {c.unpaidStudents} HS nợ
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-slate-500 text-[10px]">
+                                Chưa phát sinh
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={c.unpaidStudents === 0}
+                              onClick={() => {
+                                setDebtSelectedClass(c.className);
+                                setDebtViewMode("student_detail");
+                              }}
+                              className="h-7 text-xs text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-2 cursor-pointer font-medium"
+                              title={`Xem chi tiết học sinh nợ lớp ${c.className}`}
+                            >
+                              Xem HS nợ
+                              <ArrowRight className="h-3 w-3 ml-1" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+
+                    {classDebtStats.length > 0 && (
+                      <TableRow className="bg-slate-100/80 font-bold text-xs border-t-2 border-slate-300">
+                        <TableCell className="text-center" colSpan={2}>
+                          TỔNG CỘNG ({classDebtStats.length} lớp)
                         </TableCell>
-                        <TableCell className="font-bold text-slate-900 uppercase">{bill.student.user?.fullName}</TableCell>
-                        <TableCell className="text-center font-bold text-blue-700">{bill.student.class?.name || "—"}</TableCell>
-                        <TableCell className="text-right text-slate-600 font-mono">
-                          {new Intl.NumberFormat("vi-VN").format(billTotal)}đ
+                        <TableCell className="text-center">{overallDebtStats.totalStudents}</TableCell>
+                        <TableCell className="text-center text-emerald-700">{overallDebtStats.paidStudents}</TableCell>
+                        <TableCell className="text-center text-red-600">{overallDebtStats.unpaidStudents}</TableCell>
+                        <TableCell className="text-right font-mono">
+                          {overallDebtStats.totalReceivable.toLocaleString("vi-VN")}đ
                         </TableCell>
-                        <TableCell className="text-right text-emerald-600 font-medium font-mono">
-                          {paidAmount > 0 ? `-${new Intl.NumberFormat("vi-VN").format(paidAmount)}đ` : "—"}
+                        <TableCell className="text-right font-mono text-emerald-700">
+                          {overallDebtStats.totalCollected.toLocaleString("vi-VN")}đ
                         </TableCell>
-                        <TableCell className="text-right font-extrabold text-red-600 font-mono text-sm">
-                          {new Intl.NumberFormat("vi-VN").format(remaining)}đ
+                        <TableCell className="text-right font-mono text-red-600 text-sm">
+                          {overallDebtStats.remainingDebt.toLocaleString("vi-VN")}đ
                         </TableCell>
                         <TableCell className="text-center">
-                          {isPartial ? (
-                            <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-[10px] font-semibold">Đã nộp 1 phần</Badge>
+                          <span className="inline-block px-2 py-0.5 rounded text-[11px] font-bold bg-blue-100 text-blue-800">
+                            {overallDebtStats.percentCollected}%
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {overallDebtStats.remainingDebt === 0 && overallDebtStats.totalStudents > 0 ? (
+                            <Badge className="bg-emerald-100 text-emerald-700">Hoàn tất 100%</Badge>
                           ) : (
-                            <Badge className="bg-red-100 text-red-700 border-red-300 text-[10px] font-semibold">Chưa TT</Badge>
+                            <Badge className="bg-red-100 text-red-700">Còn {overallDebtStats.unpaidStudents} HS nợ</Badge>
                           )}
                         </TableCell>
+                        <TableCell className="text-center" />
                       </TableRow>
-                    );
-                  })}
-                  {filteredDebts.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={8} className="text-center text-gray-400 py-8">
-                        {debtReport.length === 0
-                          ? "Không có công nợ hoặc chưa tải dữ liệu"
-                          : "Không tìm thấy học sinh nợ phù hợp với bộ lọc"}
-                      </TableCell>
+                    )}
+
+                    {classDebtStats.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={11} className="text-center text-slate-400 py-8">
+                          {loading ? "Đang tải dữ liệu công nợ..." : "Không có dữ liệu công nợ tháng này hoặc chưa bấm 'Xem công nợ'"}
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* CHẾ ĐỘ 2: CHI TIẾT HỌC SINH NỢ */}
+          {debtViewMode === "student_detail" && (
+            <Card className="shadow-xs border-slate-200">
+              <CardHeader className="pb-3 border-b bg-slate-50/60 flex flex-row items-center justify-between">
+                <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <Users className="h-5 w-5 text-blue-600" />
+                  Danh sách học sinh chưa thanh toán - Tháng {reportMonth}/{reportYear}
+                </CardTitle>
+                {debtSelectedClass !== "all" && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setDebtSelectedClass("all")}
+                    className="h-7 text-xs text-blue-700 border-blue-200 hover:bg-blue-50 cursor-pointer"
+                  >
+                    Xem tất cả lớp ({debtReport.length} HS nợ)
+                  </Button>
+                )}
+              </CardHeader>
+              <CardContent className="pt-4">
+                {debtReport.length > 0 && (
+                  <div className="mb-4 p-3.5 bg-red-50/80 border border-red-200 rounded-xl flex flex-col sm:flex-row justify-between sm:items-center gap-2">
+                    <p className="text-red-800 font-medium text-xs sm:text-sm">
+                      {debtSelectedClass !== "all" ? (
+                        <>Lớp <strong>{debtSelectedClass}</strong>: Có </>
+                      ) : (
+                        <>Toàn trường: </>
+                      )}
+                      <strong className="text-base font-black text-red-900">{filteredDebts.length}</strong> / {debtReport.length} học sinh chưa hoàn tất công nợ
+                      {debtSearchTerm && <span className="italic text-xs text-red-600"> (theo từ khóa "{debtSearchTerm}")</span>}
+                    </p>
+                    <p className="text-red-700 font-bold text-sm sm:text-base">
+                      Tổng nợ:{" "}
+                      <span className="text-lg font-black text-red-800 font-mono">
+                        {new Intl.NumberFormat("vi-VN").format(totalFilteredRemainingDebt)} đ
+                      </span>
+                    </p>
+                  </div>
+                )}
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-slate-50 text-[11px]">
+                      <TableHead className="w-12 text-center">STT</TableHead>
+                      <TableHead>Mã BT / HS</TableHead>
+                      <TableHead>Họ tên</TableHead>
+                      <TableHead className="text-center">Lớp</TableHead>
+                      <TableHead className="text-right">Tổng tiền</TableHead>
+                      <TableHead className="text-right">Đã nộp</TableHead>
+                      <TableHead className="text-right font-bold text-red-600">Còn nợ</TableHead>
+                      <TableHead className="text-center">Trạng thái</TableHead>
                     </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredDebts.map((bill, idx) => {
+                      const billTotal = Number(bill.finalAmount);
+                      const paidAmount = (bill.transactions || []).reduce((s, t) => s + Number(t.amount), 0);
+                      const remaining = Math.max(0, billTotal - paidAmount);
+                      const isPartial = bill.paymentStatus === "PARTIAL";
+
+                      return (
+                        <TableRow key={bill.id || bill.studentId || idx} className="hover:bg-slate-50 text-xs">
+                          <TableCell className="text-center font-medium text-slate-500">{idx + 1}</TableCell>
+                          <TableCell className="font-mono text-xs">
+                            {bill.student.boardingCode ? (
+                              <span className="font-bold text-blue-700">{bill.student.boardingCode}</span>
+                            ) : (
+                              bill.student.studentCode
+                            )}
+                          </TableCell>
+                          <TableCell className="font-bold text-slate-900 uppercase">{bill.student.user?.fullName}</TableCell>
+                          <TableCell className="text-center font-bold text-blue-700">{bill.student.class?.name || "—"}</TableCell>
+                          <TableCell className="text-right text-slate-600 font-mono">
+                            {new Intl.NumberFormat("vi-VN").format(billTotal)}đ
+                          </TableCell>
+                          <TableCell className="text-right text-emerald-600 font-medium font-mono">
+                            {paidAmount > 0 ? `-${new Intl.NumberFormat("vi-VN").format(paidAmount)}đ` : "—"}
+                          </TableCell>
+                          <TableCell className="text-right font-extrabold text-red-600 font-mono text-sm">
+                            {new Intl.NumberFormat("vi-VN").format(remaining)}đ
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {isPartial ? (
+                              <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-[10px] font-semibold">Đã nộp 1 phần</Badge>
+                            ) : (
+                              <Badge className="bg-red-100 text-red-700 border-red-300 text-[10px] font-semibold">Chưa TT</Badge>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                    {filteredDebts.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={8} className="text-center text-gray-400 py-8">
+                          {debtReport.length === 0
+                            ? "Không có học sinh nợ hoặc chưa tải dữ liệu"
+                            : "Không tìm thấy học sinh nợ phù hợp với bộ lọc"}
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         {/* ============ BÁO CÁO NỢ QUÁ HẠN ============ */}

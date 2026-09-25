@@ -287,6 +287,13 @@ export async function GET(request: NextRequest) {
         ...studentClassFilter,
       },
       include: {
+        student: {
+          select: {
+            id: true,
+            classId: true,
+            class: { select: { id: true, name: true } },
+          },
+        },
         transactions: {
           where: { isVoided: false },
           select: { amount: true, paymentMethod: true },
@@ -303,6 +310,34 @@ export async function GET(request: NextRequest) {
     let paidStudentsCount = 0;
     let unpaidStudentsCount = 0;
     let totalRemainingDebt = 0;
+
+    // Khởi tạo map thống kê công nợ theo từng lớp
+    const classDebtMap = new Map<string, {
+      classId: string;
+      className: string;
+      totalStudents: number;
+      paidStudents: number;
+      unpaidStudents: number;
+      totalReceivable: number;
+      totalCollected: number;
+      remainingDebt: number;
+      percentCollected: number;
+    }>();
+
+    for (const c of classes) {
+      if (classId && classId !== "ALL" && c.id !== classId) continue;
+      classDebtMap.set(c.id, {
+        classId: c.id,
+        className: c.name || c.id,
+        totalStudents: 0,
+        paidStudents: 0,
+        unpaidStudents: 0,
+        totalReceivable: 0,
+        totalCollected: 0,
+        remainingDebt: 0,
+        percentCollected: 0,
+      });
+    }
 
     for (const b of bills) {
       const billFinal = Number(b.finalAmount);
@@ -328,7 +363,43 @@ export async function GET(request: NextRequest) {
       } else if (debt > 0) {
         unpaidStudentsCount += 1;
       }
+
+      // Nhóm theo lớp
+      const clsId = b.student?.classId || "OTHER";
+      const clsName = b.student?.class?.name || b.student?.classId || "Khác";
+      if (!classDebtMap.has(clsId)) {
+        classDebtMap.set(clsId, {
+          classId: clsId,
+          className: clsName,
+          totalStudents: 0,
+          paidStudents: 0,
+          unpaidStudents: 0,
+          totalReceivable: 0,
+          totalCollected: 0,
+          remainingDebt: 0,
+          percentCollected: 0,
+        });
+      }
+      const cRec = classDebtMap.get(clsId)!;
+      cRec.totalStudents += 1;
+      cRec.totalReceivable += billFinal;
+      cRec.totalCollected += billPaid;
+      cRec.remainingDebt += debt;
+      if (billPaid >= billFinal && billFinal > 0) {
+        cRec.paidStudents += 1;
+      } else if (debt > 0) {
+        cRec.unpaidStudents += 1;
+      }
     }
+
+    const classDebtSummary = Array.from(classDebtMap.values())
+      .map((c) => ({
+        ...c,
+        percentCollected: c.totalReceivable > 0
+          ? Math.round((c.totalCollected / c.totalReceivable) * 1000) / 10
+          : (c.totalStudents > 0 && c.remainingDebt === 0 ? 100 : 0),
+      }))
+      .sort((a, b) => a.className.localeCompare(b.className, undefined, { numeric: true }));
 
     // Nếu chưa tạo hóa đơn (bills.length === 0), tạm tính dự kiến thu theo Thời khóa biểu của học sinh ACTIVE
     let isEstimatedFromSchedule = false;
@@ -442,6 +513,7 @@ export async function GET(request: NextRequest) {
       monthlyGrowth,
       mealDistribution,
       topCancellationReasons,
+      classDebtSummary,
       financialOverview: {
         totalReceivable, // 1. Tổng tiền dự kiến thu
         totalServedMealsAmount, // 2. Tổng tiền số suất ăn đã phục vụ
