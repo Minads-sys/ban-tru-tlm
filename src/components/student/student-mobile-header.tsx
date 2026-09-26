@@ -236,7 +236,7 @@ export function StudentMobileHeader({
               <img
                 src={schoolLogoUrl}
                 alt="Logo"
-                className="w-7 h-7 rounded-lg object-contain bg-white/90 shadow-sm shrink-0"
+                className="h-9 sm:h-10 w-auto max-w-[120px] object-contain drop-shadow-md shrink-0"
               />
             ) : (
               <div className="w-6 h-6 rounded-lg bg-amber-400 text-red-950 flex items-center justify-center text-xs font-black shadow-sm shrink-0">

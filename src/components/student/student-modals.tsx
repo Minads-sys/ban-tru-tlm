@@ -165,7 +165,7 @@ export function StudentModals({
                   <img
                     src={schoolLogoUrl}
                     alt="Logo"
-                    className="w-7 h-7 rounded-lg object-contain bg-white/90 shadow-xs shrink-0"
+                    className="h-8 w-auto max-w-[90px] object-contain drop-shadow-xs shrink-0"
                   />
                 ) : (
                   <div className="w-7 h-7 rounded-lg bg-amber-400 text-red-950 flex items-center justify-center text-xs font-black shadow-xs">

@@ -370,8 +370,8 @@ export function ThemeBannerSettings({
               <div className="flex flex-col sm:flex-row gap-2">
                 <div className="flex-1 flex items-center gap-2">
                   {logoUrl && (
-                    <div className="w-9 h-9 rounded-lg border border-slate-200 bg-white p-1 flex items-center justify-center shrink-0 shadow-2xs">
-                      <img src={logoUrl} alt="Logo" className="w-full h-full object-contain" />
+                    <div className="h-9 min-w-9 max-w-[60px] rounded-lg border border-slate-200 bg-slate-100/80 p-1 flex items-center justify-center shrink-0">
+                      <img src={logoUrl} alt="Logo" className="max-h-7 max-w-full object-contain" />
                     </div>
                   )}
                   <Input
@@ -487,7 +487,7 @@ export function ThemeBannerSettings({
                       <img
                         src={logoUrl}
                         alt="Logo"
-                        className="w-4 h-4 rounded object-contain bg-white/90 shadow-sm shrink-0"
+                        className="h-6 w-auto max-w-[64px] object-contain drop-shadow-xs shrink-0"
                       />
                     ) : (
                       <div className="w-4 h-4 rounded bg-amber-400 text-red-950 flex items-center justify-center text-[8px] font-black">
