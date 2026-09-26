@@ -37,6 +37,7 @@ import {
 interface ThemeBannerSettingsProps {
   theme: string;
   bannerUrl: string;
+  logoUrl: string;
   motto: string;
   announcement: string;
   schoolName: string;
@@ -47,6 +48,7 @@ interface ThemeBannerSettingsProps {
 export function ThemeBannerSettings({
   theme,
   bannerUrl,
+  logoUrl,
   motto,
   announcement,
   schoolName,
@@ -54,8 +56,11 @@ export function ThemeBannerSettings({
   onChange,
 }: ThemeBannerSettingsProps) {
   const [isUploading, setIsUploading] = useState(false);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [logoUploadError, setLogoUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
 
   const presets = [
     {
@@ -128,6 +133,36 @@ export function ThemeBannerSettings({
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingLogo(true);
+    setLogoUploadError(null);
+
+    const formData = new FormData();
+    formData.append("banner", file);
+
+    try {
+      const res = await fetch("/api/upload/banner", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Lỗi tải logo lên");
+      }
+
+      onChange("SCHOOL_LOGO_URL", data.url);
+    } catch (err: any) {
+      setLogoUploadError(err.message || "Không thể tải logo");
+    } finally {
+      setIsUploadingLogo(false);
+      if (logoInputRef.current) logoInputRef.current.value = "";
     }
   };
 
@@ -313,6 +348,75 @@ export function ThemeBannerSettings({
               </p>
             </div>
 
+            {/* 2.1 Tải Logo / Biểu trưng trường (Góc trên bên trái banner) */}
+            <div className="space-y-3 p-4 rounded-xl border border-slate-200 bg-slate-50/60">
+              <Label className="text-xs font-bold text-slate-800 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <GraduationCap className="h-4 w-4 text-amber-500" />
+                  Logo Trường / Biểu trưng (Góc trên cùng bên trái banner)
+                </span>
+                {logoUrl && (
+                  <button
+                    type="button"
+                    onClick={() => onChange("SCHOOL_LOGO_URL", "")}
+                    className="text-[11px] text-rose-600 hover:text-rose-700 flex items-center gap-1 cursor-pointer font-medium"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                    Xóa logo này
+                  </button>
+                )}
+              </Label>
+
+              <div className="flex flex-col sm:flex-row gap-2">
+                <div className="flex-1 flex items-center gap-2">
+                  {logoUrl && (
+                    <div className="w-9 h-9 rounded-lg border border-slate-200 bg-white p-1 flex items-center justify-center shrink-0 shadow-2xs">
+                      <img src={logoUrl} alt="Logo" className="w-full h-full object-contain" />
+                    </div>
+                  )}
+                  <Input
+                    type="text"
+                    placeholder="https://... hoặc tải ảnh logo từ máy tính"
+                    value={logoUrl}
+                    onChange={(e) => onChange("SCHOOL_LOGO_URL", e.target.value)}
+                    className="h-9 text-xs flex-1 bg-white"
+                  />
+                </div>
+                <input
+                  type="file"
+                  ref={logoInputRef}
+                  accept="image/png,image/jpeg,image/webp,image/jpg,image/svg+xml"
+                  onChange={handleLogoUpload}
+                  className="hidden"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={isUploadingLogo}
+                  onClick={() => logoInputRef.current?.click()}
+                  className="gap-1.5 h-9 shrink-0 bg-white hover:bg-slate-100 cursor-pointer text-xs font-medium"
+                >
+                  {isUploadingLogo ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Upload className="h-3.5 w-3.5 text-amber-500" />
+                  )}
+                  <span>{isUploadingLogo ? "Đang tải..." : "Tải logo từ máy"}</span>
+                </Button>
+              </div>
+
+              {logoUploadError && (
+                <div className="text-[11px] text-rose-600 flex items-center gap-1">
+                  <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                  <span>{logoUploadError}</span>
+                </div>
+              )}
+              <p className="text-[11px] text-slate-500">
+                Gợi ý: Nên chọn ảnh vuông hoặc file PNG nền trong suốt (120x120px đến 256x256px) để hiển thị sắc nét và đẹp mắt nhất.
+              </p>
+            </div>
+
             {/* 3. Slogan & Khẩu hiệu trên Banner */}
             <div className="space-y-2">
               <Label htmlFor="STUDENT_PORTAL_MOTTO" className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
@@ -378,10 +482,18 @@ export function ThemeBannerSettings({
 
                 {/* Brand Header */}
                 <div className="flex items-center justify-between mb-1.5 px-0.5">
-                  <div className="flex items-center gap-1">
-                    <div className="w-4 h-4 rounded bg-amber-400 text-red-950 flex items-center justify-center text-[8px] font-black">
-                      <GraduationCap className="h-2.5 w-2.5" />
-                    </div>
+                  <div className="flex items-center gap-1.5">
+                    {logoUrl ? (
+                      <img
+                        src={logoUrl}
+                        alt="Logo"
+                        className="w-4 h-4 rounded object-contain bg-white/90 shadow-sm shrink-0"
+                      />
+                    ) : (
+                      <div className="w-4 h-4 rounded bg-amber-400 text-red-950 flex items-center justify-center text-[8px] font-black">
+                        <GraduationCap className="h-2.5 w-2.5" />
+                      </div>
+                    )}
                     <span className="text-[10px] font-bold tracking-tight text-white drop-shadow truncate max-w-[170px]">
                       {schoolName || "Trường THPT Ten Lơ Man"}
                     </span>
@@ -427,13 +539,10 @@ export function ThemeBannerSettings({
                     <span className="font-extrabold text-amber-300 text-xs">770.000đ</span>
                   </div>
 
-                  {/* Sub-bar trắng dưới cùng */}
-                  <div className="mt-2 bg-white rounded-lg p-1.5 flex items-center justify-between text-slate-800 text-[8px] shadow-xs">
-                    <span className="font-bold truncate">Cơm mặn</span>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <span className="bg-rose-600 text-white font-bold px-1.5 py-0.5 rounded animate-pulse">Thanh toán</span>
-                      <span className="bg-blue-600 text-white font-bold px-1.5 py-0.5 rounded">Cắt/Đổi món</span>
-                    </div>
+                  {/* Sub-bar trắng dưới cùng - 2 nút cân bằng 50/50 */}
+                  <div className="mt-2 bg-white rounded-lg p-1.5 flex items-center gap-1.5 text-[8px] shadow-xs">
+                    <span className="flex-1 text-center bg-rose-600 text-white font-bold py-1 rounded animate-pulse">Thanh toán</span>
+                    <span className="flex-1 text-center bg-blue-600 text-white font-bold py-1 rounded">Cắt/Đổi món</span>
                   </div>
                 </div>
               </div>

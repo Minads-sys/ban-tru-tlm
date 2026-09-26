@@ -64,6 +64,7 @@ interface SettingsFormState {
   STUDENT_SHOW_HISTORY_TAB: string;
   STUDENT_PORTAL_THEME: string;
   STUDENT_PORTAL_BANNER_URL: string;
+  SCHOOL_LOGO_URL: string;
   STUDENT_PORTAL_MOTTO: string;
   STUDENT_PORTAL_ANNOUNCEMENT: string;
 }
@@ -131,6 +132,7 @@ export default function AdminSettingsPage() {
     STUDENT_SHOW_HISTORY_TAB: 'false',
     STUDENT_PORTAL_THEME: 'red_star',
     STUDENT_PORTAL_BANNER_URL: '',
+    SCHOOL_LOGO_URL: '',
     STUDENT_PORTAL_MOTTO: 'Nhiệt liệt chào mừng năm học mới',
     STUDENT_PORTAL_ANNOUNCEMENT: '',
   });
@@ -942,6 +944,7 @@ export default function AdminSettingsPage() {
             <ThemeBannerSettings
               theme={formData.STUDENT_PORTAL_THEME || 'red_star'}
               bannerUrl={formData.STUDENT_PORTAL_BANNER_URL || ''}
+              logoUrl={formData.SCHOOL_LOGO_URL || ''}
               motto={formData.STUDENT_PORTAL_MOTTO ?? 'Nhiệt liệt chào mừng năm học mới'}
               announcement={formData.STUDENT_PORTAL_ANNOUNCEMENT || ''}
               schoolName={formData.SCHOOL_NAME || 'Trường THPT Ten Lơ Man'}

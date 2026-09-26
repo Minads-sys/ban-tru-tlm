@@ -205,6 +205,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
     announcement?: string;
     schoolName?: string;
     schoolPhone?: string;
+    schoolLogoUrl?: string;
     mealLockTime1?: string;
     mealLockTime1Sunday?: string;
     mealLockTime2?: string;
@@ -560,6 +561,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
           announcement: data.STUDENT_PORTAL_ANNOUNCEMENT || '',
           schoolName: data.SCHOOL_NAME || 'Trường THPT Ten Lơ Man',
           schoolPhone: data.SCHOOL_PHONE || '(028) 3829 7990',
+          schoolLogoUrl: data.SCHOOL_LOGO_URL || '',
           mealLockTime1: data.MEAL_LOCK_TIME_1 || data.CUTOFF_TIME || '16:00',
           mealLockTime1Sunday: data.MEAL_LOCK_TIME_1_SUNDAY || '19:00',
           mealLockTime2: data.MEAL_LOCK_TIME_2 || '07:00',
@@ -3100,6 +3102,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
         boardingCode={displayStudent.boardingCode}
         schoolName={themeConfig.schoolName || "Trường THPT Ten Lơ Man"}
         schoolPhone={themeConfig.schoolPhone || "(028) 3829 7990"}
+        schoolLogoUrl={themeConfig.schoolLogoUrl}
         mealLockTime1={themeConfig.mealLockTime1 || "16:00"}
         mealLockTime1Sunday={themeConfig.mealLockTime1Sunday || "19:00"}
       />

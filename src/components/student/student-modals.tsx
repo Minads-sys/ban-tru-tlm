@@ -37,6 +37,7 @@ interface StudentModalsProps {
   boardingCode?: string;
   schoolName?: string;
   schoolPhone?: string;
+  schoolLogoUrl?: string;
   mealLockTime1?: string;
   mealLockTime1Sunday?: string;
 }
@@ -54,6 +55,7 @@ export function StudentModals({
   boardingCode = "BT-12A1-05",
   schoolName = "Trường THPT Ten Lơ Man",
   schoolPhone = "(028) 3829 7990",
+  schoolLogoUrl,
   mealLockTime1 = "16:00",
   mealLockTime1Sunday = "19:00",
 }: StudentModalsProps) {
@@ -159,9 +161,17 @@ export function StudentModals({
                 <X className="h-5 w-5" />
               </button>
               <div className="flex items-center gap-2 mb-2">
-                <div className="w-7 h-7 rounded-lg bg-amber-400 text-red-950 flex items-center justify-center text-xs font-black shadow-xs">
-                  <GraduationCap className="h-4 w-4" />
-                </div>
+                {schoolLogoUrl ? (
+                  <img
+                    src={schoolLogoUrl}
+                    alt="Logo"
+                    className="w-7 h-7 rounded-lg object-contain bg-white/90 shadow-xs shrink-0"
+                  />
+                ) : (
+                  <div className="w-7 h-7 rounded-lg bg-amber-400 text-red-950 flex items-center justify-center text-xs font-black shadow-xs">
+                    <GraduationCap className="h-4 w-4" />
+                  </div>
+                )}
                 <span className="text-xs font-bold leading-tight truncate">
                   {schoolName}
                 </span>

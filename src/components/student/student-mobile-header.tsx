@@ -20,6 +20,7 @@ export interface StudentThemeConfig {
   motto?: string;
   announcement?: string;
   schoolName?: string;
+  schoolLogoUrl?: string;
 }
 
 interface StudentMobileHeaderProps {
@@ -68,6 +69,7 @@ export function StudentMobileHeader({
   const boardingCode =
     studentInfo?.boardingCode || "BT-12A1-05";
   const schoolName = themeConfig.schoolName || "Trường THPT Ten Lơ Man";
+  const schoolLogoUrl = themeConfig.schoolLogoUrl;
 
   const formatMoney = (val: number) =>
     new Intl.NumberFormat("vi-VN").format(Math.max(0, Math.round(val))) + "đ";
@@ -230,9 +232,17 @@ export function StudentMobileHeader({
         {/* Row 1: School Identity Banner */}
         <div className="flex items-center justify-between pb-2.5">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-lg bg-amber-400 text-red-950 flex items-center justify-center text-xs font-black shadow-sm shrink-0">
-              <GraduationCap className="h-3.5 w-3.5" />
-            </div>
+            {schoolLogoUrl ? (
+              <img
+                src={schoolLogoUrl}
+                alt="Logo"
+                className="w-7 h-7 rounded-lg object-contain bg-white/90 shadow-sm shrink-0"
+              />
+            ) : (
+              <div className="w-6 h-6 rounded-lg bg-amber-400 text-red-950 flex items-center justify-center text-xs font-black shadow-sm shrink-0">
+                <GraduationCap className="h-3.5 w-3.5" />
+              </div>
+            )}
             <span className="text-xs sm:text-sm font-bold tracking-tight text-white drop-shadow-md">
               {schoolName}
             </span>

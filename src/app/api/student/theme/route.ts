@@ -9,6 +9,7 @@ export async function GET() {
           in: [
             "STUDENT_PORTAL_THEME",
             "STUDENT_PORTAL_BANNER_URL",
+            "SCHOOL_LOGO_URL",
             "STUDENT_PORTAL_MOTTO",
             "STUDENT_PORTAL_ANNOUNCEMENT",
             "SCHOOL_NAME",
@@ -25,6 +26,7 @@ export async function GET() {
     const settingsMap: Record<string, string> = {
       STUDENT_PORTAL_THEME: "red_star",
       STUDENT_PORTAL_BANNER_URL: "",
+      SCHOOL_LOGO_URL: "",
       STUDENT_PORTAL_MOTTO: "Nhiệt liệt chào mừng năm học mới",
       STUDENT_PORTAL_ANNOUNCEMENT: "",
       SCHOOL_NAME: "Trường THPT Ten Lơ Man",
@@ -42,6 +44,7 @@ export async function GET() {
     return NextResponse.json({
       theme: settingsMap.STUDENT_PORTAL_THEME || "red_star",
       bannerUrl: settingsMap.STUDENT_PORTAL_BANNER_URL || "",
+      schoolLogoUrl: settingsMap.SCHOOL_LOGO_URL || "",
       motto: settingsMap.STUDENT_PORTAL_MOTTO || "",
       announcement: settingsMap.STUDENT_PORTAL_ANNOUNCEMENT || "",
       schoolName: settingsMap.SCHOOL_NAME || "Trường THPT Ten Lơ Man",

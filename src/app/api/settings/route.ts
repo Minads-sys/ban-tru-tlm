@@ -29,6 +29,7 @@ export async function GET() {
       STUDENT_SHOW_HISTORY_TAB: 'false',
       STUDENT_PORTAL_THEME: 'red_star',
       STUDENT_PORTAL_BANNER_URL: '',
+      SCHOOL_LOGO_URL: '',
       STUDENT_PORTAL_MOTTO: 'Nhiệt liệt chào mừng năm học mới',
       STUDENT_PORTAL_ANNOUNCEMENT: '',
       KITCHEN_DISPLAY_PASSKEY: '123456',
