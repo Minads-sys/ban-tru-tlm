@@ -11,6 +11,8 @@ import {
   User,
   PhoneCall,
   Sparkles,
+  Eye,
+  Utensils,
 } from "lucide-react";
 
 interface QuickServicesProps {
@@ -41,8 +43,6 @@ export function StudentQuickServices({
       icon: CalendarX,
       bgGradient: "from-rose-50 to-rose-100/80 border-rose-200/80",
       iconBg: "bg-rose-500 text-white",
-      badge: "HOT",
-      badgeBg: "bg-rose-600 text-white",
     },
     {
       key: "override",
@@ -50,15 +50,13 @@ export function StudentQuickServices({
       icon: RefreshCw,
       bgGradient: "from-emerald-50 to-emerald-100/80 border-emerald-200/80",
       iconBg: "bg-emerald-500 text-white",
-      badge: "HOT",
-      badgeBg: "bg-rose-600 text-white",
     },
     {
-      key: "qr",
-      title: "Quét VietQR",
-      icon: QrCode,
-      bgGradient: "from-blue-50 to-blue-100/80 border-blue-200/80",
-      iconBg: "bg-blue-600 text-white",
+      key: "public_meals",
+      title: "Công khai suất ăn",
+      icon: Eye,
+      bgGradient: "from-sky-50 to-sky-100/80 border-sky-200/80",
+      iconBg: "bg-sky-600 text-white",
     },
     {
       key: "schedule",
@@ -72,7 +70,7 @@ export function StudentQuickServices({
   const extendedServices: ServiceItem[] = [
     {
       key: "debt",
-      title: "DS công nợ",
+      title: "Hóa đơn tiền ăn",
       icon: Receipt,
       bgGradient: "from-amber-50 to-amber-100/80 border-amber-200/80",
       iconBg: "bg-amber-500 text-white",
@@ -85,9 +83,9 @@ export function StudentQuickServices({
       iconBg: "bg-teal-600 text-white",
     },
     {
-      key: "profile",
-      title: "Hồ sơ học sinh",
-      icon: User,
+      key: "weekly_menu",
+      title: "Thực đơn tuần",
+      icon: Utensils,
       bgGradient: "from-cyan-50 to-cyan-100/80 border-cyan-200/80",
       iconBg: "bg-cyan-600 text-white",
     },

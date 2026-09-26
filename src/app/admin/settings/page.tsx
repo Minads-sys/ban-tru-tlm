@@ -945,6 +945,7 @@ export default function AdminSettingsPage() {
               motto={formData.STUDENT_PORTAL_MOTTO ?? 'Nhiệt liệt chào mừng năm học mới'}
               announcement={formData.STUDENT_PORTAL_ANNOUNCEMENT || ''}
               schoolName={formData.SCHOOL_NAME || 'Trường THPT Ten Lơ Man'}
+              isSaving={isSaving}
               onChange={(field, value) => handleChange(field as any, value)}
             />
 

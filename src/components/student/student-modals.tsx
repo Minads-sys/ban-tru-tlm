@@ -19,6 +19,8 @@ import {
   ExternalLink,
   ChevronRight,
   Bot,
+  Eye,
+  Utensils,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 
@@ -32,8 +34,11 @@ interface StudentModalsProps {
   onSelectAction: (actionKey: string) => void;
   studentName?: string;
   studentClass?: string;
-  studentCode?: string;
+  boardingCode?: string;
   schoolName?: string;
+  schoolPhone?: string;
+  mealLockTime1?: string;
+  mealLockTime1Sunday?: string;
 }
 
 export function StudentModals({
@@ -46,17 +51,21 @@ export function StudentModals({
   onSelectAction,
   studentName = "Nguyễn Bảo Khánh",
   studentClass = "12A1",
-  studentCode = "20261102",
+  boardingCode = "BT-12A1-05",
   schoolName = "Trường THPT Ten Lơ Man",
+  schoolPhone = "(028) 3829 7990",
+  mealLockTime1 = "16:00",
+  mealLockTime1Sunday = "19:00",
 }: StudentModalsProps) {
   const [searchQuery, setSearchQuery] = useState("");
 
   const searchableItems = [
     { key: "cancel", label: "Cắt suất ăn / Báo nghỉ ăn", icon: CalendarX, category: "Suất ăn" },
     { key: "override", label: "Đổi món ăn (Mặn / Chay / Cháo)", icon: RefreshCw, category: "Suất ăn" },
-    { key: "qr", label: "Thanh toán VietQR / Quét mã đóng tiền", icon: QrCode, category: "Học phí" },
-    { key: "debt", label: "Danh sách công nợ & Hóa đơn tháng", icon: Receipt, category: "Học phí" },
-    { key: "schedule", label: "Lịch ăn tuần & Thời khóa biểu", icon: CalendarDays, category: "Lịch trình" },
+    { key: "weekly_menu", label: "Thực đơn tuần & Danh sách món ăn", icon: Utensils, category: "Suất ăn" },
+    { key: "public_meals", label: "Công khai hình ảnh suất ăn bán trú", icon: Eye, category: "Suất ăn" },
+    { key: "debt", label: "Hóa đơn tiền ăn & Quét mã VietQR", icon: Receipt, category: "Hóa đơn" },
+    { key: "schedule", label: "Lịch ăn tuần & Sân ăn", icon: CalendarDays, category: "Lịch trình" },
     { key: "history", label: "Lịch sử đóng tiền & Lịch sử cắt suất", icon: Receipt, category: "Lịch sử" },
     { key: "profile", label: "Hồ sơ học sinh & Thẻ bán trú", icon: User, category: "Cá nhân" },
     { key: "password", label: "Đổi mật khẩu tài khoản", icon: KeyRound, category: "Bảo mật" },
@@ -165,7 +174,7 @@ export function StudentModals({
                 <div className="text-xs text-blue-100 flex items-center gap-2 mt-0.5">
                   <span>Lớp: {studentClass}</span>
                   <span>•</span>
-                  <span>Mã: {studentCode}</span>
+                  <span>Mã BT: {boardingCode}</span>
                 </div>
               </div>
             </div>
@@ -257,14 +266,14 @@ export function StudentModals({
                 <span className="font-bold text-blue-900 block mb-1">
                   1. Hướng dẫn Báo cắt suất ăn:
                 </span>
-                Học sinh cần báo cắt trước 16:00 hàng ngày (hoặc 19:00 Chủ Nhật cho Thứ Hai tuần kế tiếp) để được hoàn tiền vào tháng sau.
+                Học sinh cần báo cắt trước <b>{mealLockTime1}</b> hàng ngày (hoặc <b>{mealLockTime1Sunday}</b> Chủ Nhật cho Thứ Hai tuần kế tiếp) để được hoàn tiền vào tháng sau.
               </div>
 
               <div className="bg-emerald-50/80 p-3 rounded-xl border border-emerald-100">
                 <span className="font-bold text-emerald-900 block mb-1">
                   2. Đóng tiền ăn qua VietQR:
                 </span>
-                Vào tab &quot;Học phí&quot; chọn phiếu nợ, quét mã QR trên ứng dụng ngân hàng. Tiền được gạch nợ tự động trong 1-3 phút.
+                Vào tab &quot;Hóa đơn&quot; chọn phiếu nợ, quét mã QR trên ứng dụng ngân hàng. Tiền được gạch nợ tự động trong 1-3 phút.
               </div>
 
               <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
@@ -273,7 +282,7 @@ export function StudentModals({
                 </span>
                 <div className="flex items-center gap-2 text-blue-600 font-bold mt-1">
                   <Phone className="h-3.5 w-3.5" />
-                  <span>028 3829 7990 (Văn phòng Bán trú)</span>
+                  <span>{schoolPhone} (Văn phòng Bán trú)</span>
                 </div>
               </div>
             </div>

@@ -37,7 +37,7 @@ export function StudentBottomNav({
     },
     {
       key: "debt",
-      label: "Học phí",
+      label: "Hóa đơn",
       icon: Receipt,
       hasBadge: unpaidCount > 0,
       badgeText: unpaidCount > 9 ? "9+" : String(unpaidCount),

@@ -65,8 +65,8 @@ export function StudentMobileHeader({
     studentInfo?.user?.fullName || user?.name || "Nguyễn Bảo Khánh";
   const studentClass =
     studentInfo?.class?.name || studentInfo?.classId || "12A1";
-  const studentCode =
-    studentInfo?.studentCode || user?.studentCode || "20261102";
+  const boardingCode =
+    studentInfo?.boardingCode || "BT-12A1-05";
   const schoolName = themeConfig.schoolName || "Trường THPT Ten Lơ Man";
 
   const formatMoney = (val: number) =>
@@ -141,13 +141,71 @@ export function StudentMobileHeader({
             />
           </svg>
 
-          {/* Central 3D Glowing Star */}
-          <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-44 h-44 flex items-center justify-center opacity-85 pointer-events-none">
+          {/* Central 3D Glowing Faceted Star (matching reference image) */}
+          <div className="absolute top-1 sm:top-3 left-1/2 -translate-x-1/2 w-64 h-64 sm:w-80 sm:h-80 flex items-center justify-center pointer-events-none z-0">
             <svg
-              viewBox="0 0 24 24"
-              className="w-32 h-32 drop-shadow-[0_12px_28px_rgba(255,215,0,0.65)] text-amber-300 fill-amber-400"
+              viewBox="0 0 200 200"
+              className="w-full h-full drop-shadow-[0_15px_35px_rgba(255,215,0,0.7)]"
             >
-              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+              {/* Outer Golden Glow */}
+              <circle cx="100" cy="100" r="75" fill="url(#starGlow)" opacity="0.45" />
+              
+              <defs>
+                <radialGradient id="starGlow" cx="50%" cy="50%" r="50%">
+                  <stop offset="0%" stopColor="#FEF08A" stopOpacity="0.8" />
+                  <stop offset="60%" stopColor="#EAB308" stopOpacity="0.3" />
+                  <stop offset="100%" stopColor="#CA8A04" stopOpacity="0" />
+                </radialGradient>
+                <linearGradient id="facetHighlight" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#FFFBEB" />
+                  <stop offset="100%" stopColor="#FDE047" />
+                </linearGradient>
+                <linearGradient id="facetLight" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#FEF08A" />
+                  <stop offset="100%" stopColor="#FACC15" />
+                </linearGradient>
+                <linearGradient id="facetMid" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#F59E0B" />
+                  <stop offset="100%" stopColor="#D97706" />
+                </linearGradient>
+                <linearGradient id="facetDark" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#D97706" />
+                  <stop offset="100%" stopColor="#92400E" />
+                </linearGradient>
+              </defs>
+
+              {/* 10 Facets of 3D Star: Alternating Light & Dark Triangles */}
+              {/* Top Point */}
+              <polygon points="100,100 100,15 78.8,70.9" fill="url(#facetHighlight)" />
+              <polygon points="100,100 100,15 121.2,70.9" fill="url(#facetMid)" />
+
+              {/* Top-Right Point */}
+              <polygon points="100,100 180.8,73.7 121.2,70.9" fill="url(#facetLight)" />
+              <polygon points="100,100 180.8,73.7 134.2,111.1" fill="url(#facetDark)" />
+
+              {/* Bottom-Right Point */}
+              <polygon points="100,100 150.0,168.8 134.2,111.1" fill="url(#facetMid)" />
+              <polygon points="100,100 150.0,168.8 100,136" fill="url(#facetDark)" />
+
+              {/* Bottom-Left Point */}
+              <polygon points="100,100 50.0,168.8 100,136" fill="url(#facetLight)" />
+              <polygon points="100,100 50.0,168.8 65.8,111.1" fill="url(#facetDark)" />
+
+              {/* Top-Left Point */}
+              <polygon points="100,100 19.2,73.7 65.8,111.1" fill="url(#facetLight)" />
+              <polygon points="100,100 19.2,73.7 78.8,70.9" fill="url(#facetDark)" />
+            </svg>
+          </div>
+
+          {/* Golden Flying Doves (matching reference image) */}
+          <div className="absolute top-4 left-[12%] w-7 h-7 opacity-60 text-amber-200 pointer-events-none transform -rotate-12">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M21 4c-2.5 1-4.5 3-5.5 5.5-1.5-1-3.5-1.5-5.5-1-1.5.5-2.8 1.5-3.5 3-2.5.5-4.5 2.5-4.5 5.5 1.5-.5 3-1.5 4-2.8.8 1.8 2.2 3.2 4 4 .2-1.5 1-3 2.2-4.2C13.5 12.8 15 12 17 12c1.5 0 3 .5 4 1.5-.5-3.2-.5-6.5 0-9.5z" />
+            </svg>
+          </div>
+          <div className="absolute top-10 right-[15%] w-6 h-6 opacity-60 text-amber-200 pointer-events-none transform rotate-12">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M21 4c-2.5 1-4.5 3-5.5 5.5-1.5-1-3.5-1.5-5.5-1-1.5.5-2.8 1.5-3.5 3-2.5.5-4.5 2.5-4.5 5.5 1.5-.5 3-1.5 4-2.8.8 1.8 2.2 3.2 4 4 .2-1.5 1-3 2.2-4.2C13.5 12.8 15 12 17 12c1.5 0 3 .5 4 1.5-.5-3.2-.5-6.5 0-9.5z" />
             </svg>
           </div>
         </div>
@@ -228,56 +286,56 @@ export function StudentMobileHeader({
           </div>
         ) : null}
 
-        {/* Floating Student Greeting Card (Matching Reference Layout) */}
+        {/* Floating Student Greeting Card (Transparent Glassmorphic Layout matching reference) */}
         <div className="mt-3.5 sm:mt-4">
-          <div className="bg-white/95 backdrop-blur-md rounded-2xl p-4 shadow-xl border border-white/80 text-slate-800 transition-all hover:shadow-2xl">
+          <div className="bg-black/25 backdrop-blur-[2px] rounded-2xl p-3.5 sm:p-4 shadow-2xl border border-white/25 text-white transition-all hover:border-white/40">
             
-            {/* Top Row: Avatar, Greeting, Detail link */}
+            {/* Top Row: Avatar, Greeting, Detail link (Transparent background reveals banner) */}
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white text-lg font-bold shadow-md ring-2 ring-white shrink-0">
-                  <GraduationCap className="h-6 w-6" />
+                <div className="w-12 h-12 rounded-full bg-white/20 border border-white/30 backdrop-blur-xs flex items-center justify-center text-white text-lg font-bold shadow-md shrink-0">
+                  <GraduationCap className="h-6 w-6 text-amber-300 drop-shadow-xs" />
                 </div>
                 <div className="min-w-0">
-                  <div className="text-[10px] font-bold text-blue-700 uppercase tracking-wider flex items-center gap-1 mb-0.5 truncate">
+                  <div className="text-[10px] font-bold text-amber-300 uppercase tracking-wider flex items-center gap-1 mb-0.5 truncate">
                     <span>{schoolName}</span>
                   </div>
-                  <div className="text-[11px] font-medium text-slate-500">Xin chào,</div>
-                  <div className="text-base sm:text-lg font-bold text-slate-900 leading-tight truncate">
+                  <div className="text-[11px] font-medium text-white/80">Xin chào,</div>
+                  <div className="text-base sm:text-lg font-bold text-white leading-tight truncate drop-shadow-sm">
                     {studentName}
                   </div>
-                  <div className="text-[11px] font-medium text-blue-600 flex items-center gap-1 mt-0.5">
+                  <div className="text-[11px] font-medium text-white/90 flex items-center gap-1 mt-0.5">
                     <span>Lớp {studentClass}</span>
                     <span>•</span>
-                    <span>Mã HS: {studentCode}</span>
+                    <span className="text-amber-200 font-semibold">Mã BT: {boardingCode}</span>
                   </div>
                 </div>
               </div>
 
-              {/* Detail Profile Button */}
+              {/* Profile Button (White pill button like reference) */}
               <button
                 onClick={onOpenProfile}
-                className="text-[11px] font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-200/80 px-2.5 py-1 rounded-full flex items-center gap-1 transition shrink-0 cursor-pointer active:scale-95"
+                className="text-[11px] font-bold text-slate-800 bg-white hover:bg-white/90 border border-white px-3 py-1.5 rounded-full flex items-center gap-1 transition shrink-0 cursor-pointer active:scale-95 shadow-md"
               >
                 <span>Hồ sơ</span>
-                <ChevronRight className="h-3 w-3 text-slate-400" />
+                <ChevronRight className="h-3 w-3 text-slate-600" />
               </button>
             </div>
 
             {/* Mid Row: Debt / Meal Fee Info */}
-            <div className="mt-3.5 pt-3 border-t border-slate-100 flex items-baseline justify-between gap-2">
+            <div className="mt-3.5 pt-3 border-t border-white/15 flex items-baseline justify-between gap-2">
               <div>
-                <div className="text-[11px] text-slate-500 font-medium">Tiền ăn còn nợ</div>
-                <div className={`text-xl font-extrabold tracking-tight ${unpaidAmount > 0 ? "text-rose-600" : "text-emerald-600"}`}>
+                <div className="text-[11px] text-white/75 font-medium">Tiền ăn còn nợ</div>
+                <div className={`text-2xl font-black tracking-tight drop-shadow-xs ${unpaidAmount > 0 ? "text-amber-300" : "text-emerald-300"}`}>
                   {formatMoney(unpaidAmount)}
                 </div>
               </div>
               <div className="text-right shrink-0">
-                <div className="text-[11px] text-slate-500 font-medium">Trạng thái bán trú</div>
-                <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-md border ${
+                <div className="text-[11px] text-white/75 font-medium mb-0.5">Trạng thái bán trú</div>
+                <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full border backdrop-blur-xs ${
                   studentInfo?.boardingStatus === "ACTIVE" || !studentInfo
-                    ? "text-emerald-700 bg-emerald-50 border-emerald-200"
-                    : "text-rose-700 bg-rose-50 border-rose-200"
+                    ? "text-emerald-300 bg-emerald-950/40 border-emerald-400/40"
+                    : "text-rose-300 bg-rose-950/40 border-rose-400/40"
                 }`}>
                   <CheckCircle2 className="h-3 w-3" />
                   {studentInfo?.boardingStatus === "ACTIVE" || !studentInfo
@@ -287,16 +345,20 @@ export function StudentMobileHeader({
               </div>
             </div>
 
-            {/* Bottom Action Sub-card */}
-            <div className="mt-3 bg-slate-50/90 rounded-xl p-2.5 border border-slate-200/70 flex items-center justify-between gap-2">
+            {/* Bottom Action Sub-card (White container at bottom matching reference) */}
+            <div className="mt-3 bg-white rounded-xl p-2.5 shadow-md border border-slate-100 flex items-center justify-between gap-2 text-slate-800">
               <div className="text-xs font-semibold text-slate-700 truncate">
                 <span className="text-slate-400 font-normal">Chế độ ăn: </span>
-                <span className="text-slate-800">{getMealTypeName(studentInfo?.mealType)}</span>
+                <span className="text-slate-900 font-bold">{getMealTypeName(studentInfo?.mealType)}</span>
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
                 <button
                   onClick={() => onTabChange && onTabChange("debt")}
-                  className="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-bold text-xs px-3 py-1.5 rounded-lg active:scale-95 transition flex items-center gap-1 cursor-pointer shadow-2xs"
+                  className={`font-bold text-xs px-3 py-1.5 rounded-lg active:scale-95 transition flex items-center gap-1 cursor-pointer ${
+                    unpaidAmount > 0
+                      ? "bg-rose-600 hover:bg-rose-700 text-white shadow-md animate-pulse ring-2 ring-rose-400 ring-offset-1"
+                      : "bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 shadow-2xs"
+                  }`}
                 >
                   <QrCode className="h-3.5 w-3.5" />
                   <span>Thanh toán</span>

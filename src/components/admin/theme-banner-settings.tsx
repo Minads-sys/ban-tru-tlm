@@ -7,6 +7,7 @@ import {
   CardTitle,
   CardDescription,
   CardContent,
+  CardFooter,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,7 +29,9 @@ import {
   CalendarX,
   RefreshCw,
   QrCode,
+  Eye,
   CalendarDays,
+  Save,
 } from "lucide-react";
 
 interface ThemeBannerSettingsProps {
@@ -37,6 +40,7 @@ interface ThemeBannerSettingsProps {
   motto: string;
   announcement: string;
   schoolName: string;
+  isSaving?: boolean;
   onChange: (field: string, value: string) => void;
 }
 
@@ -46,6 +50,7 @@ export function ThemeBannerSettings({
   motto,
   announcement,
   schoolName,
+  isSaving = false,
   onChange,
 }: ThemeBannerSettingsProps) {
   const [isUploading, setIsUploading] = useState(false);
@@ -152,7 +157,7 @@ export function ThemeBannerSettings({
   return (
     <Card className="shadow-sm border-2 border-slate-200 bg-white">
       <CardHeader className="border-b bg-card">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <CardTitle className="text-lg font-semibold text-slate-900 flex items-center gap-2">
               <Palette className="h-5 w-5 text-rose-600" />
@@ -162,10 +167,25 @@ export function ThemeBannerSettings({
               Cập nhật định kỳ hình nền banner, theme lễ hội theo mùa (Quốc khánh, Tết, Khai giảng...) và thông báo cho học sinh
             </CardDescription>
           </div>
-          <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200 shrink-0">
-            <Sparkles className="h-3.5 w-3.5 text-rose-500" />
-            Cập nhật Định kỳ
-          </span>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="hidden sm:inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200">
+              <Sparkles className="h-3.5 w-3.5 text-rose-500" />
+              Cập nhật Định kỳ
+            </span>
+            <Button
+              type="submit"
+              disabled={isSaving}
+              size="sm"
+              className="gap-1.5 shadow-sm font-bold bg-rose-600 hover:bg-rose-700 text-white cursor-pointer h-9 px-4 shrink-0"
+            >
+              {isSaving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4" />
+              )}
+              <span>{isSaving ? "Đang lưu..." : "Cập nhật Giao diện"}</span>
+            </Button>
+          </div>
         </div>
       </CardHeader>
 
@@ -378,28 +398,42 @@ export function ThemeBannerSettings({
                   </div>
                 )}
 
-                {/* Floating Student Card thu nhỏ */}
-                <div className="mt-2 bg-white/95 backdrop-blur-md rounded-xl p-2.5 shadow-md border border-white/80 text-slate-800">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center text-xs font-bold shrink-0">
-                      <GraduationCap className="h-4 w-4" />
+                {/* Floating Student Card thu nhỏ (Glassmorphic trong suốt đồng bộ mobile) */}
+                <div className="mt-2 bg-black/25 backdrop-blur-[2px] rounded-xl p-2.5 shadow-md border border-white/20 text-white">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full bg-white/20 border border-white/30 text-white flex items-center justify-center text-xs font-bold shrink-0">
+                        <GraduationCap className="h-4 w-4 text-amber-300" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-[8px] font-bold text-amber-300 uppercase truncate">
+                          {schoolName || "Trường THPT Ten Lơ Man"}
+                        </div>
+                        <div className="text-[11px] font-bold text-white leading-none truncate">
+                          Nguyễn Bảo Khánh
+                        </div>
+                        <div className="text-[8px] text-amber-200/90 font-medium mt-0.5">
+                          Lớp 12A1 • Mã BT: BT-12A1-05
+                        </div>
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <div className="text-[8px] font-bold text-blue-700 uppercase">
-                        {schoolName || "Trường THPT Ten Lơ Man"}
-                      </div>
-                      <div className="text-[11px] font-bold text-slate-900 leading-none truncate">
-                        Nguyễn Bảo Khánh
-                      </div>
-                      <div className="text-[9px] text-blue-600 font-medium mt-0.5">
-                        Lớp 12A1 • Mã: 20261102
-                      </div>
-                    </div>
+                    <span className="text-[8px] font-bold text-slate-800 bg-white px-2 py-0.5 rounded-full shrink-0">
+                      Hồ sơ
+                    </span>
                   </div>
 
-                  <div className="mt-2 pt-1.5 border-t border-slate-100 flex items-baseline justify-between text-[9px]">
-                    <span className="text-slate-500">Tiền ăn còn nợ:</span>
-                    <span className="font-extrabold text-rose-600 text-xs">770.000đ</span>
+                  <div className="mt-2 pt-1.5 border-t border-white/15 flex items-baseline justify-between text-[9px]">
+                    <span className="text-white/70">Tiền ăn còn nợ:</span>
+                    <span className="font-extrabold text-amber-300 text-xs">770.000đ</span>
+                  </div>
+
+                  {/* Sub-bar trắng dưới cùng */}
+                  <div className="mt-2 bg-white rounded-lg p-1.5 flex items-center justify-between text-slate-800 text-[8px] shadow-xs">
+                    <span className="font-bold truncate">Cơm mặn</span>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span className="bg-rose-600 text-white font-bold px-1.5 py-0.5 rounded animate-pulse">Thanh toán</span>
+                      <span className="bg-blue-600 text-white font-bold px-1.5 py-0.5 rounded">Cắt/Đổi món</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -423,10 +457,10 @@ export function ThemeBannerSettings({
                     <span className="text-[8px] font-medium text-slate-600 mt-1">Đổi món</span>
                   </div>
                   <div className="flex flex-col items-center">
-                    <div className="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center text-xs shadow-2xs">
-                      <QrCode className="h-4 w-4" />
+                    <div className="w-9 h-9 rounded-xl bg-sky-100 text-sky-600 flex items-center justify-center text-xs shadow-2xs">
+                      <Eye className="h-4 w-4" />
                     </div>
-                    <span className="text-[8px] font-medium text-slate-600 mt-1">VietQR</span>
+                    <span className="text-[8px] font-medium text-slate-600 mt-1">Công khai</span>
                   </div>
                   <div className="flex flex-col items-center">
                     <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs shadow-2xs">
@@ -440,7 +474,7 @@ export function ThemeBannerSettings({
                 <div className="mt-4 pt-1.5 border-t border-slate-200 flex items-center justify-around text-slate-400 text-[8px] font-medium">
                   <span className="text-blue-600 font-bold">● Trang chủ</span>
                   <span>Suất ăn</span>
-                  <span>Học phí</span>
+                  <span>Hóa đơn</span>
                   <span>Lịch sử</span>
                   <span>Cá nhân</span>
                 </div>
@@ -452,6 +486,30 @@ export function ThemeBannerSettings({
 
         </div>
       </CardContent>
+
+      <CardFooter className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t bg-slate-50/50 p-4">
+        <div className="text-xs text-slate-500 flex items-center gap-1.5">
+          <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+          <span>Giao diện và hình nền mới sẽ được áp dụng ngay lập tức cho toàn bộ học sinh khi bấm cập nhật.</span>
+        </div>
+        <Button
+          type="submit"
+          disabled={isSaving}
+          className="min-w-[190px] gap-2 shadow-sm font-bold bg-rose-600 hover:bg-rose-700 text-white cursor-pointer"
+        >
+          {isSaving ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Đang lưu thay đổi...
+            </>
+          ) : (
+            <>
+              <Save className="h-4 w-4" />
+              Cập nhật Giao diện & Banner
+            </>
+          )}
+        </Button>
+      </CardFooter>
     </Card>
   );
 }

@@ -36,6 +36,9 @@ import {
   LayoutGrid,
   ListFilter,
   Home,
+  QrCode,
+  Eye,
+  X,
 } from "lucide-react";
 import { StudentMobileHeader } from "@/components/student/student-mobile-header";
 import { StudentQuickServices } from "@/components/student/student-quick-services";
@@ -173,7 +176,6 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
 
   const [studentInfo, setStudentInfo] = useState<StudentData | null>(null);
   const [loadingStudent, setLoadingStudent] = useState<boolean>(true);
-  const [isExpanded, setIsExpanded] = useState<boolean>(false);
 
   const [cancellations, setCancellations] = useState<MealCancellation[]>([]);
   const [loadingCancellations, setLoadingCancellations] = useState<boolean>(true);
@@ -201,14 +203,24 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
     motto?: string;
     announcement?: string;
     schoolName?: string;
+    schoolPhone?: string;
+    mealLockTime1?: string;
+    mealLockTime1Sunday?: string;
+    mealLockTime2?: string;
   }>({
     theme: "red_star",
     schoolName: "Trường THPT Ten Lơ Man",
+    schoolPhone: "(028) 3829 7990",
     motto: "Nhiệt liệt chào mừng năm học mới",
+    mealLockTime1: "16:00",
+    mealLockTime1Sunday: "19:00",
+    mealLockTime2: "07:00",
   });
   const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
   const [isBotOpen, setIsBotOpen] = useState<boolean>(false);
+  const [isPublicMealsOpen, setIsPublicMealsOpen] = useState<boolean>(false);
+  const [isWeeklyMenuOpen, setIsWeeklyMenuOpen] = useState<boolean>(false);
   const [showAllServices, setShowAllServices] = useState<boolean>(false);
 
   const [selectedHistoryYear, setSelectedHistoryYear] = useState<number>(new Date().getFullYear());
@@ -273,6 +285,20 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
   // Trạng thái đã ngừng/hủy ăn bán trú
   const isCancelled = studentInfo?.boardingStatus === "CANCELLED";
 
+  // Dữ liệu học sinh chuẩn hóa (tự động fallback dữ liệu demo nếu chưa gắn mã học sinh)
+  const displayStudent = {
+    fullName: studentInfo?.user?.fullName || session?.user?.name || "Nguyễn Bảo Khánh",
+    className: studentInfo?.class?.name || studentInfo?.classId || "12A1",
+    boardingCode: studentInfo?.boardingCode || "BT-12A1-05",
+    mealType: studentInfo?.mealType || "MAN",
+    boardingStatus: studentInfo?.boardingStatus || "ACTIVE",
+    birthDate: studentInfo?.birthDate || "2009-11-15",
+    gender: studentInfo?.gender || "MALE",
+    parentPhone: studentInfo?.parentPhone || "0903 888 999",
+    mealStartDate: studentInfo?.mealStartDate || null,
+    studentCode: studentInfo?.studentCode || session?.user?.studentCode || "079211040961",
+  };
+
   // Khi học sinh đã hủy bán trú: luôn mở tab Công nợ & Quyết toán để phụ huynh xem và thanh toán
   const effectiveShowDebtTab = showDebtTab || isCancelled;
   const effectiveShowHistoryTab = showHistoryTab || isCancelled;
@@ -292,6 +318,10 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
   const handleSelectService = (key: string) => {
     if (key === "qr" || key === "debt") {
       setActiveTab("debt");
+    } else if (key === "public_meals") {
+      setIsPublicMealsOpen(true);
+    } else if (key === "weekly_menu") {
+      setIsWeeklyMenuOpen(true);
     } else if (key === "support") {
       setIsBotOpen(true);
     } else {
@@ -524,6 +554,10 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
           motto: data.STUDENT_PORTAL_MOTTO ?? 'Nhiệt liệt chào mừng năm học mới',
           announcement: data.STUDENT_PORTAL_ANNOUNCEMENT || '',
           schoolName: data.SCHOOL_NAME || 'Trường THPT Ten Lơ Man',
+          schoolPhone: data.SCHOOL_PHONE || '(028) 3829 7990',
+          mealLockTime1: data.MEAL_LOCK_TIME_1 || data.CUTOFF_TIME || '16:00',
+          mealLockTime1Sunday: data.MEAL_LOCK_TIME_1_SUNDAY || '19:00',
+          mealLockTime2: data.MEAL_LOCK_TIME_2 || '07:00',
         });
       }
     } catch (err) {
@@ -956,7 +990,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
           <span className="text-slate-600 font-bold uppercase tracking-wider text-[11px]">
             {activeTab === "cancel" && "Cắt suất ăn"}
             {activeTab === "override" && "Đổi món ăn"}
-            {activeTab === "debt" && "DS công nợ"}
+            {activeTab === "debt" && "Hóa đơn"}
             {activeTab === "history" && "Lịch sử"}
             {activeTab === "schedule" && "Lịch ăn & Sân ăn"}
             {activeTab === "profile" && "Hồ sơ cá nhân"}
@@ -993,150 +1027,6 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
           </div>
         </div>
       )}
-
-      <Card className="border-slate-200 shadow-xs bg-white">
-        <CardHeader className="pb-3 border-b border-slate-100 flex flex-row items-center justify-between cursor-pointer" onClick={() => setIsExpanded(!isExpanded)}>
-          <div>
-            <CardTitle className="text-base sm:text-lg font-semibold flex items-center gap-2 text-slate-800">
-              <User className="h-5 w-5 text-blue-600" />
-              Thông tin học sinh
-            </CardTitle>
-            <CardDescription className="text-xs sm:text-sm text-slate-500">
-              Hồ sơ học sinh đăng ký dịch vụ bán trú
-            </CardDescription>
-          </div>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            className="border-blue-200 text-blue-700 hover:bg-blue-50 bg-blue-50/50 shrink-0 shadow-sm"
-            onClick={(e) => { e.stopPropagation(); setIsExpanded(!isExpanded); }}
-          >
-            {isExpanded ? "Thu gọn" : "Xem chi tiết"}
-          </Button>
-        </CardHeader>
-        {isExpanded && (
-          <CardContent className="pt-4">
-            {loadingStudent ? (
-              <div className="flex items-center justify-center py-6 text-slate-500 gap-2 text-sm">
-                <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
-                <span>Đang tải thông tin...</span>
-              </div>
-            ) : !studentInfo ? (
-              <div className="text-sm text-slate-500 py-2">Không tìm thấy thông tin chi tiết.</div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 border border-slate-100">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600">
-                    <User className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0">
-                    <span className="text-xs text-slate-500 block">Họ và tên</span>
-                    <span className="font-semibold text-slate-900 truncate block">
-                      {studentInfo.user?.fullName || session?.user?.name || "Chưa cập nhật"}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 border border-slate-100">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-indigo-600">
-                    <User className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0">
-                    <span className="text-xs text-slate-500 block">Số CCCD</span>
-                    <span className="font-semibold text-slate-900 truncate block">{studentInfo.studentCode}</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 border border-slate-100">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-pink-100 text-pink-600">
-                    <Calendar className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0">
-                    <span className="text-xs text-slate-500 block">Ngày sinh</span>
-                    <span className="font-semibold text-slate-900 truncate block">
-                      {studentInfo.birthDate ? new Date(studentInfo.birthDate).toLocaleDateString("vi-VN", { timeZone: "UTC" }) : "Chưa cập nhật"}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 border border-slate-100">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-cyan-100 text-cyan-600">
-                    <User className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0">
-                    <span className="text-xs text-slate-500 block">Giới tính</span>
-                    <span className="font-semibold text-slate-900 truncate block">
-                      {studentInfo.gender === "FEMALE" ? "Nữ" : studentInfo.gender === "MALE" ? "Nam" : "Chưa cập nhật"}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 border border-slate-100">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-purple-100 text-purple-600">
-                    <School className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0">
-                    <span className="text-xs text-slate-500 block">Lớp học</span>
-                    <span className="font-semibold text-slate-900 truncate block">
-                      {studentInfo.class?.name || studentInfo.classId}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 border border-slate-100">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
-                    <Utensils className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0">
-                    <span className="text-xs text-slate-500 block">Chế độ suất ăn mặc định</span>
-                    <span className="font-semibold text-slate-900 truncate block">
-                      {getMealTypeName(studentInfo.mealType)}
-                    </span>
-                  </div>
-                </div>
-
-                {studentInfo.parentPhone && (
-                  <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 border border-slate-100">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-600">
-                      <Phone className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0">
-                      <span className="text-xs text-slate-500 block">SĐT Phụ huynh</span>
-                      <span className="font-semibold text-slate-900 truncate block">{studentInfo.parentPhone}</span>
-                    </div>
-                  </div>
-                )}
-
-                {studentInfo.mealStartDate && (
-                  <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 border border-slate-100">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
-                      <Calendar className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0">
-                      <span className="text-xs text-slate-500 block">Ngày bắt đầu ăn</span>
-                      <span className="font-semibold text-slate-900 truncate block">
-                        {new Date(studentInfo.mealStartDate).toLocaleDateString('vi-VN', { timeZone: 'UTC' })}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 border border-slate-100">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-teal-100 text-teal-600">
-                    <CheckCircle className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0">
-                    <span className="text-xs text-slate-500 block">Trạng thái bán trú</span>
-                    <span className={`font-semibold truncate block ${studentInfo.boardingStatus === "ACTIVE" ? "text-teal-600" : "text-rose-600"}`}>
-                      {studentInfo.boardingStatus === "ACTIVE" ? "Đang ăn bán trú" : "Không bán trú"}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        )}
-      </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className={`hidden sm:grid w-full ${
@@ -1188,7 +1078,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
               className="cursor-pointer transition-all duration-150 text-slate-700 hover:text-amber-900 hover:bg-amber-100/70 data-[state=active]:bg-amber-600 data-[state=active]:text-white font-semibold data-[state=active]:shadow-sm py-2 text-xs sm:text-sm flex items-center justify-center gap-1 group"
             >
               <AlertCircle className="h-4 w-4 mr-1 shrink-0 text-slate-600 group-data-[state=active]:text-white" />
-              <span>{isCancelled ? "Công nợ & Quyết toán" : "DS công nợ"}</span>
+              <span>{isCancelled ? "Công nợ & Quyết toán" : "Hóa đơn"}</span>
               {debtBills.length > 0 && (
                 <Badge className="bg-rose-600 group-data-[state=active]:bg-white group-data-[state=active]:text-amber-700 text-white text-[10px] px-1.5 py-0 h-4 min-w-4 flex items-center justify-center rounded-full ml-1 font-bold transition-colors">
                   {debtBills.length}
@@ -1215,10 +1105,11 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
             onToggleShowAll={() => setShowAllServices(!showAllServices)}
           />
           <StudentFeaturedCards
-            studentInfo={studentInfo}
+            studentInfo={studentInfo || displayStudent}
+            todayInfo={monthlyScheduleData?.todayInfo}
             bills={bills}
             announcement={themeConfig.announcement}
-            cutoffTime={mealLockTime || "16:00"}
+            cutoffTime={themeConfig.mealLockTime1 || mealLockTime || "16:00"}
             onAction={handleSelectService}
           />
         </TabsContent>
@@ -1240,7 +1131,7 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
                   <span className="text-xs text-slate-400 block">Họ và tên</span>
                   <span className="font-bold text-slate-900 text-base">
-                    {studentInfo?.user?.fullName || session?.user?.name || "Nguyễn Bảo Khánh"}
+                    {displayStudent.fullName}
                   </span>
                 </div>
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
@@ -1252,31 +1143,37 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
                   <span className="text-xs text-slate-400 block">Lớp học</span>
                   <span className="font-bold text-slate-900">
-                    {studentInfo?.class?.name || studentInfo?.classId || "12A1"}
+                    {displayStudent.className}
                   </span>
                 </div>
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                  <span className="text-xs text-slate-400 block">Mã học sinh / CCCD</span>
-                  <span className="font-bold text-slate-900">
-                    {studentInfo?.studentCode || session?.user?.studentCode || "20261102"}
+                  <span className="text-xs text-slate-400 block">Mã bán trú</span>
+                  <span className="font-bold text-blue-700">
+                    {displayStudent.boardingCode}
                   </span>
                 </div>
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
                   <span className="text-xs text-slate-400 block">Chế độ suất ăn</span>
                   <span className="font-bold text-slate-900">
-                    {getMealTypeName(studentInfo?.mealType)}
+                    {getMealTypeName(displayStudent.mealType)}
                   </span>
                 </div>
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
                   <span className="text-xs text-slate-400 block">Trạng thái bán trú</span>
-                  <span className={`font-bold ${studentInfo?.boardingStatus === "ACTIVE" || !studentInfo ? "text-emerald-600" : "text-rose-600"}`}>
-                    {studentInfo?.boardingStatus === "ACTIVE" || !studentInfo ? "Đang ăn bán trú" : "Không bán trú"}
+                  <span className={`font-bold ${displayStudent.boardingStatus === "ACTIVE" ? "text-emerald-600" : "text-rose-600"}`}>
+                    {displayStudent.boardingStatus === "ACTIVE" ? "Đang ăn bán trú" : "Không bán trú"}
                   </span>
                 </div>
-                {studentInfo?.parentPhone && (
+                {displayStudent.parentPhone && (
                   <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
                     <span className="text-xs text-slate-400 block">SĐT Phụ huynh</span>
-                    <span className="font-bold text-slate-900">{studentInfo.parentPhone}</span>
+                    <span className="font-bold text-slate-900">{displayStudent.parentPhone}</span>
+                  </div>
+                )}
+                {themeConfig.schoolPhone && (
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                    <span className="text-xs text-slate-400 block">Hotline Nhà trường</span>
+                    <span className="font-bold text-blue-600">{themeConfig.schoolPhone}</span>
                   </div>
                 )}
               </div>
@@ -3184,11 +3081,122 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
         isBotOpen={isBotOpen}
         onCloseBot={() => setIsBotOpen(false)}
         onSelectAction={handleSelectService}
-        studentName={studentInfo?.user?.fullName || session?.user?.name || "Nguyễn Bảo Khánh"}
-        studentClass={studentInfo?.class?.name || studentInfo?.classId || "12A1"}
-        studentCode={studentInfo?.studentCode || session?.user?.studentCode || "20261102"}
+        studentName={displayStudent.fullName}
+        studentClass={displayStudent.className}
+        boardingCode={displayStudent.boardingCode}
         schoolName={themeConfig.schoolName || "Trường THPT Ten Lơ Man"}
+        schoolPhone={themeConfig.schoolPhone || "(028) 3829 7990"}
+        mealLockTime1={themeConfig.mealLockTime1 || "16:00"}
+        mealLockTime1Sunday={themeConfig.mealLockTime1Sunday || "19:00"}
       />
+
+      {/* 6. Modal Thông báo Tính năng Công khai hình ảnh suất ăn (Đang phát triển) */}
+      {isPublicMealsOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl border border-slate-200 overflow-hidden flex flex-col">
+            <div className="p-4 bg-gradient-to-r from-sky-600 to-blue-600 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+                  <Eye className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold">Công Khai Suất Ăn</h3>
+                  <p className="text-[10px] text-sky-100">Hình ảnh khay cơm & khẩu phần</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsPublicMealsOpen(false)}
+                className="text-white/80 hover:text-white p-1 rounded-lg"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-4 text-center space-y-3">
+              <div className="w-14 h-14 rounded-2xl bg-sky-50 border border-sky-200 flex items-center justify-center mx-auto text-sky-600 shadow-inner">
+                <Utensils className="h-7 w-7 text-sky-600" />
+              </div>
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-sky-700 bg-sky-100/70 px-2 py-0.5 rounded-full inline-block mb-1.5">
+                  Đang phát triển
+                </span>
+                <h4 className="text-sm font-bold text-slate-800">
+                  Trang Web Công Khai Suất Ăn Bán Trú
+                </h4>
+              </div>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Hệ thống công khai hình ảnh chụp trực tiếp từ bếp ăn mỗi ngày (khay cơm, món ăn, định lượng dinh dưỡng) đang được hoàn thiện kết nối.
+              </p>
+              <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-[11px] text-slate-500 font-medium">
+                🔗 Quý phụ huynh và học sinh sẽ sớm có thể truy cập để xem toàn bộ album ảnh các bữa ăn hàng ngày của nhà trường.
+              </div>
+            </div>
+
+            <div className="p-3 border-t border-slate-100">
+              <button
+                onClick={() => setIsPublicMealsOpen(false)}
+                className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition cursor-pointer active:scale-95 shadow-xs"
+              >
+                Đã hiểu
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 7. Modal Thông báo Thực đơn tuần (Đang cập nhật) */}
+      {isWeeklyMenuOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl border border-slate-200 overflow-hidden flex flex-col">
+            <div className="p-4 bg-gradient-to-r from-emerald-600 to-teal-600 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+                  <Utensils className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold">Thực Đơn Tuần</h3>
+                  <p className="text-[10px] text-emerald-100">Chi tiết thực đơn bán trú</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsWeeklyMenuOpen(false)}
+                className="text-white/80 hover:text-white p-1 rounded-lg"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-4 text-center space-y-3">
+              <div className="w-14 h-14 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-center mx-auto text-emerald-600 shadow-inner">
+                <Utensils className="h-7 w-7 text-emerald-600" />
+              </div>
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-full inline-block mb-1.5">
+                  Đang cập nhật
+                </span>
+                <h4 className="text-sm font-bold text-slate-800">
+                  Thực Đơn Bán Trú Tuần Này
+                </h4>
+              </div>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Nhà trường và bộ phận bán trú đang hoàn thiện bảng thực đơn dinh dưỡng các món ăn theo từng ngày cho tuần này.
+              </p>
+              <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-[11px] text-slate-500 font-medium">
+                🍱 Thông tin món ăn chi tiết (Món chính, món xào, món canh, tráng miệng) sẽ sớm được hiển thị đầy đủ tại đây.
+              </div>
+            </div>
+
+            <div className="p-3 border-t border-slate-100">
+              <button
+                onClick={() => setIsWeeklyMenuOpen(false)}
+                className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition cursor-pointer active:scale-95 shadow-xs"
+              >
+                Đã hiểu
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
