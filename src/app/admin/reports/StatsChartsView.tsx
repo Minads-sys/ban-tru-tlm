@@ -69,6 +69,7 @@ interface StatisticsData {
   dailyTrend: Array<{
     dateStr: string;
     label: string;
+    fullLabel?: string;
     dayName: string;
     totalRegistered: number;
     totalCanceled: number;
@@ -1051,14 +1052,29 @@ export default function StatsChartsView() {
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart
                     data={data.dailyTrend}
-                    margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+                    margin={{ top: 10, right: 10, left: -20, bottom: 20 }}
                   >
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                     <XAxis
-                      dataKey="dayName"
-                      tick={{ fontSize: 11, fill: "#64748b" }}
+                      dataKey="dateStr"
+                      tickFormatter={(val: string) => {
+                        try {
+                          const parts = val.split("-");
+                          if (parts.length === 3) {
+                            const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+                            const dayNames = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
+                            return `${dayNames[d.getDay()]} ${parts[2]}/${parts[1]}`;
+                          }
+                        } catch {}
+                        return val;
+                      }}
+                      tick={{ fontSize: 10, fill: "#64748b" }}
                       axisLine={{ stroke: "#e2e8f0" }}
                       tickLine={false}
+                      interval={0}
+                      angle={-30}
+                      textAnchor="end"
+                      height={40}
                     />
                     <YAxis
                       yAxisId="left"
@@ -1073,17 +1089,54 @@ export default function StatsChartsView() {
                       unit="%"
                       axisLine={{ stroke: "#e2e8f0" }}
                       tickLine={false}
+                      domain={[0, (dataMax: number) => Math.min(100, Math.max(20, Math.ceil((dataMax || 0) * 1.15)))]}
                     />
                     <Tooltip
-                      formatter={(val: any, name: any) => {
-                        if (name === "Tỷ lệ cắt (%)") return [`${val}%`, name];
-                        return [`${Number(val).toLocaleString("vi-VN")} suất`, name];
-                      }}
-                      contentStyle={{
-                        borderRadius: "0.75rem",
-                        borderColor: "#e2e8f0",
-                        boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
-                        fontSize: "12px",
+                      content={({ active, payload }) => {
+                        if (active && payload && payload.length) {
+                          const item = payload[0].payload;
+                          const reg = item.totalRegistered || (item.finalTotal + item.totalCanceled);
+                          return (
+                            <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-800 shadow-lg text-xs space-y-1.5 min-w-[210px]">
+                              <div className="font-bold text-slate-800 dark:text-slate-200 border-b border-slate-100 dark:border-slate-800 pb-1.5 flex items-center justify-between">
+                                <span className="text-slate-900 dark:text-slate-100 font-bold">{item.fullLabel || item.label}</span>
+                              </div>
+                              <div className="flex items-center justify-between text-slate-600 dark:text-slate-400 pt-0.5">
+                                <span>Kế hoạch ban đầu:</span>
+                                <strong className="text-slate-800 dark:text-slate-200">
+                                  {reg.toLocaleString("vi-VN")} suất
+                                </strong>
+                              </div>
+                              <div className="flex items-center justify-between text-blue-600 font-medium">
+                                <span className="flex items-center gap-1.5">
+                                  <span className="w-2.5 h-2.5 rounded-sm bg-blue-600 inline-block" />
+                                  Suất ăn thực tế:
+                                </span>
+                                <strong>{item.finalTotal.toLocaleString("vi-VN")} suất</strong>
+                              </div>
+                              <div className="flex items-center justify-between text-amber-600 font-medium">
+                                <span className="flex items-center gap-1.5">
+                                  <span className="w-2.5 h-2.5 rounded-sm bg-amber-400 inline-block" />
+                                  Số suất cắt:
+                                </span>
+                                <strong>{item.totalCanceled.toLocaleString("vi-VN")} suất</strong>
+                              </div>
+                              <div className="flex items-center justify-between text-rose-600 font-bold pt-1.5 border-t border-slate-100 dark:border-slate-800">
+                                <span className="flex items-center gap-1.5">
+                                  <span className="w-2 h-2 rounded-full bg-rose-500 inline-block" />
+                                  Tỷ lệ cắt:
+                                </span>
+                                <span>
+                                  {item.cancelRate}%
+                                  <span className="text-[11px] text-slate-400 font-normal ml-1">
+                                    ({item.totalCanceled}/{reg})
+                                  </span>
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        }
+                        return null;
                       }}
                     />
                     <Legend wrapperStyle={{ fontSize: "12px", paddingTop: "8px" }} />

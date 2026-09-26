@@ -79,6 +79,7 @@ export async function GET(request: NextRequest) {
       {
         dateStr: string;
         label: string;
+        fullLabel?: string;
         dayName: string;
         totalRegistered: number;
         totalCanceled: number;
@@ -95,12 +96,15 @@ export async function GET(request: NextRequest) {
       const dayOfWeek = d.getDay();
       const dayNames = ["CN", "Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7"];
       const dayName = dayNames[dayOfWeek];
-      const label = `${dayName} (${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")})`;
+      const dateDisplay = `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const label = `${dayName} (${dateDisplay})`;
+      const fullLabel = `${dayName}, ${dateDisplay}/${d.getFullYear()}`;
 
       if (!dailyMap.has(dateKey)) {
         dailyMap.set(dateKey, {
           dateStr: dateKey,
           label,
+          fullLabel,
           dayName,
           totalRegistered: 0,
           totalCanceled: 0,
@@ -121,11 +125,14 @@ export async function GET(request: NextRequest) {
     }
 
     const dailyTrend = Array.from(dailyMap.values()).map((rec) => {
-      const cancelRate = rec.totalRegistered > 0
-        ? Math.round((rec.totalCanceled / rec.totalRegistered) * 1000) / 10
+      // Đảm bảo mẫu số chuẩn xác: Tổng số suất ban đầu = Suất thực tế + Suất cắt (nếu totalRegistered bị lệch)
+      const baseRegistered = Math.max(rec.totalRegistered, rec.finalTotal + rec.totalCanceled);
+      const cancelRate = baseRegistered > 0
+        ? Math.round((rec.totalCanceled / baseRegistered) * 1000) / 10
         : 0;
       return {
         ...rec,
+        totalRegistered: baseRegistered,
         cancelRate,
       };
     });
