@@ -102,10 +102,14 @@ export function StudentMobileHeader({
       
       {/* Custom Uploaded Background Image if present */}
       {themeConfig.bannerUrl ? (
-        <div
-          className="absolute inset-0 bg-cover bg-center pointer-events-none opacity-45 mix-blend-luminosity"
-          style={{ backgroundImage: `url(${themeConfig.bannerUrl})` }}
-        />
+        <>
+          <div
+            className="absolute inset-0 bg-cover bg-center pointer-events-none"
+            style={{ backgroundImage: `url(${themeConfig.bannerUrl})` }}
+          />
+          {/* Lớp phủ gradient nhẹ để chữ trắng vẫn đọc được trên ảnh sáng */}
+          <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/15 to-black/50 pointer-events-none" />
+        </>
       ) : null}
 
       {/* Decorative Vector Overlays: 3D Gold Star & Curved Light Ribbons */}
