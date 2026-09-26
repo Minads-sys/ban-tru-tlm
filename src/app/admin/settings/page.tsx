@@ -37,6 +37,7 @@ import {
   History,
   Phone,
 } from 'lucide-react';
+import { ThemeBannerSettings } from '@/components/admin/theme-banner-settings';
 
 interface SettingsFormState {
   SCHOOL_NAME: string;
@@ -61,6 +62,10 @@ interface SettingsFormState {
   STUDENT_MAINTENANCE_MESSAGE: string;
   STUDENT_SHOW_DEBT_TAB: string;
   STUDENT_SHOW_HISTORY_TAB: string;
+  STUDENT_PORTAL_THEME: string;
+  STUDENT_PORTAL_BANNER_URL: string;
+  STUDENT_PORTAL_MOTTO: string;
+  STUDENT_PORTAL_ANNOUNCEMENT: string;
 }
 
 const VIETNAM_BANKS = [
@@ -124,6 +129,10 @@ export default function AdminSettingsPage() {
     STUDENT_MAINTENANCE_MESSAGE: '',
     STUDENT_SHOW_DEBT_TAB: 'false',
     STUDENT_SHOW_HISTORY_TAB: 'false',
+    STUDENT_PORTAL_THEME: 'red_star',
+    STUDENT_PORTAL_BANNER_URL: '',
+    STUDENT_PORTAL_MOTTO: 'Nhiệt liệt chào mừng năm học mới',
+    STUDENT_PORTAL_ANNOUNCEMENT: '',
   });
 
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -225,6 +234,10 @@ export default function AdminSettingsPage() {
           STUDENT_MAINTENANCE_MESSAGE: data.STUDENT_MAINTENANCE_MESSAGE ?? prev.STUDENT_MAINTENANCE_MESSAGE,
           STUDENT_SHOW_DEBT_TAB: data.STUDENT_SHOW_DEBT_TAB ?? prev.STUDENT_SHOW_DEBT_TAB,
           STUDENT_SHOW_HISTORY_TAB: data.STUDENT_SHOW_HISTORY_TAB ?? prev.STUDENT_SHOW_HISTORY_TAB,
+          STUDENT_PORTAL_THEME: data.STUDENT_PORTAL_THEME ?? prev.STUDENT_PORTAL_THEME,
+          STUDENT_PORTAL_BANNER_URL: data.STUDENT_PORTAL_BANNER_URL ?? prev.STUDENT_PORTAL_BANNER_URL,
+          STUDENT_PORTAL_MOTTO: data.STUDENT_PORTAL_MOTTO ?? prev.STUDENT_PORTAL_MOTTO,
+          STUDENT_PORTAL_ANNOUNCEMENT: data.STUDENT_PORTAL_ANNOUNCEMENT ?? prev.STUDENT_PORTAL_ANNOUNCEMENT,
         }));
       } catch (err) {
         console.error(err);
@@ -924,6 +937,16 @@ export default function AdminSettingsPage() {
                 </Button>
               </CardFooter>
             </Card>
+
+            {/* CARD 5.2: Quản lý Giao diện & Banner Cổng Học sinh (Mobile App) */}
+            <ThemeBannerSettings
+              theme={formData.STUDENT_PORTAL_THEME || 'red_star'}
+              bannerUrl={formData.STUDENT_PORTAL_BANNER_URL || ''}
+              motto={formData.STUDENT_PORTAL_MOTTO ?? 'Nhiệt liệt chào mừng năm học mới'}
+              announcement={formData.STUDENT_PORTAL_ANNOUNCEMENT || ''}
+              schoolName={formData.SCHOOL_NAME || 'Trường THPT Ten Lơ Man'}
+              onChange={(field, value) => handleChange(field as any, value)}
+            />
 
             {/* CARD 6: KHU VỰC NGUY HIỂM - ĐẶT LẠI DỮ LIỆU HỆ THỐNG */}
             <Card className="shadow-sm border-rose-200 bg-rose-50/20">

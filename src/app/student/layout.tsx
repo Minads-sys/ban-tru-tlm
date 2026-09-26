@@ -87,9 +87,11 @@ export default async function StudentLayout({
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
-      <StudentHeader user={userForHeader} />
-      <main className="flex-1 container mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
+    <div className="min-h-screen bg-slate-50 flex flex-col pb-16 sm:pb-8">
+      <div className="hidden sm:block">
+        <StudentHeader user={userForHeader} />
+      </div>
+      <main className="flex-1 w-full sm:container sm:mx-auto sm:max-w-5xl px-0 sm:px-6 sm:py-6">
         {children}
       </main>
     </div>

@@ -35,7 +35,13 @@ import {
   Ban,
   LayoutGrid,
   ListFilter,
+  Home,
 } from "lucide-react";
+import { StudentMobileHeader } from "@/components/student/student-mobile-header";
+import { StudentQuickServices } from "@/components/student/student-quick-services";
+import { StudentFeaturedCards } from "@/components/student/student-featured-cards";
+import { StudentBottomNav } from "@/components/student/student-bottom-nav";
+import { StudentModals } from "@/components/student/student-modals";
 import { generateMealPaymentQR } from "@/lib/vietqr";
 import { formatDate } from "@/lib/utils";
 import {
@@ -187,8 +193,24 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
   const [loadingBills, setLoadingBills] = useState<boolean>(true);
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
-  // Tab và Lịch sử thanh toán
-  const [activeTab, setActiveTab] = useState<string>("schedule");
+  // Tab và Giao diện di động mới
+  const [activeTab, setActiveTab] = useState<string>("home");
+  const [themeConfig, setThemeConfig] = useState<{
+    theme: string;
+    bannerUrl?: string;
+    motto?: string;
+    announcement?: string;
+    schoolName?: string;
+  }>({
+    theme: "red_star",
+    schoolName: "Trường THPT Ten Lơ Man",
+    motto: "Nhiệt liệt chào mừng năm học mới",
+  });
+  const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
+  const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
+  const [isBotOpen, setIsBotOpen] = useState<boolean>(false);
+  const [showAllServices, setShowAllServices] = useState<boolean>(false);
+
   const [selectedHistoryYear, setSelectedHistoryYear] = useState<number>(new Date().getFullYear());
   const [selectedHistoryMonth, setSelectedHistoryMonth] = useState<number | null>(null);
 
@@ -259,6 +281,23 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
   const debtBills = bills.filter(
     (b) => b.paymentStatus === "UNPAID" || b.paymentStatus === "PARTIAL"
   );
+
+  // Tổng số tiền nợ hiện tại & số thông báo chưa đọc
+  const totalUnpaidAmount = debtBills.reduce(
+    (sum, b) => sum + Math.max(0, Number(b.finalAmount || 0)),
+    0
+  );
+  const unreadCount = debtBills.length + cancellations.filter(c => c.status === "PENDING").length;
+
+  const handleSelectService = (key: string) => {
+    if (key === "qr" || key === "debt") {
+      setActiveTab("debt");
+    } else if (key === "support") {
+      setIsBotOpen(true);
+    } else {
+      setActiveTab(key);
+    }
+  };
 
   // CẢI TIẾN 1: Danh sách các phiếu nộp thừa / chuyển khoản 2 lần
   const overpaidBills = bills.filter((b) => {
@@ -477,6 +516,15 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
         // Lấy giờ chốt suất để xác định ngày tối thiểu cho cắt suất
         const lockTime = data.MEAL_LOCK_TIME_2 || data.CUTOFF_TIME || '07:00';
         setMealLockTime(lockTime);
+
+        // Nạp theme, banner và thông báo trường
+        setThemeConfig({
+          theme: data.STUDENT_PORTAL_THEME || 'red_star',
+          bannerUrl: data.STUDENT_PORTAL_BANNER_URL || '',
+          motto: data.STUDENT_PORTAL_MOTTO ?? 'Nhiệt liệt chào mừng năm học mới',
+          announcement: data.STUDENT_PORTAL_ANNOUNCEMENT || '',
+          schoolName: data.SCHOOL_NAME || 'Trường THPT Ten Lơ Man',
+        });
       }
     } catch (err) {
       console.error('Lỗi khi tải cài đặt hệ thống cho học sinh:', err);
@@ -877,15 +925,42 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
   }
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
+    <div className="max-w-5xl mx-auto space-y-4 sm:space-y-6">
+      {/* 1. Header Banner & Floating Student Card (Hiện đại theo ảnh mẫu) */}
       {!readOnly && (
-        <div className="sticky top-16 z-30 bg-white/95 backdrop-blur-md py-2.5 px-3.5 -mt-3 mb-2 -mx-4 sm:mx-0 sm:px-4 sm:py-3.5 sm:-mt-4 sm:mb-4 sm:rounded-lg border-b sm:border border-slate-200 shadow-xs">
-          <h1 className="text-[15px] sm:text-xl md:text-2xl font-bold text-slate-900 tracking-tight whitespace-nowrap overflow-hidden text-ellipsis">
-            TRANG THÔNG TIN SUẤT ĂN BÁN TRÚ
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-            <span className="font-semibold text-blue-600">{studentInfo?.user?.fullName || session?.user?.name}</span> {studentInfo?.class?.name ? `- Lớp: ${studentInfo.class.name}` : studentInfo?.classId ? `- Lớp: ${studentInfo.classId}` : ''}
-          </p>
+        <div className="-mt-0 sm:-mt-6 -mx-0 sm:-mx-6 mb-3 sm:mb-6 sm:rounded-2xl overflow-hidden shadow-sm">
+          <StudentMobileHeader
+            user={session?.user}
+            studentInfo={studentInfo}
+            themeConfig={themeConfig}
+            unpaidAmount={totalUnpaidAmount}
+            unreadCount={unreadCount}
+            onTabChange={(t) => handleSelectService(t)}
+            onOpenSearch={() => setIsSearchOpen(true)}
+            onOpenMenu={() => setIsMenuOpen(true)}
+            onOpenProfile={() => setActiveTab("profile")}
+          />
+        </div>
+      )}
+
+      {/* Điều hướng nhanh quay về Trang chủ khi đang ở các tab con trên mobile */}
+      {activeTab !== "home" && !readOnly && (
+        <div className="flex sm:hidden items-center justify-between px-3.5 py-2 mx-3 bg-white rounded-xl border border-slate-200 shadow-2xs text-xs font-semibold">
+          <button
+            onClick={() => setActiveTab("home")}
+            className="flex items-center gap-1 text-blue-600 hover:text-blue-700 cursor-pointer"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            <span>Về Trang chủ</span>
+          </button>
+          <span className="text-slate-600 font-bold uppercase tracking-wider text-[11px]">
+            {activeTab === "cancel" && "Cắt suất ăn"}
+            {activeTab === "override" && "Đổi món ăn"}
+            {activeTab === "debt" && "DS công nợ"}
+            {activeTab === "history" && "Lịch sử"}
+            {activeTab === "schedule" && "Lịch ăn & Sân ăn"}
+            {activeTab === "profile" && "Hồ sơ cá nhân"}
+          </span>
         </div>
       )}
 
@@ -1064,17 +1139,24 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
       </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className={`grid w-full ${
+        <TabsList className={`hidden sm:grid w-full ${
           isCancelled
             ? effectiveShowHistoryTab
-              ? "grid-cols-2 sm:grid-cols-3"
-              : "grid-cols-1 sm:grid-cols-2"
+              ? "grid-cols-3"
+              : "grid-cols-2"
             : effectiveShowDebtTab && effectiveShowHistoryTab
-            ? "grid-cols-2 sm:grid-cols-3 md:grid-cols-5"
+            ? "grid-cols-2 sm:grid-cols-3 md:grid-cols-6"
             : effectiveShowDebtTab || effectiveShowHistoryTab
-            ? "grid-cols-2 sm:grid-cols-4"
-            : "grid-cols-3"
+            ? "grid-cols-2 sm:grid-cols-5"
+            : "grid-cols-4"
         } mb-6 p-1.5 bg-slate-200 rounded-xl gap-1.5 h-auto border border-slate-300 shadow-2xs`}>
+          <TabsTrigger
+            value="home"
+            className="cursor-pointer transition-all duration-150 text-slate-700 hover:text-blue-900 hover:bg-blue-100/70 data-[state=active]:bg-blue-600 data-[state=active]:text-white font-semibold data-[state=active]:shadow-sm py-2 text-xs sm:text-sm group"
+          >
+            <Home className="h-4 w-4 mr-1.5 shrink-0 text-slate-600 group-data-[state=active]:text-white" />
+            Trang chủ
+          </TabsTrigger>
           <TabsTrigger
             value="schedule"
             className="cursor-pointer transition-all duration-150 text-slate-700 hover:text-purple-900 hover:bg-purple-100/70 data-[state=active]:bg-purple-600 data-[state=active]:text-white font-semibold data-[state=active]:shadow-sm py-2 text-xs sm:text-sm group"
@@ -1124,6 +1206,83 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
             </TabsTrigger>
           )}
         </TabsList>
+
+        {/* TAB 0: TRANG CHỦ (DASHBOARD TỔNG QUAN CHO MOBILE & DESKTOP) */}
+        <TabsContent value="home" className="space-y-4 px-3 sm:px-0">
+          <StudentQuickServices
+            onSelectService={handleSelectService}
+            showAll={showAllServices}
+            onToggleShowAll={() => setShowAllServices(!showAllServices)}
+          />
+          <StudentFeaturedCards
+            studentInfo={studentInfo}
+            bills={bills}
+            announcement={themeConfig.announcement}
+            cutoffTime={mealLockTime || "16:00"}
+            onAction={handleSelectService}
+          />
+        </TabsContent>
+
+        {/* TAB PROFILE: THÔNG TIN HỒ SƠ HỌC SINH */}
+        <TabsContent value="profile" className="space-y-4 px-3 sm:px-0">
+          <Card className="border-slate-200 shadow-xs bg-white">
+            <CardHeader className="border-b border-slate-100 pb-3">
+              <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <User className="h-5 w-5 text-blue-600" />
+                Hồ sơ thông tin học sinh
+              </CardTitle>
+              <CardDescription className="text-xs text-slate-500">
+                Chi tiết tài khoản học sinh tham gia dịch vụ ăn bán trú tại trường
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pt-4 space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                  <span className="text-xs text-slate-400 block">Họ và tên</span>
+                  <span className="font-bold text-slate-900 text-base">
+                    {studentInfo?.user?.fullName || session?.user?.name || "Nguyễn Bảo Khánh"}
+                  </span>
+                </div>
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                  <span className="text-xs text-slate-400 block">Trường học</span>
+                  <span className="font-bold text-blue-700">
+                    {themeConfig.schoolName || "Trường THPT Ten Lơ Man"}
+                  </span>
+                </div>
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                  <span className="text-xs text-slate-400 block">Lớp học</span>
+                  <span className="font-bold text-slate-900">
+                    {studentInfo?.class?.name || studentInfo?.classId || "12A1"}
+                  </span>
+                </div>
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                  <span className="text-xs text-slate-400 block">Mã học sinh / CCCD</span>
+                  <span className="font-bold text-slate-900">
+                    {studentInfo?.studentCode || session?.user?.studentCode || "20261102"}
+                  </span>
+                </div>
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                  <span className="text-xs text-slate-400 block">Chế độ suất ăn</span>
+                  <span className="font-bold text-slate-900">
+                    {getMealTypeName(studentInfo?.mealType)}
+                  </span>
+                </div>
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                  <span className="text-xs text-slate-400 block">Trạng thái bán trú</span>
+                  <span className={`font-bold ${studentInfo?.boardingStatus === "ACTIVE" || !studentInfo ? "text-emerald-600" : "text-rose-600"}`}>
+                    {studentInfo?.boardingStatus === "ACTIVE" || !studentInfo ? "Đang ăn bán trú" : "Không bán trú"}
+                  </span>
+                </div>
+                {studentInfo?.parentPhone && (
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                    <span className="text-xs text-slate-400 block">SĐT Phụ huynh</span>
+                    <span className="font-bold text-slate-900">{studentInfo.parentPhone}</span>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         <TabsContent value="schedule">
           {/* 1. Thẻ Hôm nay ăn gì & Ở sân nào? */}
@@ -2999,6 +3158,37 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
           </TabsContent>
           )}
     </Tabs>
+
+      {/* 4. Bottom Navigation Bar cho giao diện di động */}
+      {!readOnly && (
+        <StudentBottomNav
+          activeTab={activeTab}
+          onTabChange={(t) => {
+            if (t === "meal") {
+              setActiveTab("cancel");
+            } else {
+              setActiveTab(t);
+            }
+          }}
+          unpaidCount={debtBills.length}
+          onOpenBotHelp={() => setIsBotOpen(true)}
+        />
+      )}
+
+      {/* 5. Modals & Drawers */}
+      <StudentModals
+        isSearchOpen={isSearchOpen}
+        onCloseSearch={() => setIsSearchOpen(false)}
+        isMenuOpen={isMenuOpen}
+        onCloseMenu={() => setIsMenuOpen(false)}
+        isBotOpen={isBotOpen}
+        onCloseBot={() => setIsBotOpen(false)}
+        onSelectAction={handleSelectService}
+        studentName={studentInfo?.user?.fullName || session?.user?.name || "Nguyễn Bảo Khánh"}
+        studentClass={studentInfo?.class?.name || studentInfo?.classId || "12A1"}
+        studentCode={studentInfo?.studentCode || session?.user?.studentCode || "20261102"}
+        schoolName={themeConfig.schoolName || "Trường THPT Ten Lơ Man"}
+      />
     </div>
   );
 }
