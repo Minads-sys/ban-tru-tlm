@@ -631,7 +631,7 @@ export function DiningCourtWeeklyMatrix({ schoolName = 'TRƯỜNG TIỂU HỌC B
       return {
         week: w,
         rangeStr,
-        label: `Tuần ${w} (${rangeStr})`,
+        label: `Tuần ${w}/${info.calendarWeekNumber} (${rangeStr})`,
       };
     });
   }, [startYear]);
@@ -669,7 +669,7 @@ export function DiningCourtWeeklyMatrix({ schoolName = 'TRƯỜNG TIỂU HỌC B
                 disabled={loading}
               >
                 <SelectTrigger className="h-8 w-auto border-none bg-transparent text-xs font-bold text-blue-700 focus:ring-0 shadow-none px-2.5 cursor-pointer">
-                  <SelectValue placeholder={currentWeekObj?.label || `Tuần ${schoolWeekNumber}`} />
+                  <SelectValue placeholder={currentWeekObj?.label || `Tuần ${schoolWeekNumber}/${weekInfo?.calendarWeekNumber || ''}`} />
                 </SelectTrigger>
                 <SelectContent className="max-h-60">
                   {schoolWeeksList.map((item) => (

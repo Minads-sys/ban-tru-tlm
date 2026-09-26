@@ -25,7 +25,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { CalendarDays, Save, Loader2, Copy, CheckCircle, X, ChevronLeft, ChevronRight, Trash2, Info, Sparkles, Search, Filter, ExternalLink, Plus, UserPlus, Calendar, Clock, Users, Check, ArrowUpDown, Download, Upload, FileSpreadsheet, AlertTriangle, GraduationCap, FileUp } from "lucide-react";
 import { format, parse, startOfWeek, endOfWeek, addDays, addWeeks } from "date-fns";
-import { compareClassNames, removeVietnameseTones } from "@/lib/utils";
+import { compareClassNames, removeVietnameseTones, getSchoolWeekFromNumber } from "@/lib/utils";
 
 interface SpecialMealItem {
   id: string;
@@ -107,6 +107,173 @@ export default function SchedulePage() {
   const [updatingShiftId, setUpdatingShiftId] = useState<string | null>(null);
   const [selectedMealIds, setSelectedMealIds] = useState<Set<string>>(new Set());
   const [isBulkUpdatingShift, setIsBulkUpdatingShift] = useState(false);
+
+  // View Mode: TKB Thường niên vs TKB Tổng hợp
+  const [scheduleViewMode, setScheduleViewMode] = useState<"REGULAR" | "COMBINED">("REGULAR");
+
+  // Copy Block Modal States
+  const [isCopyBlockModalOpen, setIsCopyBlockModalOpen] = useState(false);
+  const [copySourceWeek, setCopySourceWeek] = useState<number>(() => {
+    const [, w] = weekString.split("-W").map(Number);
+    return w || 40;
+  });
+  const [copyMode, setCopyMode] = useState<"SINGLE" | "MULTI">("MULTI");
+  const [copySingleTargetWeek, setCopySingleTargetWeek] = useState<number>(41);
+  const [copyTargetWeeks, setCopyTargetWeeks] = useState<number[]>([]);
+  const [copyOverwrite, setCopyOverwrite] = useState(true);
+  const [isCopyingBlock, setIsCopyingBlock] = useState(false);
+
+  // Danh sách 35 tuần năm học kèm tuần ISO
+  const schoolWeeks35 = useMemo(() => {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const currentY = new Date().getFullYear();
+    return Array.from({ length: 35 }, (_, i) => {
+      const w = i + 1;
+      const info = getSchoolWeekFromNumber(w, currentY);
+      const s = info.startDate;
+      const e = info.endDate;
+      const rangeStr = `${pad(s.getDate())}/${pad(s.getMonth() + 1)} - ${pad(e.getDate())}/${pad(e.getMonth() + 1)}`;
+      return {
+        schoolWeek: w,
+        isoWeek: info.calendarWeekNumber,
+        label: `Tuần ${w}/${info.calendarWeekNumber} (${rangeStr})`,
+        shortLabel: `Tuần ${w}/${info.calendarWeekNumber}`,
+      };
+    });
+  }, []);
+
+  // Gom các lịch ăn đặc biệt trong tuần hiện tại thành các hàng cho bảng tổng hợp
+  const specialGroupRows = useMemo(() => {
+    if (!specialMeals || specialMeals.length === 0) return [];
+
+    const map = new Map<string, {
+      scheduleName: string;
+      studentIds: Set<string>;
+      days: Record<string, { shift: "TIET_4" | "TIET_5"; count: number }>;
+    }>();
+
+    const dayNameMap: Record<number, string> = {
+      1: "monday",
+      2: "tuesday",
+      3: "wednesday",
+      4: "thursday",
+      5: "friday",
+      6: "saturday",
+    };
+
+    for (const sm of specialMeals) {
+      if (!map.has(sm.scheduleName)) {
+        map.set(sm.scheduleName, {
+          scheduleName: sm.scheduleName,
+          studentIds: new Set(),
+          days: {},
+        });
+      }
+      const g = map.get(sm.scheduleName)!;
+      g.studentIds.add(sm.studentId);
+
+      const d = new Date(sm.dateStr + "T00:00:00");
+      const dow = d.getDay();
+      const dayField = dayNameMap[dow];
+      if (dayField) {
+        if (!g.days[dayField]) {
+          g.days[dayField] = { shift: sm.shift as "TIET_4" | "TIET_5", count: 0 };
+        }
+        g.days[dayField].count++;
+      }
+    }
+
+    return Array.from(map.values()).map((item) => ({
+      scheduleName: item.scheduleName,
+      totalStudents: item.studentIds.size,
+      monday: item.days.monday || null,
+      tuesday: item.days.tuesday || null,
+      wednesday: item.days.wednesday || null,
+      thursday: item.days.thursday || null,
+      friday: item.days.friday || null,
+      saturday: item.days.saturday || null,
+    }));
+  }, [specialMeals]);
+
+  // Tính tổng số suất ăn theo từng ca & tổng ngày
+  const getCombinedDayTotals = (day: string) => {
+    let regularT4 = 0;
+    let regularT5 = 0;
+    for (const s of schedules) {
+      const shift = s[day as keyof ScheduleData];
+      if (shift === "TIET_4") regularT4 += s.totalBoarding;
+      else if (shift === "TIET_5") regularT5 += s.totalBoarding;
+    }
+
+    let specialT4 = 0;
+    let specialT5 = 0;
+    for (const sg of specialGroupRows) {
+      const dayInfo = (sg as any)[day];
+      if (dayInfo) {
+        if (dayInfo.shift === "TIET_4") specialT4 += dayInfo.count;
+        else if (dayInfo.shift === "TIET_5") specialT5 += dayInfo.count;
+      }
+    }
+
+    const isCombined = scheduleViewMode === "COMBINED";
+    const totalT4 = regularT4 + (isCombined ? specialT4 : 0);
+    const totalT5 = regularT5 + (isCombined ? specialT5 : 0);
+    const totalDay = totalT4 + totalT5;
+
+    return {
+      regularT4,
+      regularT5,
+      specialT4,
+      specialT5,
+      totalT4,
+      totalT5,
+      totalDay,
+    };
+  };
+
+  // Hàm xử lý sao chép / gia hạn block tuần
+  const handleExecuteCopyBlock = async () => {
+    if (isAccountant) return;
+
+    const targets = copyMode === "SINGLE" ? [copySingleTargetWeek] : copyTargetWeeks;
+    if (targets.length === 0) {
+      Swal.fire("Chưa chọn tuần đích", "Vui lòng chọn ít nhất một tuần đích để sao chép.", "warning");
+      return;
+    }
+
+    setIsCopyingBlock(true);
+    try {
+      const [y] = weekString.split("-W").map(Number);
+      const res = await fetch("/api/schedule/copy-block", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceYear: y || new Date().getFullYear(),
+          sourceWeekNumber: copySourceWeek,
+          targetWeeks: targets,
+          overwrite: copyOverwrite,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        await Swal.fire({
+          title: "Thành công!",
+          text: data.message,
+          icon: "success",
+          confirmButtonColor: "#2563eb",
+        });
+        setIsCopyBlockModalOpen(false);
+        fetchSchedules();
+      } else {
+        Swal.fire("Lỗi sao chép", data.error || "Không thể sao chép thời khóa biểu.", "error");
+      }
+    } catch (err: any) {
+      Swal.fire("Lỗi", "Lỗi kết nối máy chủ: " + err.message, "error");
+    } finally {
+      setIsCopyingBlock(false);
+    }
+  };
 
   // Add Special Meal Modal States
   const [isAddSpecialModalOpen, setIsAddSpecialModalOpen] = useState(false);
@@ -1150,6 +1317,24 @@ export default function SchedulePage() {
                   <Copy className="h-4 w-4 mr-1" />
                   Copy từ tuần trước
                 </Button>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    const [, w] = weekString.split("-W").map(Number);
+                    if (w) {
+                      setCopySourceWeek(w);
+                      const nextWeeks = [w + 1, w + 2].filter((nw) => nw <= 53);
+                      setCopyTargetWeeks(nextWeeks);
+                      setCopySingleTargetWeek(w + 1 <= 53 ? w + 1 : w);
+                    }
+                    setIsCopyBlockModalOpen(true);
+                  }}
+                  variant="outline"
+                  className="h-10 border-blue-200 bg-blue-50/70 text-blue-700 hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-300 font-semibold cursor-pointer"
+                >
+                  <Copy className="h-4 w-4 mr-1 text-blue-600 dark:text-blue-400" />
+                  Sao chép / Gia hạn block tuần
+                </Button>
                 <Button 
                   onClick={saveSchedules} 
                   disabled={saving || (!hasChanges && !saved)} 
@@ -1178,21 +1363,62 @@ export default function SchedulePage() {
       {/* Bảng TKB */}
       <Card>
         <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <CardTitle className="flex items-center gap-4">
-            <span>Lịch ăn bán trú - Tuần {currentWeek} / {currentYear}</span>
-            {schedules.length > 0 && !loading && !isAccountant && (
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
-                onClick={deleteSchedule}
-                title="Xóa hoàn toàn lịch tuần này"
+          <div className="flex flex-col lg:flex-row lg:items-center gap-3">
+            <CardTitle className="flex items-center gap-3">
+              <span>Lịch ăn bán trú - Tuần {currentWeek} / {currentYear}</span>
+              {schedules.length > 0 && !loading && !isAccountant && (
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                  onClick={deleteSchedule}
+                  title="Xóa hoàn toàn lịch tuần này"
+                >
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  Xóa lịch tuần
+                </Button>
+              )}
+            </CardTitle>
+
+            {/* Segmented View Mode Switch */}
+            <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => setScheduleViewMode("REGULAR")}
+                className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 cursor-pointer ${
+                  scheduleViewMode === "REGULAR"
+                    ? "bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-400 shadow-xs"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
+                }`}
               >
-                <Trash2 className="h-4 w-4 mr-1" />
-                Xóa lịch tuần
-              </Button>
-            )}
-          </CardTitle>
+                <CalendarDays className="h-3.5 w-3.5" />
+                TKB Thường Niên
+              </button>
+              <button
+                type="button"
+                onClick={() => setScheduleViewMode("COMBINED")}
+                className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 cursor-pointer ${
+                  scheduleViewMode === "COMBINED"
+                    ? "bg-purple-600 text-white shadow-xs"
+                    : "text-slate-600 dark:text-slate-400 hover:text-purple-600"
+                }`}
+              >
+                <Sparkles className="h-3.5 w-3.5 text-purple-300" />
+                TKB Tổng Hợp
+                {specialMeals.length > 0 && (
+                  <span
+                    className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                      scheduleViewMode === "COMBINED"
+                        ? "bg-white/20 text-white"
+                        : "bg-purple-100 text-purple-700"
+                    }`}
+                  >
+                    +{specialMeals.length}
+                  </span>
+                )}
+              </button>
+            </div>
+          </div>
 
           {/* Toggle Cột */}
           <div className="flex items-center gap-2">
@@ -1334,7 +1560,8 @@ export default function SchedulePage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {schedules.length > 0 && (
+                {/* 1. HIỂN THỊ TỔNG SUẤT KHI Ở CHẾ ĐỘ THƯỜNG NIÊN */}
+                {scheduleViewMode === "REGULAR" && schedules.length > 0 && (
                   <TableRow className="bg-blue-50/80 border-b-2 border-blue-200">
                     <TableCell className="font-bold text-blue-900 text-xs">Tổng suất</TableCell>
                     <TableCell className="text-center font-black text-blue-700">
@@ -1355,6 +1582,99 @@ export default function SchedulePage() {
                       ))}
                   </TableRow>
                 )}
+
+                {/* 2. HIỂN THỊ 3 HÀNG TỔNG SUẤT KHI Ở CHẾ ĐỘ TỔNG HỢP (THƯỜNG NIÊN + ĐẶC BIỆT) */}
+                {scheduleViewMode === "COMBINED" && (
+                  <>
+                    {/* Hàng 1: Ca Tiết 4 */}
+                    <TableRow className="bg-orange-50/80 border-b border-orange-200/70">
+                      <TableCell className="font-bold text-orange-950 text-xs">
+                        • Tổng Ca Tiết 4
+                      </TableCell>
+                      <TableCell className="text-center text-xs text-orange-800 font-semibold">—</TableCell>
+                      <TableCell className="text-center text-xs text-slate-400">—</TableCell>
+                      <TableCell className="text-center text-xs text-slate-400">—</TableCell>
+                      {(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const)
+                        .filter(day => visibleDays.includes(day))
+                        .map(day => {
+                          const totals = getCombinedDayTotals(day);
+                          return (
+                            <TableCell key={day} className="text-center font-bold text-orange-800 text-xs">
+                              <div>{totals.totalT4} suất</div>
+                              {totals.specialT4 > 0 && (
+                                <div className="text-[10px] text-orange-600 font-normal">
+                                  (Thường: {totals.regularT4} + ĐB: {totals.specialT4})
+                                </div>
+                              )}
+                            </TableCell>
+                          );
+                        })}
+                    </TableRow>
+
+                    {/* Hàng 2: Ca Tiết 5 */}
+                    <TableRow className="bg-blue-50/80 border-b border-blue-200/70">
+                      <TableCell className="font-bold text-blue-950 text-xs">
+                        • Tổng Ca Tiết 5
+                      </TableCell>
+                      <TableCell className="text-center text-xs text-blue-800 font-semibold">—</TableCell>
+                      <TableCell className="text-center text-xs text-slate-400">—</TableCell>
+                      <TableCell className="text-center text-xs text-slate-400">—</TableCell>
+                      {(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const)
+                        .filter(day => visibleDays.includes(day))
+                        .map(day => {
+                          const totals = getCombinedDayTotals(day);
+                          return (
+                            <TableCell key={day} className="text-center font-bold text-blue-800 text-xs">
+                              <div>{totals.totalT5} suất</div>
+                              {totals.specialT5 > 0 && (
+                                <div className="text-[10px] text-blue-600 font-normal">
+                                  (Thường: {totals.regularT5} + ĐB: {totals.specialT5})
+                                </div>
+                              )}
+                            </TableCell>
+                          );
+                        })}
+                    </TableRow>
+
+                    {/* Hàng 3: TỔNG CỘNG NGÀY */}
+                    <TableRow className="bg-purple-100/90 dark:bg-purple-950/60 border-b-2 border-purple-400">
+                      <TableCell className="font-black text-purple-950 dark:text-purple-100 text-xs">
+                        ➔ TỔNG CỘNG NGÀY
+                      </TableCell>
+                      <TableCell className="text-center font-black text-purple-900 dark:text-purple-200">
+                        {schedules.reduce((sum, s) => sum + s.totalBoarding, 0)}
+                      </TableCell>
+                      <TableCell className="text-center text-xs text-slate-500">
+                        {schedules.reduce((sum, s) => sum + s.maleBoarding, 0)}
+                      </TableCell>
+                      <TableCell className="text-center text-xs text-slate-500">
+                        {schedules.reduce((sum, s) => sum + s.femaleBoarding, 0)}
+                      </TableCell>
+                      {(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const)
+                        .filter(day => visibleDays.includes(day))
+                        .map(day => {
+                          const totals = getCombinedDayTotals(day);
+                          return (
+                            <TableCell key={day} className="text-center font-black text-purple-900 dark:text-purple-100 text-sm">
+                              <span className="bg-white/80 dark:bg-slate-900/80 px-2 py-0.5 rounded border border-purple-200 dark:border-purple-800">
+                                {totals.totalDay} suất
+                              </span>
+                            </TableCell>
+                          );
+                        })}
+                    </TableRow>
+                  </>
+                )}
+
+                {/* 3. DANH SÁCH LỚP THƯỜNG NIÊN */}
+                {scheduleViewMode === "COMBINED" && displaySchedules.length > 0 && (
+                  <TableRow className="bg-slate-100/60 dark:bg-slate-800/60 border-b border-slate-200">
+                    <TableCell colSpan={4 + visibleDays.length} className="py-1.5 px-4 font-bold text-xs text-slate-700 dark:text-slate-300">
+                      📋 DANH SÁCH LỚP THƯỜNG NIÊN ({displaySchedules.length} lớp)
+                    </TableCell>
+                  </TableRow>
+                )}
+
                 {displaySchedules.map((s) => (
                   <TableRow key={s.classId}>
                     <TableCell className="font-medium">{s.className}</TableCell>
@@ -1376,6 +1696,77 @@ export default function SchedulePage() {
                       )}
                   </TableRow>
                 ))}
+
+                {/* 4. DANH SÁCH LỊCH ĂN ĐẶC BIỆT KHI Ở CHẾ ĐỘ COMBINED */}
+                {scheduleViewMode === "COMBINED" && (
+                  <>
+                    <TableRow className="bg-purple-100/70 dark:bg-purple-950/40 border-t-2 border-purple-300">
+                      <TableCell colSpan={4 + visibleDays.length} className="py-2 px-4">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-xs text-purple-900 dark:text-purple-200 flex items-center gap-1.5">
+                            <Sparkles className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                            LỊCH ĂN ĐẶC BIỆT THEO NHÓM ({specialGroupRows.length} nhóm chương trình, {specialMeals.length} suất)
+                          </span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setIsSpecialModalOpen(true)}
+                            className="h-6 text-[11px] text-purple-700 hover:text-purple-800 hover:bg-purple-200/50 p-1 font-semibold cursor-pointer"
+                          >
+                            Chi tiết danh sách học sinh &rarr;
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+
+                    {specialGroupRows.map((sg) => (
+                      <TableRow key={sg.scheduleName} className="bg-purple-50/40 dark:bg-purple-950/20 hover:bg-purple-50/70 border-b border-purple-100">
+                        <TableCell className="font-semibold text-purple-950 dark:text-purple-200">
+                          <div className="flex items-center gap-1.5">
+                            <Sparkles className="h-3.5 w-3.5 text-purple-600 shrink-0" />
+                            <span>{sg.scheduleName}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-center font-bold text-purple-700">
+                          {sg.totalStudents} HS
+                        </TableCell>
+                        <TableCell className="text-center text-xs text-slate-400">—</TableCell>
+                        <TableCell className="text-center text-xs text-slate-400">—</TableCell>
+                        {(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const)
+                          .filter((day) => visibleDays.includes(day))
+                          .map((day) => {
+                            const dayInfo = (sg as any)[day];
+                            return (
+                              <TableCell key={day} className="text-center">
+                                {dayInfo ? (
+                                  <Badge
+                                    className={`text-xs px-2 py-0.5 shadow-2xs font-semibold cursor-default ${
+                                      dayInfo.shift === "TIET_4"
+                                        ? "bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-950/60 dark:text-orange-300"
+                                        : "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-950/60 dark:text-blue-300"
+                                    }`}
+                                  >
+                                    {dayInfo.shift === "TIET_4" ? "Tiết 4" : "Tiết 5"} ({dayInfo.count} HS)
+                                  </Badge>
+                                ) : (
+                                  <span className="text-xs text-slate-300 dark:text-slate-600">—</span>
+                                )}
+                              </TableCell>
+                            );
+                          })}
+                      </TableRow>
+                    ))}
+
+                    {specialGroupRows.length === 0 && (
+                      <TableRow className="bg-purple-50/20">
+                        <TableCell colSpan={4 + visibleDays.length} className="text-center py-4 text-xs text-purple-600 italic">
+                          Tuần này chưa có lịch ăn đặc biệt nào. (Tổng suất bằng TKB Thường niên)
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </>
+                )}
                 {schedules.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={4 + visibleDays.length} className="text-center py-12">
@@ -2829,6 +3220,310 @@ export default function SchedulePage() {
                 </Button>
               )}
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Sao Chép & Gia Hạn TKB Theo Block Tuần */}
+      <Dialog open={isCopyBlockModalOpen} onOpenChange={setIsCopyBlockModalOpen}>
+        <DialogContent className="max-w-3xl w-[95vw] max-h-[90vh] flex flex-col p-0 gap-0 overflow-hidden">
+          <DialogHeader className="p-6 pb-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/60">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-blue-100 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 rounded-xl">
+                <Copy className="h-5 w-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-lg font-bold text-slate-900 dark:text-slate-100">
+                  Sao Chép & Gia Hạn Thời Khóa Biểu Theo Block Tuần
+                </DialogTitle>
+                <DialogDescription className="text-xs text-slate-500 mt-0.5">
+                  Lấy dữ liệu thời khóa biểu bán trú của tuần nguồn và sao chép sang 1 hoặc nhiều tuần tiếp theo trong năm học.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="p-6 space-y-6 overflow-y-auto max-h-[calc(90vh-140px)]">
+            {/* 1. CHỌN TUẦN NGUỒN */}
+            <div className="space-y-2 rounded-xl border border-slate-200 dark:border-slate-800 p-4 bg-slate-50/40 dark:bg-slate-900/30">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                  <span className="w-5 h-5 rounded-full bg-blue-600 text-white inline-flex items-center justify-center text-xs">1</span>
+                  Chọn Tuần Nguồn (Lấy Mẫu TKB)
+                </Label>
+                <span className="text-xs text-blue-600 font-medium">
+                  {schedules.length > 0 ? `${schedules.length} lớp có cấu hình` : "Chưa có TKB"}
+                </span>
+              </div>
+              <select
+                value={copySourceWeek}
+                onChange={(e) => setCopySourceWeek(Number(e.target.value))}
+                className="w-full h-10 px-3 rounded-lg border border-slate-300 bg-white dark:bg-slate-900 dark:border-slate-700 text-sm font-semibold text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {schoolWeeks35.map((w) => (
+                  <option key={w.isoWeek} value={w.isoWeek}>
+                    {w.label} {w.isoWeek === copySourceWeek ? "★ [Đang xem]" : ""}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-slate-500">
+                Toàn bộ ca ăn Tiết 4 / Tiết 5 của các lớp ở tuần này sẽ được áp dụng sang tuần đích.
+              </p>
+            </div>
+
+            {/* 2. CHỌN HÌNH THỨC SAO CHÉP */}
+            <div className="space-y-3 rounded-xl border border-slate-200 dark:border-slate-800 p-4 bg-slate-50/40 dark:bg-slate-900/30">
+              <Label className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                <span className="w-5 h-5 rounded-full bg-blue-600 text-white inline-flex items-center justify-center text-xs">2</span>
+                Chọn Hình Thức Sao Chép / Gia Hạn
+              </Label>
+
+              {/* Tab mode selection */}
+              <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg">
+                <button
+                  type="button"
+                  onClick={() => setCopyMode("SINGLE")}
+                  className={`py-2 text-xs font-semibold rounded-md transition-all cursor-pointer ${
+                    copyMode === "SINGLE"
+                      ? "bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-400 shadow-xs"
+                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
+                  }`}
+                >
+                  Sao chép sang 1 tuần cụ thể
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCopyMode("MULTI")}
+                  className={`py-2 text-xs font-semibold rounded-md transition-all cursor-pointer ${
+                    copyMode === "MULTI"
+                      ? "bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-400 shadow-xs"
+                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
+                  }`}
+                >
+                  Gia hạn sang nhiều tuần đích
+                </button>
+              </div>
+
+              {/* Case 1: SINGLE */}
+              {copyMode === "SINGLE" && (
+                <div className="space-y-2 pt-2">
+                  <Label className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                    Chọn tuần đích tiếp nhận:
+                  </Label>
+                  <select
+                    value={copySingleTargetWeek}
+                    onChange={(e) => setCopySingleTargetWeek(Number(e.target.value))}
+                    className="w-full h-10 px-3 rounded-lg border border-slate-300 bg-white dark:bg-slate-900 dark:border-slate-700 text-sm font-medium text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {schoolWeeks35
+                      .filter((w) => w.isoWeek !== copySourceWeek)
+                      .map((w) => (
+                        <option key={w.isoWeek} value={w.isoWeek}>
+                          {w.label}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Case 2: MULTI */}
+              {copyMode === "MULTI" && (
+                <div className="space-y-3 pt-2">
+                  {/* Quick action buttons */}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-xs text-slate-500 font-medium mr-1">Chọn nhanh:</span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs px-2.5"
+                      onClick={() => {
+                        const srcIdx = schoolWeeks35.findIndex((w) => w.isoWeek === copySourceWeek);
+                        const nextWeeks = schoolWeeks35
+                          .slice(srcIdx + 1, srcIdx + 1 + 2)
+                          .map((w) => w.isoWeek);
+                        setCopyTargetWeeks(nextWeeks);
+                      }}
+                    >
+                      + 2 tuần tới
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs px-2.5"
+                      onClick={() => {
+                        const srcIdx = schoolWeeks35.findIndex((w) => w.isoWeek === copySourceWeek);
+                        const nextWeeks = schoolWeeks35
+                          .slice(srcIdx + 1, srcIdx + 1 + 4)
+                          .map((w) => w.isoWeek);
+                        setCopyTargetWeeks(nextWeeks);
+                      }}
+                    >
+                      + 4 tuần tới
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs px-2.5"
+                      onClick={() => {
+                        const srcIdx = schoolWeeks35.findIndex((w) => w.isoWeek === copySourceWeek);
+                        const nextWeeks = schoolWeeks35
+                          .slice(srcIdx + 1, srcIdx + 1 + 8)
+                          .map((w) => w.isoWeek);
+                        setCopyTargetWeeks(nextWeeks);
+                      }}
+                    >
+                      + 8 tuần tới
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs px-2.5"
+                      onClick={() => {
+                        const hk1 = schoolWeeks35
+                          .filter((w) => w.schoolWeek <= 18 && w.isoWeek !== copySourceWeek)
+                          .map((w) => w.isoWeek);
+                        setCopyTargetWeeks(hk1);
+                      }}
+                    >
+                      Học kỳ 1 (Tuần 1-18)
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs px-2.5"
+                      onClick={() => {
+                        const hk2 = schoolWeeks35
+                          .filter((w) => w.schoolWeek >= 19 && w.isoWeek !== copySourceWeek)
+                          .map((w) => w.isoWeek);
+                        setCopyTargetWeeks(hk2);
+                      }}
+                    >
+                      Học kỳ 2 (Tuần 19-35)
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-2"
+                      onClick={() => setCopyTargetWeeks([])}
+                    >
+                      Bỏ chọn hết
+                    </Button>
+                  </div>
+
+                  {/* Grid checklist các tuần */}
+                  <div className="border border-slate-200 dark:border-slate-800 rounded-lg p-3 bg-white dark:bg-slate-900 max-h-56 overflow-y-auto">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                      {schoolWeeks35.map((w) => {
+                        const isSource = w.isoWeek === copySourceWeek;
+                        const isChecked = copyTargetWeeks.includes(w.isoWeek);
+                        return (
+                          <label
+                            key={w.isoWeek}
+                            className={`flex items-start gap-2 p-2 rounded-md border text-xs cursor-pointer select-none transition-colors ${
+                              isSource
+                                ? "bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed"
+                                : isChecked
+                                ? "bg-blue-50/80 border-blue-300 text-blue-900 dark:bg-blue-950/40 dark:border-blue-700 dark:text-blue-200"
+                                : "border-slate-200 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/50"
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              disabled={isSource}
+                              checked={isChecked}
+                              onChange={(e) => {
+                                if (isSource) return;
+                                if (e.target.checked) {
+                                  setCopyTargetWeeks((prev) => [...prev, w.isoWeek]);
+                                } else {
+                                  setCopyTargetWeeks((prev) => prev.filter((x) => x !== w.isoWeek));
+                                }
+                              }}
+                              className="rounded border-slate-300 mt-0.5 accent-blue-600"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="font-semibold flex items-center justify-between">
+                                <span>{w.shortLabel}</span>
+                                {isSource && (
+                                  <span className="text-[10px] bg-slate-200 text-slate-600 px-1 rounded">
+                                    Nguồn
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[10px] text-slate-500 truncate">
+                                {w.label.replace(/^Tuần \d+\/\d+ \((.*)\)$/, "$1")}
+                              </div>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="text-xs text-blue-600 font-semibold">
+                    Đã chọn: {copyTargetWeeks.length} tuần đích tiếp nhận TKB
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 3. TÙY CHỌN ÁP DỤNG */}
+            <div className="space-y-2 rounded-xl border border-slate-200 dark:border-slate-800 p-4 bg-slate-50/40 dark:bg-slate-900/30">
+              <Label className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                <span className="w-5 h-5 rounded-full bg-blue-600 text-white inline-flex items-center justify-center text-xs">3</span>
+                Tùy Chọn Áp Dụng
+              </Label>
+              <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={copyOverwrite}
+                  onChange={(e) => setCopyOverwrite(e.target.checked)}
+                  className="rounded border-slate-300 h-4 w-4 accent-blue-600"
+                />
+                <span className="font-medium">
+                  Ghi đè lên các tuần đích đã có sẵn thời khóa biểu
+                </span>
+              </label>
+              <p className="text-[11px] text-slate-500 pl-6">
+                * Nếu bỏ chọn: Hệ thống sẽ giữ nguyên cấu hình các lớp đã có TKB ở tuần đích và chỉ bổ sung các lớp chưa có dữ liệu.
+              </p>
+            </div>
+          </div>
+
+          {/* Footer buttons */}
+          <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/60 flex items-center justify-between">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setIsCopyBlockModalOpen(false)}
+              disabled={isCopyingBlock}
+            >
+              Hủy
+            </Button>
+            <Button
+              type="button"
+              onClick={handleExecuteCopyBlock}
+              disabled={isCopyingBlock || (copyMode === "MULTI" && copyTargetWeeks.length === 0)}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold flex items-center gap-2 cursor-pointer"
+            >
+              {isCopyingBlock ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Đang sao chép TKB...
+                </>
+              ) : (
+                <>
+                  <Copy className="h-4 w-4" />
+                  Thực Hiện Sao Chép / Gia Hạn
+                </>
+              )}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
