@@ -346,31 +346,25 @@ export function StudentMobileHeader({
             </div>
 
             {/* Bottom Action Sub-card (White container at bottom matching reference) */}
-            <div className="mt-3 bg-white rounded-xl p-2.5 shadow-md border border-slate-100 flex items-center justify-between gap-2 text-slate-800">
-              <div className="text-xs font-semibold text-slate-700 truncate">
-                <span className="text-slate-400 font-normal">Chế độ ăn: </span>
-                <span className="text-slate-900 font-bold">{getMealTypeName(studentInfo?.mealType)}</span>
-              </div>
-              <div className="flex items-center gap-1.5 shrink-0">
-                <button
-                  onClick={() => onTabChange && onTabChange("debt")}
-                  className={`font-bold text-xs px-3 py-1.5 rounded-lg active:scale-95 transition flex items-center gap-1 cursor-pointer ${
-                    unpaidAmount > 0
-                      ? "bg-rose-600 hover:bg-rose-700 text-white shadow-md animate-pulse ring-2 ring-rose-400 ring-offset-1"
-                      : "bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 shadow-2xs"
-                  }`}
-                >
-                  <QrCode className="h-3.5 w-3.5" />
-                  <span>Thanh toán</span>
-                </button>
-                <button
-                  onClick={() => onTabChange && onTabChange("cancel")}
-                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg active:scale-95 transition shadow-xs flex items-center gap-1 cursor-pointer"
-                >
-                  <Utensils className="h-3 w-3" />
-                  <span>Cắt/Đổi món</span>
-                </button>
-              </div>
+            <div className="mt-3 bg-white rounded-xl p-2.5 shadow-md border border-slate-100 flex items-center gap-2">
+              <button
+                onClick={() => onTabChange && onTabChange("debt")}
+                className={`flex-1 font-bold text-xs py-2 rounded-lg active:scale-95 transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                  unpaidAmount > 0
+                    ? "bg-rose-600 hover:bg-rose-700 text-white shadow-md animate-pulse ring-2 ring-rose-400 ring-offset-1"
+                    : "bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 shadow-2xs"
+                }`}
+              >
+                <QrCode className="h-3.5 w-3.5" />
+                <span>Thanh toán</span>
+              </button>
+              <button
+                onClick={() => onTabChange && onTabChange("cancel")}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2 rounded-lg active:scale-95 transition shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Utensils className="h-3 w-3" />
+                <span>Cắt/Đổi món</span>
+              </button>
             </div>
 
           </div>
