@@ -1084,7 +1084,17 @@ export async function parseSpecialMealExcel(
   return { data, errors, isValid: errors.length === 0 };
 }
 
-export async function generateSpecialMealTemplate(): Promise<Buffer> {
+export interface CustomSpecialMealWeekConfig {
+  weekNumber: number;
+  schoolWeekNumber?: number;
+  year?: number;
+  dayOfWeek: number;
+  dayName?: string;
+  dateStr?: string;
+  shift?: "TIET_4" | "TIET_5";
+}
+
+export async function generateSpecialMealTemplate(weeksConfig?: CustomSpecialMealWeekConfig[]): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "BAN-TRU-TLM";
   workbook.created = new Date();
@@ -1106,8 +1116,12 @@ export async function generateSpecialMealTemplate(): Promise<Buffer> {
     },
   };
 
+  const hasCustomWeeks = Array.isArray(weeksConfig) && weeksConfig.length > 0;
+  const numColumns = hasCustomWeeks ? 3 + weeksConfig.length : 7;
+  const lastColLetter = String.fromCharCode(64 + Math.min(numColumns, 26));
+
   // Title row
-  sheet.mergeCells("A1:G1");
+  sheet.mergeCells(`A1:${lastColLetter}1`);
   const titleCell = sheet.getCell("A1");
   titleCell.value = "ĐĂNG KÝ BÁN TRÚ LỊCH ĐẶC BIỆT";
   titleCell.font = { bold: true, size: 14, color: { argb: "FFFFFFFF" } };
@@ -1115,14 +1129,25 @@ export async function generateSpecialMealTemplate(): Promise<Buffer> {
   titleCell.alignment = { horizontal: "center", vertical: "middle" };
 
   // Instruction row
-  sheet.mergeCells("A2:G2");
+  sheet.mergeCells(`A2:${lastColLetter}2`);
   const instrCell = sheet.getCell("A2");
-  instrCell.value = "Điền TIẾT 4 hoặc TIẾT 5 vào các ô. Để trống nếu không ăn. Tuần 1 bắt đầu niên bán trú từ 07/09/2026 (tức Tuần 37 năm dương lịch).";
+  instrCell.value = "LƯU Ý: Cột HỌ VÀ TÊN và LỚP là BẮT BUỘC. Điền TIẾT 4 hoặc TIẾT 5 vào các ô ngày học. Để trống nếu tuần đó học sinh không ăn bán trú.";
   instrCell.font = { italic: true, color: { argb: "FF6B7280" } };
   instrCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE0F2FE" } };
 
   // Headers
-  const headers = ["STT", "HỌ VÀ TÊN HS", "LỚP", "Thứ Tư TUẦN 1", "Thứ Tư TUẦN 2", "Thứ Tư TUẦN 3", "Thứ Tư TUẦN 4"];
+  let headers: string[] = ["STT", "HỌ VÀ TÊN HS (*)", "LỚP (*)"];
+  if (hasCustomWeeks) {
+    weeksConfig.forEach((w) => {
+      const dName = w.dayName || (w.dayOfWeek === 1 ? "Thứ Hai" : w.dayOfWeek === 2 ? "Thứ Ba" : w.dayOfWeek === 3 ? "Thứ Tư" : w.dayOfWeek === 4 ? "Thứ Năm" : w.dayOfWeek === 5 ? "Thứ Sáu" : "Thứ Bảy");
+      const wLabel = w.schoolWeekNumber ? `TUẦN ${w.schoolWeekNumber}` : `TUẦN ${w.weekNumber}`;
+      const datePart = w.dateStr ? ` (${w.dateStr})` : "";
+      headers.push(`${dName} ${wLabel}${datePart}`);
+    });
+  } else {
+    headers = headers.concat(["Thứ Tư TUẦN 1", "Thứ Tư TUẦN 2", "Thứ Tư TUẦN 3", "Thứ Tư TUẦN 4"]);
+  }
+
   const headerRow = sheet.addRow(headers);
   headerRow.eachCell((cell) => {
     cell.style = headerStyle;
@@ -1130,10 +1155,10 @@ export async function generateSpecialMealTemplate(): Promise<Buffer> {
 
   // Set column widths
   sheet.getColumn(1).width = 6;
-  sheet.getColumn(2).width = 25;
-  sheet.getColumn(3).width = 10;
-  for (let c = 4; c <= 7; c++) {
-    sheet.getColumn(c).width = 15;
+  sheet.getColumn(2).width = 28;
+  sheet.getColumn(3).width = 12;
+  for (let c = 4; c <= headers.length; c++) {
+    sheet.getColumn(c).width = 20;
   }
 
   // Data validation
@@ -1143,19 +1168,29 @@ export async function generateSpecialMealTemplate(): Promise<Buffer> {
     formulae: ['"TIẾT 4,TIẾT 5"'],
     showErrorMessage: true,
     errorTitle: "Giá trị không hợp lệ",
-    error: "Chỉ nhận TIẾT 4 hoặc TIẾT 5",
+    error: "Chỉ nhận TIẾT 4 hoặc TIẾT 5 (hoặc để trống)",
   };
 
-  for (let r = 4; r <= 100; r++) {
-    for (let c = 4; c <= 7; c++) {
+  for (let r = 4; r <= 300; r++) {
+    for (let c = 4; c <= headers.length; c++) {
       sheet.getCell(r, c).dataValidation = shiftValidation;
     }
   }
 
   // Sample data
-  sheet.addRow([1, "Nguyễn Văn An", "10A1", "TIẾT 4", "", "TIẾT 5", ""]);
-  sheet.addRow([2, "Trần Thị Bình", "10A1", "", "TIẾT 5", "", "TIẾT 4"]);
-  sheet.addRow([3, "Lê Hoàng Chi", "10A2", "TIẾT 5", "TIẾT 4", "", ""]);
+  if (hasCustomWeeks) {
+    const row1Shifts = weeksConfig.map((w) => (w.shift === "TIET_5" ? "TIẾT 5" : "TIẾT 4"));
+    const row2Shifts = weeksConfig.map((w, idx) => (idx % 2 === 0 ? "" : (w.shift === "TIET_5" ? "TIẾT 5" : "TIẾT 4")));
+    const row3Shifts = weeksConfig.map((w) => (w.shift === "TIET_4" ? "TIẾT 5" : "TIẾT 4"));
+
+    sheet.addRow([1, "Nguyễn Văn An", "10A1", ...row1Shifts]);
+    sheet.addRow([2, "Trần Thị Bình", "10A1", ...row2Shifts]);
+    sheet.addRow([3, "Lê Hoàng Chi", "10A2", ...row3Shifts]);
+  } else {
+    sheet.addRow([1, "Nguyễn Văn An", "10A1", "TIẾT 4", "", "TIẾT 5", ""]);
+    sheet.addRow([2, "Trần Thị Bình", "10A1", "", "TIẾT 5", "", "TIẾT 4"]);
+    sheet.addRow([3, "Lê Hoàng Chi", "10A2", "TIẾT 5", "TIẾT 4", "", ""]);
+  }
 
   const buffer = await workbook.xlsx.writeBuffer();
   return Buffer.from(buffer);

@@ -23,7 +23,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { CalendarDays, Save, Loader2, Copy, CheckCircle, X, ChevronLeft, ChevronRight, Trash2, Info, Sparkles, Search, Filter, ExternalLink, Plus, UserPlus, Calendar, Clock, Users, Check, ArrowUpDown } from "lucide-react";
+import { CalendarDays, Save, Loader2, Copy, CheckCircle, X, ChevronLeft, ChevronRight, Trash2, Info, Sparkles, Search, Filter, ExternalLink, Plus, UserPlus, Calendar, Clock, Users, Check, ArrowUpDown, Download, Upload, FileSpreadsheet, AlertTriangle, GraduationCap, FileUp } from "lucide-react";
 import { format, parse, startOfWeek, endOfWeek, addDays, addWeeks } from "date-fns";
 import { compareClassNames, removeVietnameseTones } from "@/lib/utils";
 
@@ -110,11 +110,11 @@ export default function SchedulePage() {
 
   // Add Special Meal Modal States
   const [isAddSpecialModalOpen, setIsAddSpecialModalOpen] = useState(false);
+  const [addScheduleMode, setAddScheduleMode] = useState<"NEW" | "EXISTING">("NEW");
   const [addScheduleName, setAddScheduleName] = useState("");
   const [addShift, setAddShift] = useState<"TIET_4" | "TIET_5">("TIET_5");
   const [addDateTab, setAddDateTab] = useState<"WEEK_DAY" | "SPECIFIC">("WEEK_DAY");
   const [addSelectedDays, setAddSelectedDays] = useState<number[]>([3]); // 1=T2..6=T7, default 3 (Thứ 4)
-  const [addWeekCount, setAddWeekCount] = useState<number>(1);
   const [addSpecificDates, setAddSpecificDates] = useState<string[]>([]);
   const [addCustomDateInput, setAddCustomDateInput] = useState<string>("");
   const [activeStudents, setActiveStudents] = useState<any[]>([]);
@@ -125,10 +125,84 @@ export default function SchedulePage() {
   const [loadingActiveStudents, setLoadingActiveStudents] = useState(false);
   const [isSavingSpecialMeal, setIsSavingSpecialMeal] = useState(false);
 
+  // Cải tiến: Chọn tuần trên lịch và ca ăn riêng từng tuần
+  const [addSelectedWeeks, setAddSelectedWeeks] = useState<number[]>([40]);
+  const [addWeekShifts, setAddWeekShifts] = useState<Record<number, "TIET_4" | "TIET_5">>({ 40: "TIET_5" });
+
+  // Cải tiến: Tab nạp học sinh (Manual vs Excel)
+  const [studentSourceTab, setStudentSourceTab] = useState<"MANUAL" | "EXCEL">("MANUAL");
+  const [excelFile, setExcelFile] = useState<File | null>(null);
+  const [isExcelPreviewing, setIsExcelPreviewing] = useState(false);
+  const [excelPreviewData, setExcelPreviewData] = useState<any[] | null>(null);
+  const [excelPreviewSummary, setExcelPreviewSummary] = useState<{
+    totalRows: number;
+    validCount: number;
+    conflictCount: number;
+    skippedCount: number;
+  } | null>(null);
+  const [isExcelImporting, setIsExcelImporting] = useState(false);
+  const [isExportingTemplate, setIsExportingTemplate] = useState(false);
+
+  // Tạo danh sách các tuần học trên lịch (16 tuần từ tuần hiện tại)
+  const availableCalendarWeeks = useMemo(() => {
+    if (!weekString) return [];
+    try {
+      const base = parse(weekString, "RRRR-'W'II", new Date());
+      const baseMonday = startOfWeek(base, { weekStartsOn: 1 });
+      const weeks: Array<{
+        isoWeek: number;
+        schoolWeek: number;
+        year: number;
+        startDate: Date;
+        endDate: Date;
+        rangeLabel: string;
+        dateByDay: Record<number, { dateStr: string; display: string }>;
+      }> = [];
+
+      for (let i = 0; i < 16; i++) {
+        const mon = addWeeks(baseMonday, i);
+        const sun = addDays(mon, 6);
+        const y = mon.getFullYear();
+        const isoW = parseInt(format(mon, "II"), 10);
+        const schoolW = isoW >= 37 ? isoW - 36 : isoW + 16;
+
+        const dateByDay: Record<number, { dateStr: string; display: string }> = {};
+        for (let d = 1; d <= 6; d++) {
+          const targetD = addDays(mon, d - 1);
+          dateByDay[d] = {
+            dateStr: format(targetD, "yyyy-MM-dd"),
+            display: format(targetD, "dd/MM/yyyy"),
+          };
+        }
+
+        weeks.push({
+          isoWeek: isoW,
+          schoolWeek: schoolW,
+          year: y,
+          startDate: mon,
+          endDate: sun,
+          rangeLabel: `${format(mon, "dd/MM")} - ${format(sun, "dd/MM/yyyy")}`,
+          dateByDay,
+        });
+      }
+      return weeks;
+    } catch {
+      return [];
+    }
+  }, [weekString]);
+
   const openAddSpecialModal = async () => {
     setIsAddSpecialModalOpen(true);
+    // Tự động gán tuần hiện tại nếu chưa chọn
+    if (availableCalendarWeeks.length > 0 && addSelectedWeeks.length === 0) {
+      const firstWeek = availableCalendarWeeks[0].isoWeek;
+      setAddSelectedWeeks([firstWeek]);
+      setAddWeekShifts({ [firstWeek]: addShift });
+    }
+
     // Tự động gán tên lịch từ bộ lọc hiện tại hoặc lịch đầu tiên
     if (specialFilterSchedule && specialFilterSchedule !== "ALL") {
+      setAddScheduleMode("EXISTING");
       setAddScheduleName(specialFilterSchedule);
     } else if (specialScheduleNames.length > 0 && !addScheduleName) {
       setAddScheduleName(specialScheduleNames[0]);
@@ -158,50 +232,176 @@ export default function SchedulePage() {
     }
   };
 
-  const getCalculatedDates = (): { dateStr: string; display: string; dowName: string }[] => {
+  // Tính toán danh sách ngày & ca ăn áp dụng
+  const getCalculatedDateShifts = (): Array<{
+    dateStr: string;
+    display: string;
+    dowName: string;
+    shift: "TIET_4" | "TIET_5";
+    weekNumber: number;
+    schoolWeekNumber: number;
+  }> => {
     if (addDateTab === "WEEK_DAY") {
-      if (!weekString || addSelectedDays.length === 0) return [];
-      try {
-        const base = parse(weekString, "RRRR-'W'II", new Date());
-        const mondayCurrentWeek = startOfWeek(base, { weekStartsOn: 1 });
-        const dayNames: Record<number, string> = {
-          1: "Thứ Hai",
-          2: "Thứ Ba",
-          3: "Thứ Tư",
-          4: "Thứ Năm",
-          5: "Thứ Sáu",
-          6: "Thứ Bảy",
-        };
-        const results: { dateStr: string; display: string; dowName: string }[] = [];
+      const results: Array<{
+        dateStr: string;
+        display: string;
+        dowName: string;
+        shift: "TIET_4" | "TIET_5";
+        weekNumber: number;
+        schoolWeekNumber: number;
+      }> = [];
+      const dayNames: Record<number, string> = {
+        1: "Thứ Hai",
+        2: "Thứ Ba",
+        3: "Thứ Tư",
+        4: "Thứ Năm",
+        5: "Thứ Sáu",
+        6: "Thứ Bảy",
+      };
 
-        for (let w = 0; w < addWeekCount; w++) {
-          const weekMonday = addWeeks(mondayCurrentWeek, w);
-          for (const dayNum of [...addSelectedDays].sort((a, b) => a - b)) {
-            const targetDate = addDays(weekMonday, dayNum - 1);
-            results.push({
-              dateStr: format(targetDate, "yyyy-MM-dd"),
-              display: format(targetDate, "dd/MM/yyyy"),
-              dowName: dayNames[dayNum] || `Thứ ${dayNum + 1}`,
-            });
+      for (const w of availableCalendarWeeks) {
+        if (addSelectedWeeks.includes(w.isoWeek)) {
+          const shift = addWeekShifts[w.isoWeek] || addShift;
+          for (const d of [...addSelectedDays].sort((a, b) => a - b)) {
+            const dateObj = w.dateByDay[d];
+            if (dateObj) {
+              results.push({
+                dateStr: dateObj.dateStr,
+                display: dateObj.display,
+                dowName: dayNames[d] || `Thứ ${d + 1}`,
+                shift,
+                weekNumber: w.isoWeek,
+                schoolWeekNumber: w.schoolWeek,
+              });
+            }
           }
         }
-        return results;
-      } catch {
-        return [];
       }
+      return results;
     } else {
       const dayNames = ["Chủ Nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"];
       return [...addSpecificDates].sort().map((dStr) => {
         const d = new Date(dStr + "T00:00:00");
+        const dow = d.getDay();
         return {
           dateStr: dStr,
           display: format(d, "dd/MM/yyyy"),
-          dowName: dayNames[d.getDay()],
+          dowName: dayNames[dow],
+          shift: addShift,
+          weekNumber: parseInt(format(d, "II"), 10),
+          schoolWeekNumber: 1,
         };
       });
     }
   };
 
+  const getCalculatedDates = () => getCalculatedDateShifts();
+
+  // Chọn nhanh theo Khối 10, 11, 12
+  const handleSelectByGrade = (grade: "10" | "11" | "12") => {
+    const newSet = new Set(addSelectedStudentIds);
+    activeStudents.forEach((s) => {
+      const cName = (s.class?.name || s.classId || "").trim().toUpperCase();
+      if (cName.startsWith(grade)) {
+        newSet.add(s.id);
+      }
+    });
+    setAddSelectedStudentIds(newSet);
+  };
+
+  // Xuất file mẫu Excel theo cấu hình tuần & ca ăn
+  const handleExportCustomTemplate = async () => {
+    const dateShifts = getCalculatedDateShifts();
+    if (dateShifts.length === 0) {
+      Swal.fire("Chưa chọn tuần/ngày", "Vui lòng chọn ít nhất một tuần trên lịch và thứ trong tuần để xuất file mẫu.", "warning");
+      return;
+    }
+
+    setIsExportingTemplate(true);
+    try {
+      const weeksConfig = dateShifts.map((ds) => ({
+        weekNumber: ds.weekNumber,
+        schoolWeekNumber: ds.schoolWeekNumber,
+        dayOfWeek: addSelectedDays[0] || 3,
+        dayName: ds.dowName,
+        dateStr: ds.display.slice(0, 5),
+        shift: ds.shift,
+      }));
+
+      const res = await fetch("/api/excel/template", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "special-meal",
+          weeksConfig,
+        }),
+      });
+
+      if (!res.ok) throw new Error("Không thể tạo template Excel");
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Template_LichAnDacBiet_${addScheduleName.trim() || "Moi"}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err: any) {
+      Swal.fire("Lỗi", "Không thể tải file mẫu: " + err.message, "error");
+    } finally {
+      setIsExportingTemplate(false);
+    }
+  };
+
+  // Kiểm tra file Excel (Preview)
+  const handlePreviewExcel = async () => {
+    if (!excelFile) {
+      Swal.fire("Chưa chọn file", "Vui lòng chọn hoặc kéo thả file Excel cần kiểm tra.", "warning");
+      return;
+    }
+    if (!addScheduleName.trim()) {
+      Swal.fire("Thiếu tên lịch", "Vui lòng nhập hoặc chọn tên lịch ăn đặc biệt.", "warning");
+      return;
+    }
+
+    setIsExcelPreviewing(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", excelFile);
+      formData.append("type", "special-meal");
+      formData.append("action", "preview");
+      formData.append("scheduleName", addScheduleName.trim());
+      formData.append("year", new Date().getFullYear().toString());
+
+      const res = await fetch("/api/excel/import", {
+        method: "POST",
+        body: formData,
+      });
+      const result = await res.json();
+
+      if (res.ok) {
+        setExcelPreviewData(result.data || []);
+        setExcelPreviewSummary(result.summary || null);
+        if (result.errors && result.errors.length > 0) {
+          Swal.fire({
+            title: "Cảnh báo dữ liệu",
+            html: `File có ${result.errors.length} cảnh báo/lỗi định dạng. Vui lòng xem bảng bên dưới.`,
+            icon: "warning",
+          });
+        }
+      } else {
+        Swal.fire("Lỗi kiểm tra", result.error || "Không thể kiểm tra file Excel.", "error");
+      }
+    } catch (err: any) {
+      Swal.fire("Lỗi", "Không thể kết nối đến máy chủ: " + err.message, "error");
+    } finally {
+      setIsExcelPreviewing(false);
+    }
+  };
+
+  // Lưu lịch ăn đặc biệt từ danh sách thủ công
   const handleSaveAddSpecialMeals = async () => {
     if (isAccountant) return;
 
@@ -210,9 +410,9 @@ export default function SchedulePage() {
       return;
     }
 
-    const targetDates = getCalculatedDates();
-    if (targetDates.length === 0) {
-      Swal.fire("Thiếu ngày áp dụng", "Vui lòng chọn ít nhất một ngày áp dụng suất ăn.", "warning");
+    const targetDateShifts = getCalculatedDateShifts();
+    if (targetDateShifts.length === 0) {
+      Swal.fire("Thiếu ngày áp dụng", "Vui lòng chọn ít nhất một ngày/tuần áp dụng suất ăn.", "warning");
       return;
     }
 
@@ -228,9 +428,8 @@ export default function SchedulePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           scheduleName: addScheduleName.trim(),
-          shift: addShift,
           studentIds: Array.from(addSelectedStudentIds),
-          dates: targetDates.map((d) => d.dateStr),
+          dateShifts: targetDateShifts.map((ds) => ({ date: ds.dateStr, shift: ds.shift })),
         }),
       });
 
@@ -252,6 +451,62 @@ export default function SchedulePage() {
       Swal.fire("Lỗi", "Lỗi kết nối máy chủ: " + (err?.message || ""), "error");
     } finally {
       setIsSavingSpecialMeal(false);
+    }
+  };
+
+  // Lưu lịch ăn đặc biệt từ file Excel đã preview
+  const handleImportExcel = async () => {
+    if (!excelFile || !excelPreviewData) {
+      Swal.fire("Chưa kiểm tra file", "Vui lòng bấm 'Kiểm tra file (Preview)' trước khi lưu vào lịch ăn.", "warning");
+      return;
+    }
+    if (!addScheduleName.trim()) {
+      Swal.fire("Thiếu tên lịch", "Vui lòng nhập hoặc chọn tên lịch ăn đặc biệt.", "warning");
+      return;
+    }
+
+    setIsExcelImporting(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", excelFile);
+      formData.append("type", "special-meal");
+      formData.append("action", "import");
+      formData.append("scheduleName", addScheduleName.trim());
+      formData.append("year", new Date().getFullYear().toString());
+
+      const res = await fetch("/api/excel/import", {
+        method: "POST",
+        body: formData,
+      });
+      const result = await res.json();
+
+      if (res.ok) {
+        await Swal.fire({
+          title: "Import thành công!",
+          html: `
+            <div class="text-left text-sm space-y-1.5 p-2">
+              <p>• Suất tạo mới: <strong class="text-emerald-600">${result.created || 0}</strong> suất</p>
+              <p>• Suất cập nhật: <strong class="text-blue-600">${result.updated || 0}</strong> suất</p>
+              ${result.prioritizedRegularCount ? `<p class="text-amber-600 font-semibold">• Ưu tiên theo TKB thường niên: <strong>${result.prioritizedRegularCount}</strong> suất</p>` : ""}
+              <p>• Bỏ qua: <strong class="text-slate-500">${result.skipped || 0}</strong> suất</p>
+            </div>
+          `,
+          icon: "success",
+          confirmButtonColor: "#2563eb",
+        });
+
+        setIsAddSpecialModalOpen(false);
+        setExcelFile(null);
+        setExcelPreviewData(null);
+        setExcelPreviewSummary(null);
+        fetchSpecialMeals();
+      } else {
+        Swal.fire("Lỗi Import", result.error || "Không thể lưu dữ liệu.", "error");
+      }
+    } catch (err: any) {
+      Swal.fire("Lỗi", "Không thể lưu dữ liệu: " + err.message, "error");
+    } finally {
+      setIsExcelImporting(false);
     }
   };
 
@@ -1593,8 +1848,8 @@ export default function SchedulePage() {
 
       {/* Dialog Thêm Học Sinh Vào Lịch Ăn Đặc Biệt */}
       <Dialog open={isAddSpecialModalOpen} onOpenChange={setIsAddSpecialModalOpen}>
-        <DialogContent className="max-w-3xl w-[95vw] max-h-[92vh] flex flex-col p-0 gap-0 overflow-hidden">
-          <DialogHeader className="p-5 pb-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/70">
+        <DialogContent className="max-w-4xl w-[96vw] max-h-[94vh] flex flex-col p-0 gap-0 overflow-hidden shadow-2xl border-purple-200 dark:border-purple-900">
+          <DialogHeader className="p-5 pb-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/80">
             <div className="flex items-center justify-between pr-6">
               <div>
                 <DialogTitle className="text-lg font-bold flex items-center gap-2 text-slate-900 dark:text-slate-100">
@@ -1602,97 +1857,118 @@ export default function SchedulePage() {
                   Thêm Học Sinh Vào Lịch Ăn Đặc Biệt
                 </DialogTitle>
                 <DialogDescription className="text-xs text-slate-500 mt-0.5">
-                  Cấu hình lịch ăn, chọn ngày theo Thứ/Tuần hoặc Lịch, sau đó chọn học sinh từ danh sách bán trú.
+                  Cấu hình lịch ăn, chọn tuần trực quan trên lịch, phân ca riêng từng tuần, chọn học sinh bán trú hoặc import từ file Excel.
                 </DialogDescription>
               </div>
-              <Badge className="bg-purple-100 text-purple-800 border-purple-200 text-xs font-semibold px-2.5 py-1">
-                {calculatedDates.length} ngày • {addSelectedStudentIds.size} học sinh
-              </Badge>
+              <div className="flex items-center gap-2">
+                <Badge className="bg-purple-100 text-purple-800 border-purple-200 text-xs font-semibold px-2.5 py-1">
+                  {studentSourceTab === "MANUAL"
+                    ? `${calculatedDates.length} ngày • ${addSelectedStudentIds.size} học sinh`
+                    : excelPreviewData
+                    ? `File Excel: ${excelPreviewData.length} học sinh`
+                    : "Chế độ Import Excel"}
+                </Badge>
+              </div>
             </div>
           </DialogHeader>
 
           {/* Dialog Content Body - Scrollable */}
           <div className="flex-1 overflow-y-auto p-5 space-y-4">
-            {/* 1. Tên lịch & Ca ăn */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50/50 dark:bg-slate-900/30 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800">
-              {/* Tên lịch */}
-              <div>
-                <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+            {/* 1. Tên lịch ăn đặc biệt & Chế độ */}
+            <div className="bg-slate-50/60 dark:bg-slate-900/40 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2.5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <Label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <Sparkles className="h-4 w-4 text-purple-600" />
                   Tên lịch ăn đặc biệt <span className="text-red-500">*</span>
                 </Label>
-                <Input
-                  list="existing-special-schedules"
-                  placeholder="VD: NN2 Tieng Han, GDQP..."
-                  value={addScheduleName}
-                  onChange={(e) => setAddScheduleName(e.target.value)}
-                  className="h-9 text-sm mt-1"
-                />
-                <datalist id="existing-special-schedules">
-                  {specialScheduleNames.map((name) => (
-                    <option key={name} value={name} />
-                  ))}
-                </datalist>
-                {specialScheduleNames.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-1.5">
-                    <span className="text-[11px] text-slate-400">Chọn nhanh:</span>
-                    {specialScheduleNames.map((name) => (
-                      <button
-                        key={name}
-                        type="button"
-                        onClick={() => setAddScheduleName(name)}
-                        className={`text-[11px] px-2 py-0.5 rounded border transition-colors cursor-pointer ${
-                          addScheduleName === name
-                            ? "bg-purple-600 text-white border-purple-600 font-semibold"
-                            : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-purple-300"
-                        }`}
-                      >
-                        {name}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Ca ăn */}
-              <div>
-                <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  Ca ăn áp dụng <span className="text-red-500">*</span>
-                </Label>
-                <div className="grid grid-cols-2 gap-2 mt-1">
+                {/* Chế độ: Tạo lịch mới vs Chọn lịch có sẵn */}
+                <div className="flex items-center gap-1 p-0.5 bg-slate-200/80 dark:bg-slate-800 rounded-lg text-xs font-medium">
                   <button
                     type="button"
-                    onClick={() => setAddShift("TIET_4")}
-                    className={`h-9 rounded-md border text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                      addShift === "TIET_4"
-                        ? "bg-orange-500 text-white border-orange-500 shadow-xs"
-                        : "border-slate-200 dark:border-slate-700 hover:bg-slate-100 text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800"
+                    onClick={() => {
+                      setAddScheduleMode("NEW");
+                      setAddScheduleName("");
+                    }}
+                    className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
+                      addScheduleMode === "NEW"
+                        ? "bg-white dark:bg-slate-900 text-purple-700 dark:text-purple-300 shadow-2xs font-semibold"
+                        : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
                     }`}
                   >
-                    <Clock className="h-3.5 w-3.5" />
-                    Ca Tiết 4 (10:15)
+                    ✨ Tạo lịch mới
                   </button>
                   <button
                     type="button"
-                    onClick={() => setAddShift("TIET_5")}
-                    className={`h-9 rounded-md border text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                      addShift === "TIET_5"
-                        ? "bg-blue-600 text-white border-blue-600 shadow-xs"
-                        : "border-slate-200 dark:border-slate-700 hover:bg-slate-100 text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800"
+                    onClick={() => {
+                      setAddScheduleMode("EXISTING");
+                      if (specialScheduleNames.length > 0 && !specialScheduleNames.includes(addScheduleName)) {
+                        setAddScheduleName(specialScheduleNames[0]);
+                      }
+                    }}
+                    className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
+                      addScheduleMode === "EXISTING"
+                        ? "bg-white dark:bg-slate-900 text-purple-700 dark:text-purple-300 shadow-2xs font-semibold"
+                        : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
                     }`}
                   >
-                    <Clock className="h-3.5 w-3.5" />
-                    Ca Tiết 5 (11:00)
+                    📂 Nhập vào lịch có sẵn ({specialScheduleNames.length})
                   </button>
                 </div>
               </div>
+
+              {addScheduleMode === "NEW" ? (
+                <div>
+                  <Input
+                    placeholder="Nhập tên lịch mới (VD: NN2 Tiếng Hàn K10, GDQP K11, Bồi dưỡng HSG...)"
+                    value={addScheduleName}
+                    onChange={(e) => setAddScheduleName(e.target.value)}
+                    className="h-9 text-sm bg-white dark:bg-slate-900"
+                  />
+                  {specialScheduleNames.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1 mt-1.5">
+                      <span className="text-[11px] text-slate-400">Gợi ý từ lịch có sẵn:</span>
+                      {specialScheduleNames.slice(0, 5).map((name) => (
+                        <button
+                          key={name}
+                          type="button"
+                          onClick={() => setAddScheduleName(name)}
+                          className="text-[11px] px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:border-purple-300 cursor-pointer"
+                        >
+                          {name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  {specialScheduleNames.length > 0 ? (
+                    <select
+                      value={addScheduleName}
+                      onChange={(e) => setAddScheduleName(e.target.value)}
+                      className="w-full h-9 px-3 rounded-md border border-slate-200 bg-white text-sm dark:bg-slate-900 dark:border-slate-800 font-medium text-slate-800 dark:text-slate-100"
+                    >
+                      {specialScheduleNames.map((name) => (
+                        <option key={name} value={name}>
+                          {name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="text-xs text-amber-600 bg-amber-50 p-2.5 rounded-lg border border-amber-200">
+                      Chưa có lịch ăn đặc biệt nào trước đây. Vui lòng chọn "Tạo lịch mới" ở trên để nhập tên lịch.
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
-            {/* 2. Chọn ngày ăn */}
+            {/* 2. Chọn Ngày Học / Ngày Ăn & Lịch Tuần & Ca ăn từng tuần */}
             <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-4 bg-slate-50/50 dark:bg-slate-900/30 space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <Label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
                   <Calendar className="h-4 w-4 text-purple-600" />
-                  Chọn Ngày Học / Ngày Ăn
+                  Chọn Ngày Học & Ca Ăn Áp Dụng
                 </Label>
                 <div className="flex items-center gap-1 p-0.5 bg-slate-200/80 dark:bg-slate-800 rounded-lg text-xs font-medium">
                   <button
@@ -1704,7 +1980,7 @@ export default function SchedulePage() {
                         : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
                     }`}
                   >
-                    🌟 Theo Thứ & Tuần
+                    🌟 Theo Thứ & Bộ Chọn Tuần Trên Lịch
                   </button>
                   <button
                     type="button"
@@ -1743,7 +2019,9 @@ export default function SchedulePage() {
                             type="button"
                             onClick={() => {
                               if (isSelected) {
-                                setAddSelectedDays(addSelectedDays.filter((d) => d !== day));
+                                if (addSelectedDays.length > 1) {
+                                  setAddSelectedDays(addSelectedDays.filter((d) => d !== day));
+                                }
                               } else {
                                 setAddSelectedDays([...addSelectedDays, day]);
                               }
@@ -1761,37 +2039,217 @@ export default function SchedulePage() {
                     </div>
                   </div>
 
-                  {/* Chọn phạm vi tuần */}
-                  <div>
-                    <div className="text-[11px] font-medium text-slate-500 mb-1.5">
-                      Áp dụng cho các tuần:
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setAddWeekCount(1)}
-                        className={`px-3 py-1.5 rounded-md text-xs font-medium border cursor-pointer ${
-                          addWeekCount === 1
-                            ? "bg-purple-100 text-purple-800 border-purple-300 font-semibold dark:bg-purple-950 dark:text-purple-300"
-                            : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50"
-                        }`}
-                      >
-                        Chỉ Tuần hiện tại ({currentWeek})
-                      </button>
-                      {[2, 3, 4, 8].map((count) => (
+                  {/* BỘ CHỌN TUẦN TRÊN LỊCH (Calendar Week Grid & Per-Week Shift) */}
+                  <div className="space-y-2 pt-1">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                        <CalendarDays className="h-3.5 w-3.5 text-purple-600" />
+                        Chọn các tuần trên lịch & phân ca ăn (Tiết 4 / Tiết 5) cho từng tuần:
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
                         <button
-                          key={count}
                           type="button"
-                          onClick={() => setAddWeekCount(count)}
-                          className={`px-3 py-1.5 rounded-md text-xs font-medium border cursor-pointer ${
-                            addWeekCount === count
-                              ? "bg-purple-100 text-purple-800 border-purple-300 font-semibold dark:bg-purple-950 dark:text-purple-300"
-                              : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50"
-                          }`}
+                          onClick={() => {
+                            if (availableCalendarWeeks.length > 0) {
+                              const curr = availableCalendarWeeks[0].isoWeek;
+                              setAddSelectedWeeks([curr]);
+                              if (!addWeekShifts[curr]) setAddWeekShifts((prev) => ({ ...prev, [curr]: addShift }));
+                            }
+                          }}
+                          className="px-2 py-0.5 rounded bg-purple-50 dark:bg-purple-950 text-purple-700 border border-purple-200 hover:bg-purple-100 cursor-pointer font-medium"
                         >
-                          {count} tuần liên tiếp (từ Tuần {currentWeek})
+                          Tuần hiện tại
                         </button>
-                      ))}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next4 = availableCalendarWeeks.slice(0, 4).map((w) => w.isoWeek);
+                            setAddSelectedWeeks(next4);
+                            const newShifts = { ...addWeekShifts };
+                            next4.forEach((w) => {
+                              if (!newShifts[w]) newShifts[w] = addShift;
+                            });
+                            setAddWeekShifts(newShifts);
+                          }}
+                          className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 hover:bg-slate-200 cursor-pointer"
+                        >
+                          4 tuần tới
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next8 = availableCalendarWeeks.slice(0, 8).map((w) => w.isoWeek);
+                            setAddSelectedWeeks(next8);
+                            const newShifts = { ...addWeekShifts };
+                            next8.forEach((w) => {
+                              if (!newShifts[w]) newShifts[w] = addShift;
+                            });
+                            setAddWeekShifts(newShifts);
+                          }}
+                          className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 hover:bg-slate-200 cursor-pointer"
+                        >
+                          8 tuần tới
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const allW = availableCalendarWeeks.map((w) => w.isoWeek);
+                            setAddSelectedWeeks(allW);
+                          }}
+                          className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 hover:bg-slate-200 cursor-pointer"
+                        >
+                          Chọn hết
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAddSelectedWeeks([])}
+                          className="px-2 py-0.5 rounded text-red-500 hover:underline cursor-pointer"
+                        >
+                          Bỏ chọn
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Thanh đồng bộ nhanh ca ăn cho tất cả các tuần */}
+                    {addSelectedWeeks.length > 0 && (
+                      <div className="flex items-center justify-between p-2 rounded-lg bg-purple-50/70 dark:bg-purple-950/40 border border-purple-100 text-[11px]">
+                        <span className="text-purple-800 dark:text-purple-300 font-medium">
+                          ⚡ Đã chọn <strong>{addSelectedWeeks.length} tuần</strong> trên lịch. Đồng bộ nhanh ca ăn:
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newShifts = { ...addWeekShifts };
+                              addSelectedWeeks.forEach((w) => {
+                                newShifts[w] = "TIET_4";
+                              });
+                              setAddWeekShifts(newShifts);
+                              setAddShift("TIET_4");
+                            }}
+                            className="px-2 py-0.5 rounded border border-orange-300 bg-orange-50 text-orange-700 hover:bg-orange-100 font-semibold cursor-pointer"
+                          >
+                            Set tất cả Tiết 4
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newShifts = { ...addWeekShifts };
+                              addSelectedWeeks.forEach((w) => {
+                                newShifts[w] = "TIET_5";
+                              });
+                              setAddWeekShifts(newShifts);
+                              setAddShift("TIET_5");
+                            }}
+                            className="px-2 py-0.5 rounded border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 font-semibold cursor-pointer"
+                          >
+                            Set tất cả Tiết 5
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Bảng danh sách tuần trên lịch */}
+                    <div className="border border-slate-200 dark:border-slate-800 rounded-lg max-h-52 overflow-y-auto bg-white dark:bg-slate-900 shadow-2xs">
+                      <table className="w-full text-xs text-left">
+                        <thead className="sticky top-0 bg-slate-100 dark:bg-slate-800 font-semibold text-slate-700 dark:text-slate-300 z-10 border-b border-slate-200 dark:border-slate-700">
+                          <tr>
+                            <th className="p-2 w-10 text-center">Chọn</th>
+                            <th className="p-2 w-44">Tuần & Khoảng thời gian</th>
+                            <th className="p-2">Ngày học theo Thứ đã chọn</th>
+                            <th className="p-2 w-52 text-center">Ca ăn của tuần</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                          {availableCalendarWeeks.map((w) => {
+                            const isSelected = addSelectedWeeks.includes(w.isoWeek);
+                            const shift = addWeekShifts[w.isoWeek] || addShift;
+                            const datesSummary = addSelectedDays
+                              .map((d) => w.dateByDay[d]?.display)
+                              .filter(Boolean)
+                              .join(", ");
+
+                            return (
+                              <tr
+                                key={w.isoWeek}
+                                className={`transition-colors ${
+                                  isSelected
+                                    ? "bg-purple-50/50 dark:bg-purple-950/20"
+                                    : "hover:bg-slate-50 dark:hover:bg-slate-800/40 text-slate-500"
+                                }`}
+                              >
+                                <td className="p-2 text-center">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => {
+                                      if (isSelected) {
+                                        setAddSelectedWeeks(addSelectedWeeks.filter((x) => x !== w.isoWeek));
+                                      } else {
+                                        setAddSelectedWeeks([...addSelectedWeeks, w.isoWeek]);
+                                        if (!addWeekShifts[w.isoWeek]) {
+                                          setAddWeekShifts((prev) => ({ ...prev, [w.isoWeek]: addShift }));
+                                        }
+                                      }
+                                    }}
+                                    className="rounded border-slate-300 text-purple-600 focus:ring-purple-500 h-4 w-4 cursor-pointer"
+                                  />
+                                </td>
+                                <td className="p-2">
+                                  <div className="font-semibold text-slate-900 dark:text-slate-100">
+                                    Tuần {w.schoolWeek}{" "}
+                                    <span className="text-[11px] font-normal text-slate-400">
+                                      (W{w.isoWeek})
+                                    </span>
+                                  </div>
+                                  <div className="text-[11px] text-slate-500">{w.rangeLabel}</div>
+                                </td>
+                                <td className="p-2">
+                                  <div className="text-xs font-medium text-purple-700 dark:text-purple-300">
+                                    {datesSummary || "—"}
+                                  </div>
+                                </td>
+                                <td className="p-2">
+                                  <div className="flex items-center justify-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      disabled={!isSelected}
+                                      onClick={() => {
+                                        setAddWeekShifts((prev) => ({ ...prev, [w.isoWeek]: "TIET_4" }));
+                                      }}
+                                      className={`px-2.5 py-1 rounded text-[11px] font-semibold border transition-all cursor-pointer ${
+                                        !isSelected
+                                          ? "opacity-30 cursor-not-allowed border-slate-200"
+                                          : shift === "TIET_4"
+                                          ? "bg-orange-500 text-white border-orange-500 shadow-2xs"
+                                          : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 hover:border-orange-300"
+                                      }`}
+                                    >
+                                      Tiết 4 (10:15)
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={!isSelected}
+                                      onClick={() => {
+                                        setAddWeekShifts((prev) => ({ ...prev, [w.isoWeek]: "TIET_5" }));
+                                      }}
+                                      className={`px-2.5 py-1 rounded text-[11px] font-semibold border transition-all cursor-pointer ${
+                                        !isSelected
+                                          ? "opacity-30 cursor-not-allowed border-slate-200"
+                                          : shift === "TIET_5"
+                                          ? "bg-blue-600 text-white border-blue-600 shadow-2xs"
+                                          : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 hover:border-blue-300"
+                                      }`}
+                                    >
+                                      Tiết 5 (11:00)
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
                 </div>
@@ -1821,19 +2279,14 @@ export default function SchedulePage() {
                       Thêm ngày
                     </Button>
                   </div>
-                  {addSpecificDates.length === 0 && (
-                    <p className="text-[11px] text-slate-400 italic">
-                      * Chọn ngày từ ô phía trên rồi bấm "Thêm ngày". Bạn có thể thêm nhiều ngày khác nhau.
-                    </p>
-                  )}
                 </div>
               )}
 
-              {/* Xem trước ngày áp dụng */}
+              {/* Tóm tắt danh sách ngày áp dụng */}
               <div className="pt-1">
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
-                    📅 Danh sách ngày áp dụng ({calculatedDates.length} ngày):
+                    📅 Ngày áp dụng ({calculatedDates.length} ngày):
                   </span>
                   {addDateTab === "SPECIFIC" && addSpecificDates.length > 0 && (
                     <button
@@ -1847,27 +2300,25 @@ export default function SchedulePage() {
                 </div>
                 {calculatedDates.length === 0 ? (
                   <div className="text-xs text-amber-600 bg-amber-50 dark:bg-amber-950/40 p-2.5 rounded-lg border border-amber-200 dark:border-amber-800">
-                    ⚠️ Chưa có ngày nào được chọn. Vui lòng tích chọn ít nhất 1 Thứ trong tuần hoặc thêm ngày cụ thể.
+                    ⚠️ Chưa có ngày nào được chọn. Vui lòng tích chọn ít nhất 1 Thứ và 1 Tuần trên lịch.
                   </div>
                 ) : (
-                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-2.5 bg-white dark:bg-slate-800/80 rounded-lg border border-purple-200 dark:border-purple-900 shadow-2xs">
+                  <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto p-2 bg-white dark:bg-slate-800/80 rounded-lg border border-purple-200 dark:border-purple-900 shadow-2xs">
                     {calculatedDates.map((d, idx) => (
                       <Badge
                         key={idx}
                         variant="outline"
-                        className="text-xs bg-purple-50 dark:bg-purple-950 text-purple-800 dark:text-purple-200 border-purple-200 font-medium py-0.5 px-2 flex items-center gap-1.5"
+                        className={`text-[11px] font-medium py-0.5 px-2 flex items-center gap-1.5 border ${
+                          d.shift === "TIET_4"
+                            ? "bg-orange-50 text-orange-800 border-orange-200 dark:bg-orange-950 dark:text-orange-300"
+                            : "bg-blue-50 text-blue-800 border-blue-200 dark:bg-blue-950 dark:text-blue-300"
+                        }`}
                       >
                         <span>{d.dowName}</span>
                         <span className="font-semibold">{d.display}</span>
-                        {addDateTab === "SPECIFIC" && (
-                          <button
-                            type="button"
-                            onClick={() => setAddSpecificDates(addSpecificDates.filter((x) => x !== d.dateStr))}
-                            className="text-purple-400 hover:text-red-500 ml-0.5 cursor-pointer"
-                          >
-                            <X className="h-3 w-3" />
-                          </button>
-                        )}
+                        <span className="text-[10px] px-1 rounded bg-white/80 dark:bg-slate-800 font-bold">
+                          {d.shift === "TIET_4" ? "Tiết 4" : "Tiết 5"}
+                        </span>
                       </Badge>
                     ))}
                   </div>
@@ -1875,183 +2326,508 @@ export default function SchedulePage() {
               </div>
             </div>
 
-            {/* 3. Chọn học sinh đang ăn bán trú */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                    <Users className="h-4 w-4 text-blue-600" />
-                    Chọn Học Sinh Bán Trú
-                  </Label>
-                  <Badge className="bg-blue-100 text-blue-800 border-blue-200 font-semibold text-xs">
-                    Đã chọn: {addSelectedStudentIds.size} học sinh
-                  </Badge>
-                </div>
-
-                <div className="flex items-center gap-2 text-xs">
+            {/* 3. Nạp danh sách học sinh (Tab Manual vs Tab Excel) */}
+            <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-4 bg-slate-50/50 dark:bg-slate-900/30 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
+                <Label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <Users className="h-4 w-4 text-purple-600" />
+                  Phương thức nạp danh sách học sinh:
+                </Label>
+                <div className="flex items-center gap-1 p-0.5 bg-slate-200/80 dark:bg-slate-800 rounded-lg text-xs font-medium">
                   <button
                     type="button"
-                    onClick={() => {
-                      const newSet = new Set(addSelectedStudentIds);
-                      filteredActiveStudents.forEach((s) => newSet.add(s.id));
-                      setAddSelectedStudentIds(newSet);
-                    }}
-                    className="text-blue-600 hover:underline font-medium cursor-pointer"
+                    onClick={() => setStudentSourceTab("MANUAL")}
+                    className={`px-3 py-1.5 rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
+                      studentSourceTab === "MANUAL"
+                        ? "bg-white dark:bg-slate-900 text-purple-700 dark:text-purple-300 shadow-2xs font-semibold"
+                        : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
+                    }`}
                   >
-                    Chọn tất cả ({filteredActiveStudents.length})
+                    <Users className="h-3.5 w-3.5" />
+                    Chọn từ danh sách bán trú
                   </button>
-                  <span className="text-slate-300">|</span>
                   <button
                     type="button"
-                    onClick={() => {
-                      const newSet = new Set(addSelectedStudentIds);
-                      filteredActiveStudents.forEach((s) => newSet.delete(s.id));
-                      setAddSelectedStudentIds(newSet);
-                    }}
-                    className="text-slate-500 hover:underline cursor-pointer"
+                    onClick={() => setStudentSourceTab("EXCEL")}
+                    className={`px-3 py-1.5 rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
+                      studentSourceTab === "EXCEL"
+                        ? "bg-white dark:bg-slate-900 text-purple-700 dark:text-purple-300 shadow-2xs font-semibold"
+                        : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
+                    }`}
                   >
-                    Bỏ chọn danh sách này
+                    <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
+                    Nhập từ file Excel hàng loạt
                   </button>
                 </div>
               </div>
 
-              {/* Filter row */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <div>
-                  <select
-                    value={addFilterClass}
-                    onChange={(e) => setAddFilterClass(e.target.value)}
-                    className="w-full h-9 px-3 rounded-md border border-slate-200 bg-white text-xs dark:bg-slate-900 dark:border-slate-800"
-                  >
-                    <option value="ALL">Tất cả lớp ({classList.length} lớp)</option>
-                    {classList.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="sm:col-span-2 relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                  <Input
-                    placeholder="Tìm theo tên học sinh, mã bán trú BT..., mã HS..."
-                    value={addStudentSearch}
-                    onChange={(e) => setAddStudentSearch(e.target.value)}
-                    className="pl-9 h-9 text-xs"
-                  />
-                </div>
-              </div>
+              {/* TAB 1: CHỌN TỪ DANH SÁCH BÁN TRÚ */}
+              {studentSourceTab === "MANUAL" && (
+                <div className="space-y-3">
+                  {/* Nút chọn nhanh theo Khối 10, 11, 12 */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                        <GraduationCap className="h-3.5 w-3.5 text-blue-600" />
+                        Chọn nhanh theo khối:
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleSelectByGrade("10")}
+                        className="px-2.5 py-1 rounded-md text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 cursor-pointer"
+                      >
+                        🎓 Chọn hết Khối 10
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSelectByGrade("11")}
+                        className="px-2.5 py-1 rounded-md text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 cursor-pointer"
+                      >
+                        🎓 Chọn hết Khối 11
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSelectByGrade("12")}
+                        className="px-2.5 py-1 rounded-md text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 cursor-pointer"
+                      >
+                        🎓 Chọn hết Khối 12
+                      </button>
+                    </div>
 
-              {/* Students Table */}
-              <div className="border border-slate-200 dark:border-slate-800 rounded-lg max-h-56 overflow-y-auto">
-                {loadingActiveStudents ? (
-                  <div className="py-8 flex flex-col items-center justify-center text-slate-400 text-xs">
-                    <Loader2 className="h-6 w-6 animate-spin mb-1 text-blue-600" />
-                    Đang tải danh sách học sinh bán trú...
+                    <div className="flex items-center gap-2 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const newSet = new Set(addSelectedStudentIds);
+                          filteredActiveStudents.forEach((s) => newSet.add(s.id));
+                          setAddSelectedStudentIds(newSet);
+                        }}
+                        className="text-blue-600 hover:underline font-medium cursor-pointer"
+                      >
+                        Chọn hết danh sách ({filteredActiveStudents.length})
+                      </button>
+                      <span className="text-slate-300">|</span>
+                      <button
+                        type="button"
+                        onClick={() => setAddSelectedStudentIds(new Set())}
+                        className="text-red-500 hover:underline cursor-pointer"
+                      >
+                        Bỏ chọn tất cả
+                      </button>
+                    </div>
                   </div>
-                ) : filteredActiveStudents.length === 0 ? (
-                  <div className="py-8 text-center text-slate-400 text-xs">
-                    Không tìm thấy học sinh bán trú nào phù hợp bộ lọc.
+
+                  {/* Filter row */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div>
+                      <select
+                        value={addFilterClass}
+                        onChange={(e) => setAddFilterClass(e.target.value)}
+                        className="w-full h-9 px-3 rounded-md border border-slate-200 bg-white text-xs dark:bg-slate-900 dark:border-slate-800"
+                      >
+                        <option value="ALL">Tất cả lớp ({classList.length} lớp)</option>
+                        {classList.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="sm:col-span-2 relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                      <Input
+                        placeholder="Tìm theo tên học sinh, mã bán trú BT..., mã HS..."
+                        value={addStudentSearch}
+                        onChange={(e) => setAddStudentSearch(e.target.value)}
+                        className="pl-9 h-9 text-xs"
+                      />
+                    </div>
                   </div>
-                ) : (
-                  <Table>
-                    <TableHeader className="sticky top-0 bg-slate-50 dark:bg-slate-800/90 z-10">
-                      <TableRow>
-                        <TableHead className="w-10 text-center"></TableHead>
-                        <TableHead className="w-24 text-center font-semibold text-xs">Mã Bán Trú</TableHead>
-                        <TableHead className="font-semibold text-xs">Họ và tên</TableHead>
-                        <TableHead className="w-20 text-center font-semibold text-xs">Lớp</TableHead>
-                        <TableHead className="w-20 text-center font-semibold text-xs">Mã HS</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredActiveStudents.map((s) => {
-                        const isSelected = addSelectedStudentIds.has(s.id);
-                        return (
-                          <TableRow
-                            key={s.id}
-                            onClick={() => {
-                              const newSet = new Set(addSelectedStudentIds);
-                              if (isSelected) newSet.delete(s.id);
-                              else newSet.add(s.id);
-                              setAddSelectedStudentIds(newSet);
-                            }}
-                            className={`cursor-pointer hover:bg-slate-50/80 dark:hover:bg-slate-900/50 ${
-                              isSelected ? "bg-purple-50/60 dark:bg-purple-950/30" : ""
-                            }`}
-                          >
-                            <TableCell className="text-center p-2">
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={() => {}} // handled by row click
-                                className="rounded border-slate-300 text-purple-600 focus:ring-purple-500 h-4 w-4 cursor-pointer"
-                              />
-                            </TableCell>
-                            <TableCell className="text-center font-mono text-xs font-bold text-blue-700 dark:text-blue-400 p-2">
-                              {s.boardingCode || "—"}
-                            </TableCell>
-                            <TableCell className="font-medium text-xs text-slate-900 dark:text-slate-100 p-2">
-                              {s.user?.fullName}
-                            </TableCell>
-                            <TableCell className="text-center font-bold text-xs text-slate-700 dark:text-slate-300 p-2">
-                              {s.class?.name || s.classId}
-                            </TableCell>
-                            <TableCell className="text-center font-mono text-xs text-slate-500 p-2">
-                              {s.studentCode}
-                            </TableCell>
+
+                  {/* Students Table */}
+                  <div className="border border-slate-200 dark:border-slate-800 rounded-lg max-h-56 overflow-y-auto">
+                    {loadingActiveStudents ? (
+                      <div className="py-8 flex flex-col items-center justify-center text-slate-400 text-xs">
+                        <Loader2 className="h-6 w-6 animate-spin mb-1 text-blue-600" />
+                        Đang tải danh sách học sinh bán trú...
+                      </div>
+                    ) : filteredActiveStudents.length === 0 ? (
+                      <div className="py-8 text-center text-slate-400 text-xs">
+                        Không tìm thấy học sinh bán trú nào phù hợp bộ lọc.
+                      </div>
+                    ) : (
+                      <Table>
+                        <TableHeader className="sticky top-0 bg-slate-50 dark:bg-slate-800/90 z-10">
+                          <TableRow>
+                            <th className="w-10 text-center p-2"></th>
+                            <th className="w-24 text-center font-semibold text-xs p-2">Mã Bán Trú</th>
+                            <th className="font-semibold text-xs p-2 text-left">Họ và tên</th>
+                            <th className="w-20 text-center font-semibold text-xs p-2">Lớp</th>
+                            <th className="w-24 text-center font-semibold text-xs p-2">Mã HS</th>
                           </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                )}
-              </div>
+                        </TableHeader>
+                        <TableBody>
+                          {filteredActiveStudents.map((s) => {
+                            const isSelected = addSelectedStudentIds.has(s.id);
+                            return (
+                              <TableRow
+                                key={s.id}
+                                onClick={() => {
+                                  const newSet = new Set(addSelectedStudentIds);
+                                  if (isSelected) newSet.delete(s.id);
+                                  else newSet.add(s.id);
+                                  setAddSelectedStudentIds(newSet);
+                                }}
+                                className={`cursor-pointer hover:bg-slate-50/80 dark:hover:bg-slate-900/50 ${
+                                  isSelected ? "bg-purple-50/60 dark:bg-purple-950/30" : ""
+                                }`}
+                              >
+                                <TableCell className="text-center p-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => {}}
+                                    className="rounded border-slate-300 text-purple-600 focus:ring-purple-500 h-4 w-4 cursor-pointer"
+                                  />
+                                </TableCell>
+                                <TableCell className="text-center font-mono text-xs font-bold text-blue-700 dark:text-blue-400 p-2">
+                                  {s.boardingCode || "—"}
+                                </TableCell>
+                                <TableCell className="font-medium text-xs text-slate-900 dark:text-slate-100 p-2">
+                                  {s.user?.fullName}
+                                </TableCell>
+                                <TableCell className="text-center font-bold text-xs text-slate-700 dark:text-slate-300 p-2">
+                                  {s.class?.name || s.classId}
+                                </TableCell>
+                                <TableCell className="text-center font-mono text-xs text-slate-500 p-2">
+                                  {s.studentCode}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 2: NHẬP TỪ FILE EXCEL HÀNG LOẠT */}
+              {studentSourceTab === "EXCEL" && (
+                <div className="space-y-3.5">
+                  {/* Khung hướng dẫn 3 bước */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    {/* Bước 1 */}
+                    <div className="p-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col justify-between space-y-2">
+                      <div>
+                        <div className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1 mb-1">
+                          <span className="h-5 w-5 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center text-xs font-bold">
+                            1
+                          </span>
+                          Xuất file mẫu template
+                        </div>
+                        <p className="text-[11px] text-slate-500">
+                          File Excel sẽ được tạo động với các cột tuần và ca ăn theo đúng cấu hình tuần bạn đã chọn ở trên.
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={handleExportCustomTemplate}
+                        disabled={isExportingTemplate || calculatedDates.length === 0}
+                        className="w-full text-xs font-semibold border-purple-200 text-purple-700 hover:bg-purple-50 cursor-pointer h-8"
+                      >
+                        {isExportingTemplate ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                        ) : (
+                          <Download className="h-3.5 w-3.5 mr-1.5 text-purple-600" />
+                        )}
+                        Tải file mẫu Excel (.xlsx)
+                      </Button>
+                    </div>
+
+                    {/* Bước 2 */}
+                    <div className="p-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col justify-between space-y-2">
+                      <div>
+                        <div className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1 mb-1">
+                          <span className="h-5 w-5 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center text-xs font-bold">
+                            2
+                          </span>
+                          Chọn file Excel đã điền
+                        </div>
+                        <p className="text-[11px] text-slate-500">
+                          Cột <strong>HỌ VÀ TÊN</strong> và <strong>LỚP</strong> là bắt buộc. Hệ thống khớp tự động theo 2 thông tin này.
+                        </p>
+                      </div>
+                      <div className="relative">
+                        <input
+                          type="file"
+                          accept=".xlsx,.xls"
+                          id="special-meal-excel-input"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) {
+                              setExcelFile(f);
+                              setExcelPreviewData(null);
+                              setExcelPreviewSummary(null);
+                            }
+                          }}
+                          className="hidden"
+                        />
+                        <label
+                          htmlFor="special-meal-excel-input"
+                          className="w-full h-8 px-3 rounded border border-dashed border-slate-300 dark:border-slate-700 hover:border-purple-400 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-center gap-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer truncate"
+                        >
+                          <Upload className="h-3.5 w-3.5 text-purple-600 shrink-0" />
+                          <span className="truncate">{excelFile ? excelFile.name : "Chọn file từ máy tính"}</span>
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* Bước 3 */}
+                    <div className="p-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col justify-between space-y-2">
+                      <div>
+                        <div className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1 mb-1">
+                          <span className="h-5 w-5 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center text-xs font-bold">
+                            3
+                          </span>
+                          Kiểm tra trước khi import
+                        </div>
+                        <p className="text-[11px] text-slate-500">
+                          Đối soát danh sách bán trú và cảnh báo nếu trùng TKB thường niên của lớp.
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={handlePreviewExcel}
+                        disabled={isExcelPreviewing || !excelFile}
+                        className="w-full text-xs font-semibold bg-purple-600 hover:bg-purple-700 text-white cursor-pointer h-8"
+                      >
+                        {isExcelPreviewing ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                        ) : (
+                          <Search className="h-3.5 w-3.5 mr-1.5" />
+                        )}
+                        Kiểm tra file (Preview)
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* BẢNG XEM TRƯỚC (PREVIEW TABLE & XỬ LÝ TRÙNG TKB THƯỜNG NIÊN) */}
+                  {excelPreviewData && (
+                    <div className="space-y-2.5 pt-1">
+                      {/* Thẻ thống kê */}
+                      <div className="p-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge className="bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200 text-xs font-semibold px-2.5 py-1">
+                            Tổng số học sinh trong file: {excelPreviewSummary?.totalRows || excelPreviewData.length} em
+                          </Badge>
+                          <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold px-2.5 py-1">
+                            ✅ Hợp lệ: {excelPreviewSummary?.validCount || 0} suất
+                          </Badge>
+                          {(excelPreviewSummary?.conflictCount || 0) > 0 && (
+                            <Badge className="bg-amber-50 text-amber-800 border border-amber-300 text-xs font-semibold px-2.5 py-1 flex items-center gap-1">
+                              <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
+                              ⚠️ Trùng TKB thường niên: {excelPreviewSummary?.conflictCount} suất (Ưu tiên ăn theo TKB thường niên)
+                            </Badge>
+                          )}
+                          {(excelPreviewSummary?.skippedCount || 0) > 0 && (
+                            <Badge className="bg-rose-50 text-rose-700 border border-rose-200 text-xs font-semibold px-2.5 py-1">
+                              ❌ Bỏ qua / Lỗi: {excelPreviewSummary?.skippedCount} suất
+                            </Badge>
+                          )}
+                        </div>
+
+                        <span className="text-[11px] text-slate-400 italic">
+                          * Đã đối soát chéo với TKB lớp của từng học sinh
+                        </span>
+                      </div>
+
+                      {/* Bảng chi tiết từng dòng preview */}
+                      <div className="border border-slate-200 dark:border-slate-800 rounded-lg max-h-56 overflow-y-auto bg-white dark:bg-slate-900">
+                        <table className="w-full text-xs text-left">
+                          <thead className="sticky top-0 bg-slate-100 dark:bg-slate-800 font-semibold text-slate-700 dark:text-slate-300 z-10 border-b border-slate-200 dark:border-slate-700">
+                            <tr>
+                              <th className="p-2 w-10 text-center">STT</th>
+                              <th className="p-2 w-36">Họ và tên</th>
+                              <th className="p-2 w-16 text-center">Lớp</th>
+                              <th className="p-2">Chi tiết các ngày đăng ký & Ca ăn</th>
+                              <th className="p-2 w-72">Trạng thái & Đối soát TKB thường niên</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                            {excelPreviewData.map((row, rIdx) => {
+                              const hasConflict = row.entries.some((e: any) => e.status === "warning_prioritize_regular");
+                              const hasError = row.entries.some((e: any) => e.status === "error_no_student");
+
+                              return (
+                                <tr
+                                  key={rIdx}
+                                  className={`transition-colors ${
+                                    hasError
+                                      ? "bg-rose-50/40 dark:bg-rose-950/20"
+                                      : hasConflict
+                                      ? "bg-amber-50/40 dark:bg-amber-950/20"
+                                      : "hover:bg-slate-50 dark:hover:bg-slate-800/40"
+                                  }`}
+                                >
+                                  <td className="p-2 text-center text-slate-400 font-mono text-[11px]">
+                                    {row.stt || rIdx + 1}
+                                  </td>
+                                  <td className="p-2 font-medium text-slate-900 dark:text-slate-100">
+                                    {row.hoTen}
+                                  </td>
+                                  <td className="p-2 text-center font-bold text-slate-700 dark:text-slate-300">
+                                    {row.maLop}
+                                  </td>
+                                  <td className="p-2">
+                                    <div className="flex flex-wrap gap-1">
+                                      {row.entries.map((entry: any, eIdx: number) => (
+                                        <Badge
+                                          key={eIdx}
+                                          variant="outline"
+                                          className={`text-[10px] py-0 px-1.5 ${
+                                            entry.status === "warning_prioritize_regular"
+                                              ? "bg-amber-100 text-amber-900 border-amber-300 font-bold"
+                                              : entry.shift === "TIET_4"
+                                              ? "bg-orange-50 text-orange-800 border-orange-200"
+                                              : "bg-blue-50 text-blue-800 border-blue-200"
+                                          }`}
+                                        >
+                                          Tuần {entry.schoolWeekNumber || entry.weekNumber}: {entry.shift === "TIET_4" ? "Tiết 4" : "Tiết 5"}
+                                        </Badge>
+                                      ))}
+                                    </div>
+                                  </td>
+                                  <td className="p-2">
+                                    {row.entries.map((entry: any, eIdx: number) => {
+                                      if (entry.status === "warning_prioritize_regular") {
+                                        return (
+                                          <div key={eIdx} className="text-[11px] text-amber-800 dark:text-amber-300 font-medium flex items-start gap-1">
+                                            <AlertTriangle className="h-3 w-3 text-amber-600 shrink-0 mt-0.5" />
+                                            <span>{entry.note}</span>
+                                          </div>
+                                        );
+                                      }
+                                      if (entry.status === "error_no_student") {
+                                        return (
+                                          <div key={eIdx} className="text-[11px] text-rose-600 font-medium">
+                                            ❌ {entry.note}
+                                          </div>
+                                        );
+                                      }
+                                      if (entry.status === "skip_duplicate") {
+                                        return (
+                                          <div key={eIdx} className="text-[11px] text-slate-500">
+                                            ℹ️ {entry.note}
+                                          </div>
+                                        );
+                                      }
+                                      return (
+                                        <div key={eIdx} className="text-[11px] text-emerald-600 font-medium">
+                                          ✅ Hợp lệ ({entry.shift === "TIET_4" ? "Tiết 4" : "Tiết 5"})
+                                        </div>
+                                      );
+                                    })}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
           {/* Dialog Footer */}
           <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/80 flex flex-col sm:flex-row items-center justify-between gap-3">
             <div className="text-xs text-slate-600 dark:text-slate-300">
-              Tổng cộng sẽ tạo:{" "}
-              <strong className="text-purple-700 dark:text-purple-300 font-bold">
-                {addSelectedStudentIds.size * calculatedDates.length} suất ăn
-              </strong>{" "}
-              ({addSelectedStudentIds.size} HS × {calculatedDates.length} ngày)
+              {studentSourceTab === "MANUAL" ? (
+                <>
+                  Tổng cộng sẽ tạo:{" "}
+                  <strong className="text-purple-700 dark:text-purple-300 font-bold">
+                    {addSelectedStudentIds.size * calculatedDates.length} suất ăn
+                  </strong>{" "}
+                  ({addSelectedStudentIds.size} HS × {calculatedDates.length} ngày)
+                </>
+              ) : excelPreviewData ? (
+                <>
+                  Sẵn sàng import:{" "}
+                  <strong className="text-purple-700 dark:text-purple-300 font-bold">
+                    {(excelPreviewSummary?.validCount || 0) + (excelPreviewSummary?.conflictCount || 0)} suất ăn
+                  </strong>{" "}
+                  ({excelPreviewData.length} học sinh từ file Excel)
+                </>
+              ) : (
+                "Vui lòng chọn file và bấm 'Kiểm tra file (Preview)' trước khi lưu."
+              )}
             </div>
             <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => setIsAddSpecialModalOpen(false)}
-                disabled={isSavingSpecialMeal}
+                disabled={isSavingSpecialMeal || isExcelImporting}
                 className="h-9 text-xs"
               >
                 Hủy
               </Button>
-              <Button
-                type="button"
-                onClick={handleSaveAddSpecialMeals}
-                disabled={
-                  isSavingSpecialMeal ||
-                  !addScheduleName.trim() ||
-                  calculatedDates.length === 0 ||
-                  addSelectedStudentIds.size === 0
-                }
-                className="h-9 bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold shadow-xs cursor-pointer"
-              >
-                {isSavingSpecialMeal ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
-                    Đang lưu...
-                  </>
-                ) : (
-                  <>
-                    <Save className="h-4 w-4 mr-1.5" />
-                    Lưu vào lịch ăn ({addSelectedStudentIds.size * calculatedDates.length} suất)
-                  </>
-                )}
-              </Button>
+
+              {studentSourceTab === "MANUAL" ? (
+                <Button
+                  type="button"
+                  onClick={handleSaveAddSpecialMeals}
+                  disabled={
+                    isSavingSpecialMeal ||
+                    !addScheduleName.trim() ||
+                    calculatedDates.length === 0 ||
+                    addSelectedStudentIds.size === 0
+                  }
+                  className="h-9 bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold shadow-xs cursor-pointer"
+                >
+                  {isSavingSpecialMeal ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+                      Đang lưu...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4 mr-1.5" />
+                      Lưu vào lịch ăn ({addSelectedStudentIds.size * calculatedDates.length} suất)
+                    </>
+                  )}
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  onClick={handleImportExcel}
+                  disabled={
+                    isExcelImporting ||
+                    !excelFile ||
+                    !excelPreviewData ||
+                    ((excelPreviewSummary?.validCount || 0) + (excelPreviewSummary?.conflictCount || 0) === 0)
+                  }
+                  className="h-9 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs cursor-pointer"
+                >
+                  {isExcelImporting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+                      Đang import...
+                    </>
+                  ) : (
+                    <>
+                      <FileUp className="h-4 w-4 mr-1.5" />
+                      Xác nhận Import Excel ({ (excelPreviewSummary?.validCount || 0) + (excelPreviewSummary?.conflictCount || 0) } suất)
+                    </>
+                  )}
+                </Button>
+              )}
             </div>
           </div>
         </DialogContent>

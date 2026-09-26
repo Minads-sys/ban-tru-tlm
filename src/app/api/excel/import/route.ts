@@ -9,7 +9,7 @@ import {
 } from "@/lib/excel";
 import bcrypt from "bcryptjs";
 import { MealType, BoardingStatus, UserRole } from "@prisma/client";
-import { parseDateValue, getVietnamTodayUTC, isPastCutoffTime } from "@/lib/utils";
+import { parseDateValue, getVietnamTodayUTC, isPastCutoffTime, removeVietnameseTones } from "@/lib/utils";
 import { auth } from "@/lib/auth";
 import { logAudit, AUDIT_ACTIONS, AUDIT_MODULES } from "@/lib/audit-log";
 import { syncDailyMealSummaryForDate } from "@/lib/daily-meals";
@@ -335,53 +335,123 @@ export async function POST(request: NextRequest) {
       const scheduleName = formData.get("scheduleName") as string;
       const year = parseInt(formData.get("year") as string) || new Date().getFullYear();
 
-      if (!scheduleName) {
+      if (!scheduleName || !scheduleName.trim()) {
         return NextResponse.json(
-          { error: "Vui lòng nhập tên lịch đặc biệt" },
+          { error: "Vui lòng nhập hoặc chọn tên lịch đặc biệt" },
           { status: 400 }
         );
       }
 
+      const cleanScheduleName = scheduleName.trim();
       const existingClasses = await prisma.class.findMany({ select: { id: true } });
       const classIds = existingClasses.map((c) => c.id);
       const result = await parseSpecialMealExcel(buffer, year, classIds);
 
-      // Lookup students by name + class for matching
+      // Lookup học sinh ACTIVE
+      // Ưu tiên 1: Khớp chính xác hoặc mờ theo Họ tên + Lớp
       const allStudents = await prisma.student.findMany({
         where: { boardingStatus: "ACTIVE" },
-        include: { user: { select: { fullName: true } }, class: { select: { id: true, name: true } } },
+        include: {
+          user: { select: { fullName: true } },
+          class: { select: { id: true, name: true } },
+        },
       });
 
-      // Build lookup: normalize(fullName) + classId -> student
-      // Also need to import getWeekNumber from utils for schedule check
-      const studentLookup = new Map<string, { id: string; classId: string; studentCode: string }>();
+      // Tạo lookup maps
+      // Map 1: normalize(fullName) + "::" + classId
+      const studentLookupByNameAndClass = new Map<string, { id: string; classId: string; studentCode: string; fullName: string }>();
+      // Map 2: boardingCode & studentCode (phụ trợ)
+      const studentLookupByCode = new Map<string, { id: string; classId: string; studentCode: string; fullName: string }>();
+
       for (const s of allStudents) {
-        const key = `${s.user.fullName.trim().toLowerCase()}::${s.classId}`;
-        studentLookup.set(key, { id: s.id, classId: s.classId, studentCode: s.studentCode });
+        const rawName = s.user.fullName.trim();
+        const normName = removeVietnameseTones(rawName).toLowerCase().replace(/\s+/g, " ").trim();
+        const cId = s.classId.toUpperCase();
+        
+        studentLookupByNameAndClass.set(`${normName}::${cId}`, {
+          id: s.id,
+          classId: s.classId,
+          studentCode: s.studentCode,
+          fullName: rawName,
+        });
+
+        if (s.boardingCode) {
+          studentLookupByCode.set(s.boardingCode.trim().toUpperCase(), {
+            id: s.id,
+            classId: s.classId,
+            studentCode: s.studentCode,
+            fullName: rawName,
+          });
+        }
+        if (s.studentCode) {
+          studentLookupByCode.set(s.studentCode.trim().toUpperCase(), {
+            id: s.id,
+            classId: s.classId,
+            studentCode: s.studentCode,
+            fullName: rawName,
+          });
+        }
       }
 
-      // Enrich data: match students, check for duplicates
-      const enrichedData: any[] = [];
-      const importErrors: any[] = [...result.errors];
-      
-      // Get existing special meals and class schedules for duplicate checking
+      // Thu thập các tuần xuất hiện trong file
+      const weekNumbersSet = new Set<number>();
+      for (const row of result.data) {
+        for (const entry of row.entries) {
+          if (entry.weekNumber) weekNumbersSet.add(entry.weekNumber);
+        }
+      }
+
+      // Lấy Thời khóa biểu thường niên (ClassWeeklySchedule) của các lớp trong các tuần này
+      const classSchedules = await prisma.classWeeklySchedule.findMany({
+        where: {
+          year: { in: [year - 1, year, year + 1] },
+          weekNumber: { in: Array.from(weekNumbersSet) },
+        },
+      });
+
+      // Schedule map: `${classId.toUpperCase()}_${year}_${weekNumber}` -> schedule
+      const scheduleMap = new Map<string, typeof classSchedules[0]>();
+      for (const cs of classSchedules) {
+        scheduleMap.set(`${cs.classId.toUpperCase()}_${cs.year}_${cs.weekNumber}`, cs);
+      }
+
+      // Lấy các lịch đặc biệt hiện có để kiểm tra trùng lặp
       const existingSpecialMeals = await prisma.studentSpecialMeal.findMany({
         select: { studentId: true, date: true, scheduleName: true, shift: true },
       });
       const existingSpecialMap = new Map(
-        existingSpecialMeals.map(sm => [`${sm.studentId}::${sm.date.toISOString().split('T')[0]}`, sm])
+        existingSpecialMeals.map((sm) => [`${sm.studentId}::${sm.date.toISOString().split("T")[0]}`, sm])
       );
 
+      // Map dayOfWeek (1=T2..6=T7) sang field trong ClassWeeklySchedule
+      const dayFieldMap: Record<number, string> = {
+        1: "monday",
+        2: "tuesday",
+        3: "wednesday",
+        4: "thursday",
+        5: "friday",
+        6: "saturday",
+      };
+
+      const enrichedData: any[] = [];
+      const importErrors: any[] = [...result.errors];
+      let validCount = 0;
+      let conflictCount = 0;
+      let skippedCount = 0;
+
       for (const row of result.data) {
-        const lookupKey = `${row.hoTen.trim().toLowerCase()}::${row.maLop}`;
-        // Try exact match first, then fuzzy
-        let student = studentLookup.get(lookupKey);
-        
+        const rawHoTen = row.hoTen.trim();
+        const normHoTen = removeVietnameseTones(rawHoTen).toLowerCase().replace(/\s+/g, " ").trim();
+        const cleanLop = row.maLop.trim().toUpperCase();
+
+        // ƯU TIÊN 1: Khớp theo Họ và Tên + Lớp
+        let student = studentLookupByNameAndClass.get(`${normHoTen}::${cleanLop}`);
+
+        // Nếu chưa tìm thấy, thử tìm mờ không dấu
         if (!student) {
-          // Try case-insensitive fuzzy match
-          for (const [key, val] of studentLookup) {
-            const [name, cls] = key.split("::");
-            if (name === row.hoTen.trim().toLowerCase() && cls === row.maLop) {
+          for (const [key, val] of studentLookupByNameAndClass) {
+            const [nameKey, clsKey] = key.split("::");
+            if (clsKey === cleanLop && (nameKey === normHoTen || nameKey.includes(normHoTen) || normHoTen.includes(nameKey))) {
               student = val;
               break;
             }
@@ -389,28 +459,72 @@ export async function POST(request: NextRequest) {
         }
 
         const entries = row.entries.map((entry: any) => {
-          let status = "valid"; // valid, skip_class_schedule, skip_duplicate, error_no_student, error_not_active
+          let status = "valid"; // valid, warning_prioritize_regular, update, skip_duplicate, error_no_student
           let note = "";
+          let originalShift = entry.shift;
+          let regularShift: string | null = null;
 
           if (!student) {
             status = "error_no_student";
-            note = "Học sinh không tồn tại hoặc chưa đăng ký bán trú";
+            note = "Học sinh không tồn tại trong lớp hoặc chưa đăng ký bán trú";
+            skippedCount++;
+            return { ...entry, status, note, studentId: null };
+          }
+
+          // Kiểm tra xung đột với Thời Khóa Biểu Thường Niên
+          const [ey, em, ed] = entry.date.split("-").map(Number);
+          const dt = new Date(Date.UTC(ey, em - 1, ed));
+          const dow = dt.getUTCDay(); // 0: CN, 1: T2, 2: T3, 3: T4, 4: T5, 5: T6, 6: T7
+          const dayField = dayFieldMap[dow];
+
+          const schKey = `${student.classId.toUpperCase()}_${ey}_${entry.weekNumber}`;
+          const classSchedule = scheduleMap.get(schKey);
+          const classRegularShift = (classSchedule && dayField) ? (classSchedule as any)[dayField] : "NONE";
+
+          if (classRegularShift === "TIET_4" || classRegularShift === "TIET_5") {
+            // TRÙNG THỜI KHÓA BIỂU THƯỜNG NIÊN
+            regularShift = classRegularShift;
+            // ƯU TIÊN HỌC SINH ĂN THEO TIẾT CỦA THỜI KHÓA BIỂU THƯỜNG NIÊN
+            entry.shift = regularShift;
+            status = "warning_prioritize_regular";
+            const regLabel = regularShift === "TIET_4" ? "Ca Tiết 4" : "Ca Tiết 5";
+            const origLabel = originalShift === "TIET_4" ? "Ca Tiết 4" : "Ca Tiết 5";
+            note = `⚠️ Trùng TKB thường niên lớp ${student.classId} (${regLabel}). Ưu tiên ăn ${regLabel} cùng lớp (File ghi ${origLabel}).`;
+            conflictCount++;
           } else {
-            // Check existing special meal on same date
+            // Không trùng TKB thường niên, kiểm tra trùng lịch đặc biệt khác
             const existing = existingSpecialMap.get(`${student.id}::${entry.date}`);
-            if (existing && existing.scheduleName !== scheduleName) {
+            if (existing && existing.scheduleName !== cleanScheduleName) {
               status = "skip_duplicate";
-              note = `Trùng lịch '${existing.scheduleName}'`;
-            } else if (existing && existing.scheduleName === scheduleName) {
+              note = `Trùng lịch đặc biệt '${existing.scheduleName}'`;
+              skippedCount++;
+            } else if (existing && existing.scheduleName === cleanScheduleName) {
               status = "update";
-              note = "Cập nhật ca ăn";
+              note = `Cập nhật ca ăn: ${entry.shift === "TIET_4" ? "Tiết 4" : "Tiết 5"}`;
+              validCount++;
+            } else {
+              status = "valid";
+              note = `Hợp lệ (${entry.shift === "TIET_4" ? "Tiết 4" : "Tiết 5"})`;
+              validCount++;
             }
           }
 
-          return { ...entry, status, note, studentId: student?.id };
+          return {
+            ...entry,
+            status,
+            note,
+            studentId: student?.id,
+            originalShift,
+            regularShift,
+          };
         });
 
-        enrichedData.push({ ...row, studentId: student?.id, entries });
+        enrichedData.push({
+          ...row,
+          studentId: student?.id,
+          studentFullName: student?.fullName || row.hoTen,
+          entries,
+        });
       }
 
       if (action === "preview") {
@@ -418,26 +532,33 @@ export async function POST(request: NextRequest) {
           data: enrichedData,
           errors: importErrors,
           isValid: importErrors.length === 0,
-          scheduleName,
+          scheduleName: cleanScheduleName,
+          summary: {
+            totalRows: enrichedData.length,
+            validCount,
+            conflictCount,
+            skippedCount,
+          },
         });
       }
 
       if (!result.isValid) {
         return NextResponse.json(
-          { error: "Dữ liệu có lỗi, vui lòng sửa và thử lại", errors: result.errors },
+          { error: "Dữ liệu file có lỗi cấu trúc, vui lòng sửa và thử lại", errors: result.errors },
           { status: 400 }
         );
       }
 
-      // Import: upsert valid entries
+      // Import: upsert valid entries & prioritized entries
       let created = 0;
       let updated = 0;
+      let prioritizedRegularCount = 0;
       let skipped = 0;
 
       for (const row of enrichedData) {
         if (!row.studentId) continue;
         for (const entry of row.entries) {
-          if (entry.status === "error_no_student" || entry.status === "skip_duplicate" || entry.status === "skip_class_schedule") {
+          if (entry.status === "error_no_student" || entry.status === "skip_duplicate") {
             skipped++;
             continue;
           }
@@ -447,7 +568,7 @@ export async function POST(request: NextRequest) {
           const dateObj = new Date(Date.UTC(ey, em - 1, ed));
 
           const existing = existingSpecialMap.get(`${row.studentId}::${entry.date}`);
-          
+
           await prisma.studentSpecialMeal.upsert({
             where: {
               studentId_date: {
@@ -457,18 +578,21 @@ export async function POST(request: NextRequest) {
             },
             update: {
               shift: entry.shift,
-              scheduleName,
+              scheduleName: cleanScheduleName,
               source: "IMPORT",
             },
             create: {
               studentId: row.studentId,
               date: dateObj,
               shift: entry.shift,
-              scheduleName,
+              scheduleName: cleanScheduleName,
               source: "IMPORT",
             },
           });
 
+          if (entry.status === "warning_prioritize_regular") {
+            prioritizedRegularCount++;
+          }
           if (existing) updated++;
           else created++;
         }
@@ -481,14 +605,15 @@ export async function POST(request: NextRequest) {
         userRole: session.user.role,
         action: AUDIT_ACTIONS.IMPORT,
         module: AUDIT_MODULES.SCHEDULE,
-        description: `Import Excel lịch ăn đặc biệt '${scheduleName}': ${created} tạo mới, ${updated} cập nhật, ${skipped} bỏ qua (File: ${file.name})`,
-        metadata: { filename: file.name, scheduleName, created, updated, skipped },
+        description: `Import Excel lịch ăn đặc biệt '${cleanScheduleName}': ${created} tạo mới, ${updated} cập nhật, ${prioritizedRegularCount} ưu tiên theo TKB thường niên, ${skipped} bỏ qua (File: ${file.name})`,
+        metadata: { filename: file.name, scheduleName: cleanScheduleName, created, updated, prioritizedRegularCount, skipped },
       });
 
       return NextResponse.json({
-        message: `Hoàn tất! Tạo mới ${created}, cập nhật ${updated}, bỏ qua ${skipped} suất.`,
+        message: `Hoàn tất! Tạo mới ${created}, cập nhật ${updated} (trong đó ${prioritizedRegularCount} suất ưu tiên theo TKB thường niên), bỏ qua ${skipped} suất.`,
         created,
         updated,
+        prioritizedRegularCount,
         skipped,
       });
     }

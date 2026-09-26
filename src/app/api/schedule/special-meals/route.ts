@@ -299,18 +299,11 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { scheduleName, shift, studentIds, dates } = body;
+    const { scheduleName, shift, studentIds, dates, dateShifts } = body;
 
     if (!scheduleName || typeof scheduleName !== "string" || !scheduleName.trim()) {
       return NextResponse.json(
         { error: "Vui lòng nhập tên lịch ăn đặc biệt" },
-        { status: 400 }
-      );
-    }
-
-    if (shift !== "TIET_4" && shift !== "TIET_5") {
-      return NextResponse.json(
-        { error: "Ca ăn không hợp lệ. Chỉ chấp nhận TIET_4 hoặc TIET_5" },
         { status: 400 }
       );
     }
@@ -322,7 +315,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!Array.isArray(dates) || dates.length === 0) {
+    // Chuẩn hóa danh sách { date: string, shift: "TIET_4" | "TIET_5" }
+    let targetDateShifts: Array<{ date: string; shift: "TIET_4" | "TIET_5" }> = [];
+    if (Array.isArray(dateShifts) && dateShifts.length > 0) {
+      targetDateShifts = dateShifts.filter((ds: any) => ds.date && (ds.shift === "TIET_4" || ds.shift === "TIET_5"));
+    } else if (Array.isArray(dates) && dates.length > 0) {
+      const defaultShift = (shift === "TIET_4" || shift === "TIET_5") ? shift : "TIET_5";
+      targetDateShifts = dates.map((d: string) => ({ date: d, shift: defaultShift }));
+    }
+
+    if (targetDateShifts.length === 0) {
       return NextResponse.json(
         { error: "Vui lòng chọn ít nhất một ngày áp dụng" },
         { status: 400 }
@@ -332,12 +334,64 @@ export async function POST(request: NextRequest) {
     const cleanScheduleName = scheduleName.trim();
     let upsertCount = 0;
 
+    // Lấy thông tin lớp của các học sinh để kiểm tra chéo TKB thường niên
+    const studentsWithClass = await prisma.student.findMany({
+      where: { id: { in: studentIds } },
+      select: { id: true, classId: true },
+    });
+    const studentClassMap = new Map(studentsWithClass.map((s) => [s.id, s.classId]));
+
+    // Lấy TKB thường niên liên quan
+    const classSchedules = await prisma.classWeeklySchedule.findMany({
+      where: {
+        classId: { in: Array.from(new Set(studentsWithClass.map((s) => s.classId))) },
+      },
+    });
+
+    const scheduleMap = new Map<string, typeof classSchedules[0]>();
+    for (const cs of classSchedules) {
+      scheduleMap.set(`${cs.classId.toUpperCase()}_${cs.year}_${cs.weekNumber}`, cs);
+    }
+
+    const dayFieldMap: Record<number, string> = {
+      1: "monday",
+      2: "tuesday",
+      3: "wednesday",
+      4: "thursday",
+      5: "friday",
+      6: "saturday",
+    };
+
     for (const studentId of studentIds) {
-      for (const dateStr of dates) {
-        const [ey, em, ed] = dateStr.split("-").map(Number);
+      const classId = studentClassMap.get(studentId);
+
+      for (const ds of targetDateShifts) {
+        const [ey, em, ed] = ds.date.split("-").map(Number);
         if (!ey || !em || !ed || isNaN(ey) || isNaN(em) || isNaN(ed)) continue;
 
         const dateObj = new Date(Date.UTC(ey, em - 1, ed));
+        let finalShift = ds.shift;
+
+        // Nếu lớp đã có lịch TKB thường niên vào ngày này, tự động ưu tiên ca ăn của lịch thường niên
+        if (classId) {
+          const dow = dateObj.getUTCDay(); // 0: CN, 1: T2..
+          const dayField = dayFieldMap[dow];
+          if (dayField) {
+            // Tính số tuần
+            const dForWeek = new Date(Date.UTC(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate()));
+            const dayNum = dForWeek.getUTCDay() || 7;
+            dForWeek.setUTCDate(dForWeek.getUTCDate() + 4 - dayNum);
+            const yearStart = new Date(Date.UTC(dForWeek.getUTCFullYear(), 0, 1));
+            const weekNumber = Math.ceil(((dForWeek.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+
+            const schKey = `${classId.toUpperCase()}_${ey}_${weekNumber}`;
+            const classSchedule = scheduleMap.get(schKey);
+            const regularShift = classSchedule ? (classSchedule as any)[dayField] : "NONE";
+            if (regularShift === "TIET_4" || regularShift === "TIET_5") {
+              finalShift = regularShift; // ƯU TIÊN LỊCH THƯỜNG NIÊN
+            }
+          }
+        }
 
         await prisma.studentSpecialMeal.upsert({
           where: {
@@ -349,12 +403,12 @@ export async function POST(request: NextRequest) {
           create: {
             studentId,
             date: dateObj,
-            shift,
+            shift: finalShift,
             scheduleName: cleanScheduleName,
             source: "MANUAL",
           },
           update: {
-            shift,
+            shift: finalShift,
             scheduleName: cleanScheduleName,
             source: "MANUAL",
           },
@@ -362,7 +416,6 @@ export async function POST(request: NextRequest) {
         upsertCount++;
       }
     }
-
     await logAudit({
       req: request,
       userId: session.user.id,
