@@ -207,7 +207,7 @@ export function StudentModals({
                 className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-slate-100 text-slate-700 text-xs font-semibold text-left"
               >
                 <QrCode className="h-4 w-4 text-blue-600" />
-                <span>Danh sách nợ & Quét VietQR</span>
+                <span>Hóa đơn tiền ăn</span>
               </button>
               <button
                 onClick={() => { onCloseMenu(); onSelectAction("history"); }}

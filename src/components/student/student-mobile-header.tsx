@@ -364,7 +364,7 @@ export function StudentMobileHeader({
                   <span>Thanh toán</span>
                 </button>
                 <button
-                  onClick={() => onTabChange && onTabChange("meal")}
+                  onClick={() => onTabChange && onTabChange("cancel")}
                   className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg active:scale-95 transition shadow-xs flex items-center gap-1 cursor-pointer"
                 >
                   <Utensils className="h-3 w-3" />

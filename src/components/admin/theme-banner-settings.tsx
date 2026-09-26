@@ -439,8 +439,34 @@ export function ThemeBannerSettings({
               </div>
 
               {/* Body thu nhỏ */}
-              <div className="p-3 space-y-2.5 text-center">
-                <div className="text-[10px] font-bold text-slate-700 text-left">
+              <div className="p-3 space-y-2 text-center">
+                {/* 1. Suất ăn & Vị trí ăn thu nhỏ (Đưa lên trên Tiện ích) */}
+                <div className="bg-gradient-to-br from-white to-purple-50/60 rounded-xl p-2 border border-purple-200/80 shadow-2xs text-left">
+                  <div className="flex items-center justify-between text-[8px] font-bold text-slate-800 mb-1">
+                    <span className="text-purple-700 uppercase flex items-center gap-1">
+                      <Sparkles className="h-2.5 w-2.5 text-amber-500" />
+                      Suất ăn & Vị trí ăn
+                    </span>
+                    <span className="text-slate-400 font-normal text-[7px]">Hôm nay</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5 mb-1 text-white text-[8px]">
+                    <div className="bg-gradient-to-br from-purple-600 to-indigo-700 rounded-lg p-1.5 font-bold truncate">
+                      <span className="text-purple-200 text-[6px] block uppercase font-medium">Sân ăn</span>
+                      Sân 1
+                    </div>
+                    <div className="bg-gradient-to-br from-amber-500 to-orange-500 rounded-lg p-1.5 font-bold truncate">
+                      <span className="text-amber-100 text-[6px] block uppercase font-medium">Xe phục vụ</span>
+                      Xe 1
+                    </div>
+                  </div>
+                  <div className="text-[7px] text-slate-600 flex justify-between items-center">
+                    <span>Món: <b>Cơm mặn</b></span>
+                    <span className="text-purple-700 font-bold">Xem sơ đồ &gt;</span>
+                  </div>
+                </div>
+
+                {/* 2. Tiện ích của bạn */}
+                <div className="text-[10px] font-bold text-slate-700 text-left pt-0.5">
                   Tiện ích của bạn
                 </div>
                 <div className="grid grid-cols-4 gap-1.5 text-center">

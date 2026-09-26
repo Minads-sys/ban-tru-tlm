@@ -41,6 +41,7 @@ import {
   X,
 } from "lucide-react";
 import { StudentMobileHeader } from "@/components/student/student-mobile-header";
+import { StudentTodayMealCard } from "@/components/student/student-today-meal-card";
 import { StudentQuickServices } from "@/components/student/student-quick-services";
 import { StudentFeaturedCards } from "@/components/student/student-featured-cards";
 import { StudentBottomNav } from "@/components/student/student-bottom-nav";
@@ -318,12 +319,16 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
   const handleSelectService = (key: string) => {
     if (key === "qr" || key === "debt") {
       setActiveTab("debt");
+    } else if (key === "meal") {
+      setActiveTab("cancel");
     } else if (key === "public_meals") {
       setIsPublicMealsOpen(true);
     } else if (key === "weekly_menu") {
       setIsWeeklyMenuOpen(true);
     } else if (key === "support") {
       setIsBotOpen(true);
+    } else if (key === "password") {
+      setActiveTab("profile");
     } else {
       setActiveTab(key);
     }
@@ -1099,14 +1104,23 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
 
         {/* TAB 0: TRANG CHỦ (DASHBOARD TỔNG QUAN CHO MOBILE & DESKTOP) */}
         <TabsContent value="home" className="space-y-4 px-3 sm:px-0">
+          {/* 1. Suất ăn & Vị trí ăn hôm nay (Đưa lên trên Tiện ích của bạn theo yêu cầu) */}
+          <StudentTodayMealCard
+            studentInfo={studentInfo || displayStudent}
+            todayInfo={monthlyScheduleData?.todayInfo}
+            onAction={handleSelectService}
+          />
+
+          {/* 2. Tiện ích của bạn */}
           <StudentQuickServices
             onSelectService={handleSelectService}
             showAll={showAllServices}
             onToggleShowAll={() => setShowAllServices(!showAllServices)}
           />
+
+          {/* 3. Các thẻ chức năng khác (Hóa đơn, Quy định - Đã bỏ Suất ăn ngày mai) */}
           <StudentFeaturedCards
             studentInfo={studentInfo || displayStudent}
-            todayInfo={monthlyScheduleData?.todayInfo}
             bills={bills}
             announcement={themeConfig.announcement}
             cutoffTime={themeConfig.mealLockTime1 || mealLockTime || "16:00"}
