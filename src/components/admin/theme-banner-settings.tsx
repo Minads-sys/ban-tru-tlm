@@ -158,6 +158,17 @@ export function ThemeBannerSettings({
       }
 
       onChange("SCHOOL_LOGO_URL", data.url);
+
+      // Tự động lưu ngay vào CSDL để logo luôn cố định và không bị mất
+      try {
+        await fetch("/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ SCHOOL_LOGO_URL: data.url }),
+        });
+      } catch (saveErr) {
+        console.warn("Lỗi tự động lưu logo:", saveErr);
+      }
     } catch (err: any) {
       setLogoUploadError(err.message || "Không thể tải logo");
     } finally {
@@ -358,7 +369,18 @@ export function ThemeBannerSettings({
                 {logoUrl && (
                   <button
                     type="button"
-                    onClick={() => onChange("SCHOOL_LOGO_URL", "")}
+                    onClick={async () => {
+                      onChange("SCHOOL_LOGO_URL", "");
+                      try {
+                        await fetch("/api/settings", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ SCHOOL_LOGO_URL: "" }),
+                        });
+                      } catch (err) {
+                        console.warn("Lỗi xóa logo:", err);
+                      }
+                    }}
                     className="text-[11px] text-rose-600 hover:text-rose-700 flex items-center gap-1 cursor-pointer font-medium"
                   >
                     <Trash2 className="h-3 w-3" />
@@ -412,8 +434,8 @@ export function ThemeBannerSettings({
                   <span>{logoUploadError}</span>
                 </div>
               )}
-              <p className="text-[11px] text-slate-500">
-                Gợi ý: Nên chọn ảnh vuông hoặc file PNG nền trong suốt (120x120px đến 256x256px) để hiển thị sắc nét và đẹp mắt nhất.
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                <span className="font-semibold text-slate-700">★ Cố định nhận diện:</span> Logo này được giữ cố định áp dụng cho tất cả các tùy chọn giao diện (Quốc khánh, Tết, Tựu trường...) và tự động xuất hiện tại đầu trang slidebar/menu. Khuyến nghị dùng ảnh PNG trong suốt.
               </p>
             </div>
 

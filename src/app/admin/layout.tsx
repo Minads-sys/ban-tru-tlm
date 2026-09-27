@@ -45,9 +45,23 @@ export default async function AdminLayout({
     permissions: currentUser.permissions,
   };
 
+  const schoolSettings = await prisma.systemSetting.findMany({
+    where: {
+      key: { in: ["SCHOOL_LOGO_URL", "SCHOOL_NAME"] },
+    },
+  });
+  const settingsMap = schoolSettings.reduce((acc, s) => {
+    acc[s.key] = s.value;
+    return acc;
+  }, {} as Record<string, string>);
+
   return (
     <div id="admin-main-layout" className="min-h-screen bg-slate-50 print:min-h-0 print:h-auto print:bg-white">
-      <SidebarNav user={userForNav} />
+      <SidebarNav
+        user={userForNav}
+        schoolLogoUrl={settingsMap.SCHOOL_LOGO_URL || ""}
+        schoolName={settingsMap.SCHOOL_NAME || ""}
+      />
       <div className="flex min-h-screen flex-col md:pl-[250px] print:pl-0 print:min-h-0 print:h-auto print:block">
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto print:p-0 print:max-w-none print:min-h-0 print:h-auto print:block">
           {children}

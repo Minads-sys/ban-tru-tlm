@@ -217,6 +217,8 @@ export default function AdminSettingsPage() {
           ...prev,
           SCHOOL_NAME: data.SCHOOL_NAME ?? prev.SCHOOL_NAME,
           SCHOOL_ADDRESS: data.SCHOOL_ADDRESS ?? prev.SCHOOL_ADDRESS,
+          SCHOOL_PHONE: data.SCHOOL_PHONE ?? prev.SCHOOL_PHONE,
+          SCHOOL_LOGO_URL: data.SCHOOL_LOGO_URL ?? prev.SCHOOL_LOGO_URL,
           MEAL_UNIT_PRICE: data.MEAL_UNIT_PRICE ?? prev.MEAL_UNIT_PRICE,
           CUTOFF_TIME: data.CUTOFF_TIME ?? prev.CUTOFF_TIME,
           MEAL_LOCK_TIME_1: data.MEAL_LOCK_TIME_1 ?? prev.MEAL_LOCK_TIME_1,

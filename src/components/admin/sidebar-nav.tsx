@@ -37,6 +37,8 @@ export interface SidebarNavProps {
     studentId?: string | null;
     permissions?: string[];
   };
+  schoolLogoUrl?: string;
+  schoolName?: string;
 }
 
 import { PERMISSIONS, Permission } from "@/lib/permissions";
@@ -136,7 +138,7 @@ const NAV_ITEMS: NavItem[] = [
   },
 ];
 
-export function SidebarNav({ user }: SidebarNavProps) {
+export function SidebarNav({ user, schoolLogoUrl, schoolName }: SidebarNavProps) {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
 
@@ -160,12 +162,20 @@ export function SidebarNav({ user }: SidebarNavProps) {
           className="flex items-center gap-3 font-bold tracking-tight hover:opacity-90 transition-opacity"
           onClick={() => setIsOpen(false)}
         >
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-600 shadow-md shadow-blue-500/20 text-white">
-            <Utensils className="h-5 w-5" />
-          </div>
+          {schoolLogoUrl ? (
+            <img
+              src={schoolLogoUrl}
+              alt="Logo"
+              className="h-9 w-auto max-w-[48px] object-contain drop-shadow-sm shrink-0"
+            />
+          ) : (
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-600 shadow-md shadow-blue-500/20 text-white">
+              <Utensils className="h-5 w-5" />
+            </div>
+          )}
           <div>
             <div className="text-base font-bold text-white tracking-wide">
-              BAN-TRU-TLM
+              {schoolName || "BAN-TRU-TLM"}
             </div>
             <div className="text-[11px] font-medium text-slate-400">
               Quản lý Bán trú
