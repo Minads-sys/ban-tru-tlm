@@ -1144,13 +1144,56 @@ export async function validateMealCancelImport(
   });
   const cancellationMap = new Map(existingCancellations.map((c) => [c.studentId, c.status]));
 
-  // 4. Lấy TKB hôm nay
-  const dayOfWeek = todayUTC.getUTCDay();
+  // 4. Lấy TKB tuần hôm nay và Lịch ăn đặc biệt hôm nay
+  const dayOfWeek = todayUTC.getUTCDay(); // 0=CN, 1=T2, ..., 6=T7
   const dayFieldMap: Record<number, string> = {
     1: 'monday', 2: 'tuesday', 3: 'wednesday',
     4: 'thursday', 5: 'friday', 6: 'saturday',
   };
   const dayField = dayFieldMap[dayOfWeek];
+
+  const calendarWeekNumber = getWeekNumber(todayUTC);
+  const schoolWeekInfo = getSchoolWeekInfo(todayUTC);
+  const schoolWeekNumber = schoolWeekInfo.schoolWeekNumber;
+  const possibleWeeks = Array.from(new Set([calendarWeekNumber, schoolWeekNumber]));
+  const possibleYears = Array.from(new Set([todayUTC.getUTCFullYear(), schoolWeekInfo.calendarYear]));
+
+  // Lấy các lớp có lịch ăn hôm nay theo TKB tuần
+  const classSchedulesWithMeal = new Set<string>();
+  if (dayField) {
+    const activeSchedules = await prisma.classWeeklySchedule.findMany({
+      where: {
+        year: { in: possibleYears },
+        weekNumber: { in: possibleWeeks },
+        [dayField]: { not: 'NONE' },
+      },
+      select: { classId: true },
+    });
+    activeSchedules.forEach((s) => classSchedulesWithMeal.add(s.classId));
+  }
+
+  // Lấy danh sách HS có lịch ăn đặc biệt hôm nay (VD: Ngoại ngữ 2)
+  const specialMealsToday = await prisma.studentSpecialMeal.findMany({
+    where: {
+      date: todayUTC,
+      shift: { not: 'NONE' },
+    },
+    select: { studentId: true },
+  });
+  const specialMealStudentIds = new Set(specialMealsToday.map((sm) => sm.studentId));
+
+  // Helper kiểm tra học sinh có lịch ăn hôm nay không
+  const checkStudentMealToday = (student: { id: string; classId: string; mealStartDate?: Date | null }) => {
+    const hasClassMeal = dayField ? classSchedulesWithMeal.has(student.classId) : false;
+    const hasSpecialMeal = specialMealStudentIds.has(student.id);
+    const mealNotStarted = student.mealStartDate ? new Date(student.mealStartDate) > todayUTC : false;
+    return {
+      hasMeal: (hasClassMeal && !mealNotStarted) || hasSpecialMeal,
+      mealNotStarted,
+      hasClassMeal,
+      hasSpecialMeal,
+    };
+  };
 
   // 5. Validate từng dòng
   const results: ValidateRowResult[] = [];
@@ -1242,14 +1285,30 @@ export async function validateMealCancelImport(
       continue;
     }
 
-    // 5.3 Xử lý trùng tên
-    let matchedStudent = matchesActive[0];
+    // 5.3 Kiểm tra học sinh có lịch ăn bán trú hôm nay không (theo TKB tuần của lớp hoặc Lịch ăn đặc biệt)
+    const matchesWithMeal = matchesActive.filter((s) => checkStudentMealToday(s).hasMeal);
+    if (matchesWithMeal.length === 0) {
+      result.status = 'WARNING';
+      const unstarted = matchesActive.find((s) => checkStudentMealToday(s).mealNotStarted);
+      if (unstarted && unstarted.mealStartDate) {
+        const startStr = new Date(unstarted.mealStartDate).toLocaleDateString('vi-VN');
+        result.message = `HS "${row.hoTen}" chưa tới ngày bắt đầu ăn bán trú (${startStr}) → Bỏ qua`;
+      } else {
+        result.message = `Lớp ${row.lop} không có lịch ăn bán trú hôm nay (và HS không có lịch ăn đặc biệt) → Bỏ qua`;
+      }
+      results.push(result);
+      continue;
+    }
 
-    if (matchesActive.length > 1) {
+    // 5.4 Xử lý trùng tên
+    let candidatePool = matchesWithMeal;
+    let matchedStudent = candidatePool[0];
+
+    if (candidatePool.length > 1) {
       // Thử dùng NgaySinh để phân biệt
       if (row.ngaySinh) {
         const inputBirthDate = row.ngaySinh; // DD/MM/YYYY string
-        const matchByBirth = matchesActive.filter((s) => {
+        const matchByBirth = candidatePool.filter((s) => {
           if (!s.birthDate) return false;
           const dbDate = s.birthDate.toISOString().split('T')[0]; // YYYY-MM-DD
           // Convert input DD/MM/YYYY to YYYY-MM-DD for comparison
@@ -1267,8 +1326,8 @@ export async function validateMealCancelImport(
         } else {
           // NgaySinh didn't help — still ambiguous
           result.status = 'AMBIGUOUS';
-          result.message = `Tìm thấy ${matchesActive.length} HS cùng tên "${row.hoTen}" lớp ${row.lop}, ngày sinh không khớp → Cần chọn thủ công`;
-          result.candidates = matchesActive.map((s) => ({
+          result.message = `Tìm thấy ${candidatePool.length} HS cùng tên "${row.hoTen}" lớp ${row.lop} có lịch ăn hôm nay, ngày sinh không khớp → Cần chọn thủ công`;
+          result.candidates = candidatePool.map((s) => ({
             studentId: s.id,
             boardingCode: s.boardingCode || '',
             fullName: s.user?.fullName || '',
@@ -1281,8 +1340,8 @@ export async function validateMealCancelImport(
       } else {
         // Không có NgaySinh → cần chọn thủ công
         result.status = 'AMBIGUOUS';
-        result.message = `Tìm thấy ${matchesActive.length} HS cùng tên "${row.hoTen}" lớp ${row.lop} → Cần chọn thủ công`;
-        result.candidates = matchesActive.map((s) => ({
+        result.message = `Tìm thấy ${candidatePool.length} HS cùng tên "${row.hoTen}" lớp ${row.lop} có lịch ăn hôm nay → Cần chọn thủ công`;
+        result.candidates = candidatePool.map((s) => ({
           studentId: s.id,
           boardingCode: s.boardingCode || '',
           fullName: s.user?.fullName || '',
@@ -1294,7 +1353,7 @@ export async function validateMealCancelImport(
       }
     }
 
-    // 5.4 Kiểm tra trùng lặp trong file
+    // 5.5 Kiểm tra trùng lặp trong file
     const dedupeKey = `${matchedStudent.id}`;
     if (seenKeys.has(dedupeKey)) {
       result.status = 'WARNING';
@@ -1304,7 +1363,7 @@ export async function validateMealCancelImport(
     }
     seenKeys.add(dedupeKey);
 
-    // 5.5 Kiểm tra đã có đơn cắt suất hôm nay
+    // 5.6 Kiểm tra đã có đơn cắt suất hôm nay
     const existingStatus = cancellationMap.get(matchedStudent.id);
     if (existingStatus === 'APPROVED' || existingStatus === 'PENDING') {
       result.status = 'WARNING';
@@ -1313,7 +1372,7 @@ export async function validateMealCancelImport(
       continue;
     }
 
-    // 5.6 Match thành công
+    // 5.7 Match thành công
     result.status = 'OK';
     result.matchedStudentId = matchedStudent.id;
     result.matchedBoardingCode = matchedStudent.boardingCode || 'N/A';
@@ -1365,12 +1424,71 @@ export async function importMealCancellations(
     const approverId = session.user.id;
     const noteText = `Import Excel cắt suất: ${reason.trim()}`;
 
-    // 3. Upsert MealCancellation hàng loạt
+    // 3. Lọc danh sách học sinh thực sự có lịch ăn hôm nay (Double-check an toàn)
+    const dayOfWeek = todayUTC.getUTCDay();
+    const dayFieldMap: Record<number, string> = {
+      1: 'monday', 2: 'tuesday', 3: 'wednesday',
+      4: 'thursday', 5: 'friday', 6: 'saturday',
+    };
+    const dayField = dayFieldMap[dayOfWeek];
+
+    const calendarWeekNumber = getWeekNumber(todayUTC);
+    const schoolWeekInfo = getSchoolWeekInfo(todayUTC);
+    const schoolWeekNumber = schoolWeekInfo.schoolWeekNumber;
+    const possibleWeeks = Array.from(new Set([calendarWeekNumber, schoolWeekNumber]));
+    const possibleYears = Array.from(new Set([todayUTC.getUTCFullYear(), schoolWeekInfo.calendarYear]));
+
+    const classSchedulesWithMeal = new Set<string>();
+    if (dayField) {
+      const activeSchedules = await prisma.classWeeklySchedule.findMany({
+        where: {
+          year: { in: possibleYears },
+          weekNumber: { in: possibleWeeks },
+          [dayField]: { not: 'NONE' },
+        },
+        select: { classId: true },
+      });
+      activeSchedules.forEach((s) => classSchedulesWithMeal.add(s.classId));
+    }
+
+    const specialMealsToday = await prisma.studentSpecialMeal.findMany({
+      where: {
+        studentId: { in: studentIds },
+        date: todayUTC,
+        shift: { not: 'NONE' },
+      },
+      select: { studentId: true },
+    });
+    const specialMealStudentIds = new Set(specialMealsToday.map((sm) => sm.studentId));
+
+    const studentsToImport = await prisma.student.findMany({
+      where: {
+        id: { in: studentIds },
+        boardingStatus: 'ACTIVE',
+      },
+      select: { id: true, classId: true, mealStartDate: true },
+    });
+
+    const validStudentIds = studentsToImport
+      .filter((s) => {
+        const hasClassMeal = dayField ? classSchedulesWithMeal.has(s.classId) : false;
+        const hasSpecialMeal = specialMealStudentIds.has(s.id);
+        const mealNotStarted = s.mealStartDate ? new Date(s.mealStartDate) > todayUTC : false;
+        return (hasClassMeal && !mealNotStarted) || hasSpecialMeal;
+      })
+      .map((s) => s.id);
+
+    if (validStudentIds.length === 0) {
+      return { success: false, error: 'Không có học sinh nào có lịch ăn bán trú hôm nay để cắt suất.' };
+    }
+
+    const skippedCount = studentIds.length - validStudentIds.length;
+
+    // 4. Upsert MealCancellation hàng loạt
     let importedCount = 0;
-    let skippedCount = 0;
 
     await prisma.$transaction(
-      studentIds.map((studentId) =>
+      validStudentIds.map((studentId) =>
         prisma.mealCancellation.upsert({
           where: {
             studentId_cancelDate: {
@@ -1399,9 +1517,9 @@ export async function importMealCancellations(
         })
       )
     );
-    importedCount = studentIds.length;
+    importedCount = validStudentIds.length;
 
-    // 4. Sync DailyMealSummary
+    // 5. Sync DailyMealSummary
     try {
       await syncDailyMealSummaryForDate(todayUTC);
     } catch (syncErr) {
