@@ -91,6 +91,16 @@ export async function POST(request: Request) {
 
     await prisma.$transaction(updates);
 
+    // Đồng bộ tên đơn vị cung cấp suất ăn mới sang các bản ghi suất ăn đã tạo
+    if (body.CATERING_PROVIDER_NAME) {
+      const newProviderName = String(body.CATERING_PROVIDER_NAME).trim();
+      if (newProviderName) {
+        await prisma.dailyMealShowcase.updateMany({
+          data: { providerName: newProviderName },
+        });
+      }
+    }
+
     const updatedKeys = Object.keys(body).join(", ");
     await logAudit({
       req: request,

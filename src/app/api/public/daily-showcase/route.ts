@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
             id: showcase.id,
             date: dateStr,
             photoUrls: showcase.photoUrls || [],
-            providerName: showcase.providerName || settingsMap.CATERING_PROVIDER_NAME,
+            providerName: settingsMap.CATERING_PROVIDER_NAME || showcase.providerName || "Bếp Trung Tâm TLM",
             note: showcase.note,
             items: showcase.items || [],
           }
@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
         logoUrl: settingsMap.SCHOOL_LOGO_URL,
       },
       providerInfo: {
-        name: showcase?.providerName || settingsMap.CATERING_PROVIDER_NAME,
+        name: settingsMap.CATERING_PROVIDER_NAME || showcase?.providerName || "Bếp Trung Tâm TLM",
         phone: settingsMap.CATERING_PROVIDER_PHONE,
       },
     });
