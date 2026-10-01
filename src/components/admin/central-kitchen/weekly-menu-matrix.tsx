@@ -18,6 +18,8 @@ import {
   Eye,
   X,
   Upload,
+  Building2,
+  ExternalLink,
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { cropAndCompressToSquareWebP } from "@/lib/image-compressor";
@@ -61,6 +63,7 @@ export function WeeklyMenuMatrix() {
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
   const [weekDaysData, setWeekDaysData] = useState<DayMenuData[]>([]);
+  const [providerName, setProviderName] = useState<string>("Bếp Trung Tâm TLM");
 
   // Dish bank & categories for selecting dishes
   const [dishes, setDishes] = useState<Dish[]>([]);
@@ -98,6 +101,10 @@ export function WeeklyMenuMatrix() {
       const res = await fetch(`/api/central-kitchen/daily-showcase/weekly?startDate=${startStr}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Không thể tải thực đơn tuần");
+
+      if (data.defaultProviderName) {
+        setProviderName(data.defaultProviderName);
+      }
 
       const todayStr = formatDate(new Date());
 
@@ -369,6 +376,24 @@ export function WeeklyMenuMatrix() {
 
   return (
     <div className="space-y-4">
+      {/* THÔNG TIN ĐƠN VỊ CUNG CẤP SUẤT ĂN */}
+      <div className="flex flex-wrap items-center justify-between gap-2.5 px-4 py-2.5 bg-gradient-to-r from-blue-50 to-indigo-50/60 dark:from-blue-950/40 dark:to-slate-900 border border-blue-100 dark:border-blue-900/40 rounded-2xl text-xs shadow-2xs">
+        <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
+          <div className="w-6 h-6 rounded-lg bg-blue-600/10 text-blue-600 flex items-center justify-center font-bold">
+            <Building2 className="w-3.5 h-3.5" />
+          </div>
+          <span>Đơn vị cung cấp suất ăn:</span>
+          <span className="font-bold text-blue-900 dark:text-blue-300 text-sm">{providerName}</span>
+        </div>
+        <a
+          href="/admin/settings"
+          className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:underline font-bold inline-flex items-center gap-1.5 transition ml-auto"
+        >
+          <span>Thay đổi tên & hotline tại Cài đặt</span>
+          <ExternalLink className="w-3 h-3" />
+        </a>
+      </div>
+
       {/* TOOLBAR TUẦN & TIỆN ÍCH */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
         <div className="flex items-center gap-2">
