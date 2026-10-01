@@ -636,4 +636,84 @@ model MealDeliveryRecord {
   @@map("meal_delivery_records")
 }
 
+// ==================== CÔNG KHAI SUẤT ĂN & NGÂN HÀNG MÓN BẾP TRUNG TÂM ====================
+
+// 1. Danh mục Nhóm món ăn do User tự cài đặt (Món mặn, Món xào, Món canh, Tráng miệng, Món nước...)
+model CentralKitchenDishCategory {
+  id        String   @id @default(cuid())
+  code      String   @unique // Mã nhóm (vd: "MON_MAN", "MON_XAO", "MON_CANH", "TRANG_MIENG", "MON_NUOC", "KHAC")
+  name      String   // Tên hiển thị do User cài đặt
+  icon      String?  @default("Utensils") // Icon đại diện
+  sortOrder Int      @default(0) @map("sort_order")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  dishes    CentralKitchenDish[]
+
+  @@index([isActive])
+  @@index([sortOrder])
+  @@map("central_kitchen_dish_categories")
+}
+
+// 2. Ngân hàng món ăn Bếp Trung Tâm
+model CentralKitchenDish {
+  id          String   @id @default(cuid())
+  code        String   @unique // Mã món: Tự sinh (vd: MON_001, MON_002...) hoặc do User tự đặt (vd: CT, DH-THIT...)
+  name        String   // Tên món: "Cơm trắng", "Đậu hũ dồn thịt", "Canh bắp cải cuộn thịt"...
+  categoryId  String?  @map("category_id") // FK tới nhóm món do User cài đặt
+  description String?  // Ghi chú dinh dưỡng / dị ứng
+  imageUrl    String?  @map("image_url") // Ảnh đại diện mẫu (tùy chọn)
+  isActive    Boolean  @default(true) @map("is_active")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  category      CentralKitchenDishCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  showcaseItems DailyMealShowcaseItem[]
+
+  @@index([categoryId])
+  @@index([isActive])
+  @@map("central_kitchen_dishes")
+}
+
+// 3. Suất ăn công khai theo ngày (Daily Meal Showcase)
+model DailyMealShowcase {
+  id           String    @id @default(cuid())
+  date         DateTime  @unique @db.Date // Ngày phục vụ suất ăn (YYYY-MM-DD)
+  photoUrls    String[]  @default([]) @map("photo_urls") // Mảng 0-3 ảnh tỉ lệ 1:1, nén WebP 150KB - 300KB
+  providerName String    @default("") @map("provider_name") // Tên công ty cung cấp (snapshot từ SystemSetting)
+  note         String?   // Ghi chú dinh dưỡng / thông điệp
+  isPublished  Boolean   @default(true) @map("is_published")
+  publishedAt  DateTime? @map("published_at")
+  createdById  String?   @map("created_by_id")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  items        DailyMealShowcaseItem[]
+
+  @@index([date])
+  @@index([isPublished])
+  @@map("daily_meal_showcases")
+}
+
+// 4. Món ăn cụ thể trong suất ăn theo ngày
+model DailyMealShowcaseItem {
+  id           String   @id @default(cuid())
+  showcaseId   String   @map("showcase_id")
+  dishId       String?  @map("dish_id")
+  dishCode     String   @map("dish_code")     // Snapshot mã món
+  dishName     String   @map("dish_name")     // Snapshot tên món
+  categoryName String   @default("") @map("category_name") // Snapshot tên nhóm món ("Món mặn", "Món xào"...)
+  sortOrder    Int      @default(0) @map("sort_order")
+
+  showcase     DailyMealShowcase   @relation(fields: [showcaseId], references: [id], onDelete: Cascade)
+  dish         CentralKitchenDish? @relation(fields: [dishId], references: [id], onDelete: SetNull)
+
+  @@index([showcaseId])
+  @@index([dishId])
+  @@map("daily_meal_showcase_items")
+}
+
+
 

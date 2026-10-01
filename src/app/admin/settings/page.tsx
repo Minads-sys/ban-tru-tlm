@@ -67,6 +67,8 @@ interface SettingsFormState {
   SCHOOL_LOGO_URL: string;
   STUDENT_PORTAL_MOTTO: string;
   STUDENT_PORTAL_ANNOUNCEMENT: string;
+  CATERING_PROVIDER_NAME: string;
+  CATERING_PROVIDER_PHONE: string;
 }
 
 const VIETNAM_BANKS = [
@@ -135,6 +137,8 @@ export default function AdminSettingsPage() {
     SCHOOL_LOGO_URL: '',
     STUDENT_PORTAL_MOTTO: 'Nhiệt liệt chào mừng năm học mới',
     STUDENT_PORTAL_ANNOUNCEMENT: '',
+    CATERING_PROVIDER_NAME: 'Bếp Trung Tâm TLM',
+    CATERING_PROVIDER_PHONE: '(028) 3829 7990',
   });
 
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -242,6 +246,8 @@ export default function AdminSettingsPage() {
           STUDENT_PORTAL_BANNER_URL: data.STUDENT_PORTAL_BANNER_URL ?? prev.STUDENT_PORTAL_BANNER_URL,
           STUDENT_PORTAL_MOTTO: data.STUDENT_PORTAL_MOTTO ?? prev.STUDENT_PORTAL_MOTTO,
           STUDENT_PORTAL_ANNOUNCEMENT: data.STUDENT_PORTAL_ANNOUNCEMENT ?? prev.STUDENT_PORTAL_ANNOUNCEMENT,
+          CATERING_PROVIDER_NAME: data.CATERING_PROVIDER_NAME ?? prev.CATERING_PROVIDER_NAME,
+          CATERING_PROVIDER_PHONE: data.CATERING_PROVIDER_PHONE ?? prev.CATERING_PROVIDER_PHONE,
         }));
       } catch (err) {
         console.error(err);
@@ -629,6 +635,44 @@ export default function AdminSettingsPage() {
                   />
                   <p className="text-xs font-semibold text-emerald-700">
                     Hiển thị: {formatCurrency(formData.MEAL_UNIT_PRICE)} / suất
+                  </p>
+                </div>
+
+                {/* Đơn vị cung cấp suất ăn */}
+                <div className="space-y-2">
+                  <Label htmlFor="CATERING_PROVIDER_NAME" className="flex items-center gap-2 text-sm font-medium">
+                    <Building className="h-4 w-4 text-slate-500" />
+                    Đơn Vị Cung Cấp Suất Ăn
+                  </Label>
+                  <Input
+                    id="CATERING_PROVIDER_NAME"
+                    type="text"
+                    placeholder="VD: CTY TNHH Thực Phẩm & Suất Ăn Bếp Vàng"
+                    value={formData.CATERING_PROVIDER_NAME}
+                    onChange={(e) => handleChange('CATERING_PROVIDER_NAME', e.target.value)}
+                    className="h-10"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Tên công ty hiển thị trên Trang Công Khai Suất Ăn và Cổng Học Sinh.
+                  </p>
+                </div>
+
+                {/* Hotline Đơn vị cung cấp */}
+                <div className="space-y-2">
+                  <Label htmlFor="CATERING_PROVIDER_PHONE" className="flex items-center gap-2 text-sm font-medium">
+                    <Phone className="h-4 w-4 text-slate-500" />
+                    Hotline Đơn Vị Cung Cấp
+                  </Label>
+                  <Input
+                    id="CATERING_PROVIDER_PHONE"
+                    type="text"
+                    placeholder="VD: (028) 3829 7990"
+                    value={formData.CATERING_PROVIDER_PHONE}
+                    onChange={(e) => handleChange('CATERING_PROVIDER_PHONE', e.target.value)}
+                    className="h-10"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Số điện thoại tiếp nhận phản ánh về chất lượng khẩu phần ăn.
                   </p>
                 </div>
               </CardContent>

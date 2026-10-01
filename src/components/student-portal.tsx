@@ -77,6 +77,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { PublicMealsModal } from "@/components/student/public-meals-modal";
 
 export interface SettlementRecordItem {
   id: string;
@@ -3107,59 +3108,11 @@ export function StudentPortal({ forceStudentId, readOnly = false }: { forceStude
         mealLockTime1Sunday={themeConfig.mealLockTime1Sunday || "19:00"}
       />
 
-      {/* 6. Modal Thông báo Tính năng Công khai hình ảnh suất ăn (Đang phát triển) */}
-      {isPublicMealsOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl border border-slate-200 overflow-hidden flex flex-col">
-            <div className="p-4 bg-gradient-to-r from-sky-600 to-blue-600 text-white flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-                  <Eye className="h-5 w-5 text-white" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold">Công Khai Suất Ăn</h3>
-                  <p className="text-[10px] text-sky-100">Hình ảnh khay cơm & khẩu phần</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setIsPublicMealsOpen(false)}
-                className="text-white/80 hover:text-white p-1 rounded-lg"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="p-4 text-center space-y-3">
-              <div className="w-14 h-14 rounded-2xl bg-sky-50 border border-sky-200 flex items-center justify-center mx-auto text-sky-600 shadow-inner">
-                <Utensils className="h-7 w-7 text-sky-600" />
-              </div>
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-sky-700 bg-sky-100/70 px-2 py-0.5 rounded-full inline-block mb-1.5">
-                  Đang phát triển
-                </span>
-                <h4 className="text-sm font-bold text-slate-800">
-                  Trang Web Công Khai Suất Ăn Bán Trú
-                </h4>
-              </div>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Hệ thống công khai hình ảnh chụp trực tiếp từ bếp ăn mỗi ngày (khay cơm, món ăn, định lượng dinh dưỡng) đang được hoàn thiện kết nối.
-              </p>
-              <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-[11px] text-slate-500 font-medium">
-                🔗 Quý phụ huynh và học sinh sẽ sớm có thể truy cập để xem toàn bộ album ảnh các bữa ăn hàng ngày của nhà trường.
-              </div>
-            </div>
-
-            <div className="p-3 border-t border-slate-100">
-              <button
-                onClick={() => setIsPublicMealsOpen(false)}
-                className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition cursor-pointer active:scale-95 shadow-xs"
-              >
-                Đã hiểu
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* 6. Modal Công khai hình ảnh suất ăn Bán trú */}
+      <PublicMealsModal
+        isOpen={isPublicMealsOpen}
+        onClose={() => setIsPublicMealsOpen(false)}
+      />
 
       {/* 7. Modal Thông báo Thực đơn tuần (Đang cập nhật) */}
       {isWeeklyMenuOpen && (

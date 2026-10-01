@@ -125,3 +125,86 @@ export async function compressImage(
     reader.readAsDataURL(file);
   });
 }
+
+/**
+ * Tiện ích nén ảnh tỉ lệ 1:1 vuông và tối ưu dung lượng trong khoảng 150KB - 300KB (WebP)
+ * Phục vụ cho tính năng Công khai ảnh suất ăn hàng ngày
+ */
+export async function cropAndCompressToSquareWebP(
+  file: File,
+  targetMinKb: number = 150,
+  targetMaxKb: number = 300,
+  targetResolution: number = 1080
+): Promise<{ file: File; previewUrl: string; sizeKb: number }> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = async () => {
+        try {
+          const canvas = document.createElement("canvas");
+          canvas.width = targetResolution;
+          canvas.height = targetResolution;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            return reject(new Error("Không thể khởi tạo Canvas 2D"));
+          }
+
+          // Cắt vuông từ tâm ảnh (Center Crop 1:1)
+          const sw = img.width;
+          const sh = img.height;
+          const minDim = Math.min(sw, sh);
+          const sx = (sw - minDim) / 2;
+          const sy = (sh - minDim) / 2;
+
+          ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, targetResolution, targetResolution);
+
+          // Nén lũy tiến sang WebP để đạt dung lượng mục tiêu 150KB - 300KB
+          let quality = 0.85;
+          let blob: Blob | null = null;
+
+          // Thử nghiệm giảm chất lượng nếu ảnh vượt quá targetMaxKb
+          for (let step = 0; step < 6; step++) {
+            blob = await new Promise<Blob | null>((res) =>
+              canvas.toBlob((b) => res(b), "image/webp", quality)
+            );
+
+            if (!blob) break;
+            const curKb = blob.size / 1024;
+
+            if (curKb <= targetMaxKb && curKb >= targetMinKb) {
+              break; // Đã đạt trong khoảng lý tưởng
+            } else if (curKb > targetMaxKb) {
+              quality -= 0.1;
+              if (quality < 0.4) break;
+            } else {
+              // Nếu ảnh quá nhỏ (< 150KB) thì tăng chất lượng nếu còn tăng được
+              if (quality < 0.95) {
+                quality += 0.08;
+              } else {
+                break;
+              }
+            }
+          }
+
+          if (!blob) {
+            return reject(new Error("Lỗi nén ảnh sang WebP"));
+          }
+
+          const cleanName = file.name.replace(/\.[^/.]+$/, "") + ".webp";
+          const compressedFile = new File([blob], cleanName, { type: "image/webp" });
+          const previewUrl = URL.createObjectURL(blob);
+          const sizeKb = Math.round(blob.size / 1024);
+
+          resolve({ file: compressedFile, previewUrl, sizeKb });
+        } catch (err) {
+          reject(err);
+        }
+      };
+      img.onerror = () => reject(new Error("Không thể đọc định dạng ảnh"));
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = () => reject(new Error("Không thể mở file"));
+    reader.readAsDataURL(file);
+  });
+}

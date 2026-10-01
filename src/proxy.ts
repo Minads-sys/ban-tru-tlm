@@ -6,6 +6,23 @@ export default auth((req) => {
   const isLoggedIn = !!req.auth;
   const userRole = req.auth?.user?.role;
   const pathname = nextUrl.pathname;
+  const host = req.headers.get('host') || '';
+
+  // Xử lý subdomain công khai congkhai.bantrutlm.com
+  if (host.startsWith('congkhai.')) {
+    if (
+      pathname.startsWith('/_next') ||
+      pathname.startsWith('/api') ||
+      pathname.startsWith('/uploads') ||
+      pathname.includes('.')
+    ) {
+      return NextResponse.next();
+    }
+    if (pathname === '/' || pathname === '') {
+      return NextResponse.rewrite(new URL('/cong-khai', req.url));
+    }
+    return NextResponse.rewrite(new URL(`/cong-khai${pathname}`, req.url));
+  }
 
   // Allow public routes, API routes, and standalone kitchen TV display
   if (
@@ -14,6 +31,8 @@ export default auth((req) => {
     pathname === '/student-login' ||
     pathname === '/kitchen-display' ||
     pathname.startsWith('/kitchen-display/') ||
+    pathname === '/cong-khai' ||
+    pathname.startsWith('/cong-khai/') ||
     pathname === '/huong-dan' ||
     pathname.startsWith('/huong-dan/')
   ) {

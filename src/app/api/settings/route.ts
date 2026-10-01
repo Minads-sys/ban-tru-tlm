@@ -36,6 +36,8 @@ export async function GET() {
       KITCHEN_MARKET_LOCK_TIME: '20:00',
       KITCHEN_MEAL_LOCK_TIME: '08:00',
       KITCHEN_DAY_TRANSITION_TIME: '14:00',
+      CATERING_PROVIDER_NAME: 'Bếp Trung Tâm TLM',
+      CATERING_PROVIDER_PHONE: '(028) 3829 7990',
     };
 
     settings.forEach((s) => {

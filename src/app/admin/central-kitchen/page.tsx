@@ -24,6 +24,7 @@ import {
   History,
   Save,
   Lock,
+  Camera,
 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ProductionDisplay } from "@/components/admin/central-kitchen/production-display";
@@ -34,6 +35,7 @@ import { IngredientManager } from "@/components/admin/central-kitchen/ingredient
 import { PasskeyManager } from "@/components/admin/central-kitchen/passkey-manager";
 import { HolidayManager } from "@/components/admin/central-kitchen/holiday-manager";
 import { HistoryReportView } from "@/components/admin/central-kitchen/history-report-view";
+import { MealShowcaseTab } from "@/components/admin/central-kitchen/meal-showcase-tab";
 import { toast } from "@/lib/toast";
 
 function getTodayString(): string {
@@ -349,7 +351,7 @@ export default function CentralKitchenPage() {
 
       {/* MAIN NAVIGATION TABS */}
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 w-full max-w-4xl bg-slate-200/80 dark:bg-slate-800/90 p-1.5 rounded-2xl h-auto border border-slate-300/80 dark:border-slate-700 gap-1.5 shadow-sm">
+        <TabsList className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 w-full max-w-5xl bg-slate-200/80 dark:bg-slate-800/90 p-1.5 rounded-2xl h-auto border border-slate-300/80 dark:border-slate-700 gap-1.5 shadow-sm">
           <TabsTrigger
             value="entry"
             className="group flex items-center justify-center gap-2 py-2.5 px-3 text-xs sm:text-sm font-bold rounded-xl transition-all duration-150 cursor-pointer
@@ -388,6 +390,16 @@ export default function CentralKitchenPage() {
           >
             <History className="w-4 h-4 text-indigo-600 group-data-[state=active]:text-white transition-colors shrink-0" />
             <span>Lịch sử & Báo cáo</span>
+          </TabsTrigger>
+
+          <TabsTrigger
+            value="showcase"
+            className="group flex items-center justify-center gap-2 py-2.5 px-3 text-xs sm:text-sm font-bold rounded-xl transition-all duration-150 cursor-pointer
+              data-[state=active]:bg-rose-600 data-[state=active]:text-white data-[state=active]:shadow-md data-[state=active]:shadow-rose-600/30
+              data-[state=inactive]:text-slate-700 dark:data-[state=inactive]:text-slate-200 data-[state=inactive]:bg-transparent data-[state=inactive]:hover:bg-white/60 dark:data-[state=inactive]:hover:bg-slate-700/60"
+          >
+            <Camera className="w-4 h-4 text-rose-600 group-data-[state=active]:text-white transition-colors shrink-0" />
+            <span>Công khai suất ăn</span>
           </TabsTrigger>
 
           {isSettingsAllowed && (
@@ -548,6 +560,11 @@ export default function CentralKitchenPage() {
         {/* TAB 5: HISTORY & REPORT (Lịch sử & Báo cáo) */}
         <TabsContent value="history" className="mt-4 outline-none">
           <HistoryReportView />
+        </TabsContent>
+
+        {/* TAB 6: MEAL SHOWCASE & DISH BANK (Công khai suất ăn & Thực đơn tuần) */}
+        <TabsContent value="showcase" className="mt-4 outline-none">
+          <MealShowcaseTab />
         </TabsContent>
       </Tabs>
 
