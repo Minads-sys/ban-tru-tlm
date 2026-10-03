@@ -3,6 +3,7 @@ import { getWeekNumber } from '@/lib/utils';
 import { BoardingStatus, CancellationStatus } from '@prisma/client';
 import { broadcastChange } from '@/lib/realtime-hub';
 import { prismaExcludeTestClasses } from '@/lib/test-classes';
+import { resolveStudentMealForDate } from '@/lib/special-meal-resolver';
 
 /**
  * Đồng bộ và tính toán lại bảng DailyMealSummary cho một ngày nhất định
@@ -92,12 +93,25 @@ export async function syncDailyMealSummaryForDate(date: Date) {
     });
     const overrideMap = new Map(mealOverrides.map((o) => [o.studentId, o.mealType]));
 
+    // 5. Lấy lịch ăn đặc biệt ngày này
+    const specialMeals = await prisma.studentSpecialMeal.findMany({
+      where: { date },
+      select: { studentId: true, shift: true },
+    });
+    const specialMealMap = new Map(specialMeals.map((sm) => [sm.studentId, sm]));
+
     let updatedCount = 0;
     const now = new Date();
 
     for (const schedule of schedules) {
       const students = schedule.class.students;
-      const activeStudents = students.filter((s) => !cancelledStudentIds.has(s.id));
+      const classShift = (schedule as any)[dayField] as "TIET_4" | "TIET_5";
+      const activeStudents = students.filter((s) => {
+        if (cancelledStudentIds.has(s.id)) return false;
+        const sm = specialMealMap.get(s.id);
+        const res = resolveStudentMealForDate(classShift, sm ? sm.shift : null);
+        return res.diningTarget === "CLASS";
+      });
 
       let man = 0;
       let chay = 0;

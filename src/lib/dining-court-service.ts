@@ -2,6 +2,7 @@ import prisma from "@/lib/db";
 import { BoardingStatus, CancellationStatus } from "@prisma/client";
 import { getWeekNumber, getVietnamTodayUTC, isPastCutoffTime, splitVietnameseName, compareVietnameseNames, getSchoolWeekInfo, SchoolWeekInfo } from "@/lib/utils";
 import { prismaExcludeTestClasses } from "@/lib/test-classes";
+import { resolveStudentMealForDate } from "@/lib/special-meal-resolver";
 
 export interface StudentMealInfo {
   id: string;
@@ -587,15 +588,24 @@ export async function getDayMealClasses(dateStr: string) {
     },
   });
 
-  // Tập hợp các học sinh có lịch ăn đặc biệt hợp lệ trong ngày (Ca Tiết 4 hoặc Tiết 5, đang bán trú, chưa cắt suất)
-  const specialMealStudentIds = new Set<string>();
+  // Map mỗi học sinh đặc biệt hợp lệ trong ngày (Ca Tiết 4 hoặc Tiết 5, đang bán trú, chưa cắt suất)
+  const specialMealMap = new Map<string, typeof specialMeals[0]>();
   for (const sm of specialMeals) {
     if (
       sm.student?.boardingStatus === BoardingStatus.ACTIVE &&
       !cancelledStudentIds.has(sm.studentId) &&
       (sm.shift === "TIET_4" || sm.shift === "TIET_5")
     ) {
-      specialMealStudentIds.add(sm.studentId);
+      specialMealMap.set(sm.studentId, sm);
+    }
+  }
+
+  // Map ca ăn thường niên của từng lớp trong ngày
+  const classScheduleShiftMap = new Map<string, "TIET_4" | "TIET_5">();
+  for (const s of schedules) {
+    const sShift = (s as any)[dayField] as "TIET_4" | "TIET_5";
+    if (sShift === "TIET_4" || sShift === "TIET_5") {
+      classScheduleShiftMap.set(s.classId, sShift);
     }
   }
 
@@ -608,10 +618,16 @@ export async function getDayMealClasses(dateStr: string) {
     if (shift !== "TIET_4" && shift !== "TIET_5") continue;
 
     const students = schedule.class.students;
-    // Lọc ra các HS ăn theo lớp thường: KHÔNG bị cắt suất VÀ KHÔNG có lịch ăn đặc biệt ngày này
-    const activeStudents = students.filter(
-      (s) => !cancelledStudentIds.has(s.id) && !specialMealStudentIds.has(s.id)
-    );
+    // Lọc ra các HS ăn theo lớp thường theo Conflict Resolution Engine:
+    // - Học sinh KHÔNG bị cắt suất
+    // - Nếu có lịch đặc biệt: chỉ giữ lại nếu CÙNG CA ĂN với lớp (resolveStudentMealForDate trả về REGULAR_CLASS).
+    // - Nếu có lịch đặc biệt KHÁC CA ĂN (SPLIT_TO_SPECIAL) -> tách học sinh ra khỏi lớp thường, chuyển sang nhóm đặc biệt!
+    const activeStudents = students.filter((s) => {
+      if (cancelledStudentIds.has(s.id)) return false;
+      const sm = specialMealMap.get(s.id);
+      const res = resolveStudentMealForDate(shift, sm ? (sm.shift as "TIET_4" | "TIET_5") : null);
+      return res.diningTarget === "CLASS";
+    });
 
     let manCount = 0;
     let chayCount = 0;
@@ -661,6 +677,7 @@ export async function getDayMealClasses(dateStr: string) {
 
   // ==================== LỚP ẢO TỪ LỊCH ĂN ĐẶC BIỆT ====================
   // Gom HS đặc biệt theo scheduleName + shift → tạo "lớp ảo"
+  // Chỉ gom những học sinh mà lớp gốc KHÔNG ăn (SPECIAL_ONLY) HOẶC lớp gốc ăn KHÁC CA (SPLIT_TO_SPECIAL)
   const specialGroups = new Map<string, {
     scheduleName: string;
     shift: "TIET_4" | "TIET_5";
@@ -674,6 +691,12 @@ export async function getDayMealClasses(dateStr: string) {
 
     const smShift = sm.shift as "TIET_4" | "TIET_5";
     if (smShift !== "TIET_4" && smShift !== "TIET_5") continue;
+
+    const classShift = classScheduleShiftMap.get(student.classId) || "NONE";
+    const res = resolveStudentMealForDate(classShift, smShift);
+
+    // Nếu cùng ca ăn -> học sinh đã được giữ lại ăn cùng lớp gốc, không đưa vào lớp ảo đặc biệt
+    if (res.diningTarget !== "SPECIAL_GROUP") continue;
 
     // Gom theo scheduleName + shift
     const groupKey = `${sm.scheduleName}::${smShift}`;

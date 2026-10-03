@@ -9,6 +9,7 @@ import { logAudit, AUDIT_ACTIONS, AUDIT_MODULES } from "@/lib/audit-log";
 import { autoApproveExpiredCancellations } from "@/app/admin/meal-cancel/actions";
 import { syncDailyMealSummaryForDate } from "@/lib/daily-meals";
 import { prismaExcludeTestClasses } from "@/lib/test-classes";
+import { resolveStudentMealForDate } from "@/lib/special-meal-resolver";
 
 // GET: Lấy tổng hợp suất ăn cho 1 ngày
 export async function GET(request: NextRequest) {
@@ -114,6 +115,47 @@ export async function GET(request: NextRequest) {
   });
   const overrideMap = new Map(mealOverrides.map(o => [o.studentId, o.mealType]));
 
+  // Lấy HS có lịch ăn đặc biệt ngày này
+  const specialMeals = await prisma.studentSpecialMeal.findMany({
+    where: {
+      date,
+      student: {
+        AND: [
+          {
+            OR: [
+              { boardingStatus: BoardingStatus.ACTIVE },
+              {
+                boardingStatus: BoardingStatus.CANCELLED,
+                boardingCancelledAt: { gte: date },
+              },
+            ],
+          },
+          {
+            OR: [
+              { mealStartDate: null },
+              { mealStartDate: { lte: date } },
+            ],
+          },
+        ],
+      },
+    },
+    include: {
+      student: {
+        include: { class: { select: { id: true, name: true } } },
+      },
+    },
+  });
+  const specialMealMap = new Map(specialMeals.map((sm) => [sm.studentId, sm]));
+
+  // Map ca ăn thường niên của từng lớp
+  const classScheduleShiftMap = new Map<string, "TIET_4" | "TIET_5">();
+  for (const s of schedules) {
+    const sShift = (s as any)[dayField] as "TIET_4" | "TIET_5";
+    if (sShift === "TIET_4" || sShift === "TIET_5") {
+      classScheduleShiftMap.set(s.classId, sShift);
+    }
+  }
+
   // Lấy cấu hình hệ thống giờ chốt
   const settings = await prisma.systemSetting.findMany({
     where: { key: { in: ["MEAL_LOCK_TIME_2", "CUTOFF_TIME"] } }
@@ -146,7 +188,13 @@ export async function GET(request: NextRequest) {
       const now = new Date();
       for (const schedule of unLockedSchedules) {
         const students = schedule.class.students;
-        const activeStudents = students.filter((s) => !cancelledStudentIds.has(s.id));
+        const classShift = (schedule as any)[dayField] as "TIET_4" | "TIET_5";
+        const activeStudents = students.filter((s) => {
+          if (cancelledStudentIds.has(s.id)) return false;
+          const sm = specialMealMap.get(s.id);
+          const res = resolveStudentMealForDate(classShift, sm ? sm.shift : null);
+          return res.diningTarget === "CLASS";
+        });
 
         let man = 0;
         let chay = 0;
@@ -205,7 +253,13 @@ export async function GET(request: NextRequest) {
   // Tổng hợp theo lớp
   const classSummaries = schedules.map((schedule) => {
     const students = schedule.class.students;
-    const activeStudents = students.filter((s) => !cancelledStudentIds.has(s.id));
+    const classShift = (schedule as any)[dayField] as "TIET_4" | "TIET_5";
+    const activeStudents = students.filter((s) => {
+      if (cancelledStudentIds.has(s.id)) return false;
+      const sm = specialMealMap.get(s.id);
+      const res = resolveStudentMealForDate(classShift, sm ? sm.shift : null);
+      return res.diningTarget === "CLASS";
+    });
 
     // Đếm suất ăn có tính MealOverride (Số lượng thực tế realtime)
     let man = 0;
@@ -264,39 +318,7 @@ export async function GET(request: NextRequest) {
   });
 
   // ==================== HS ĂN ĐẶC BIỆT ====================
-  // Lấy HS có lịch ăn đặc biệt ngày này (không trùng TKB lớp)
-  const scheduleClassIdsSet = new Set(schedules.map((s) => s.classId));
-  const specialMeals = await prisma.studentSpecialMeal.findMany({
-    where: {
-      date,
-      student: {
-        AND: [
-          {
-            OR: [
-              { boardingStatus: BoardingStatus.ACTIVE },
-              {
-                boardingStatus: BoardingStatus.CANCELLED,
-                boardingCancelledAt: { gte: date },
-              },
-            ],
-          },
-          {
-            OR: [
-              { mealStartDate: null },
-              { mealStartDate: { lte: date } },
-            ],
-          },
-        ],
-      },
-    },
-    include: {
-      student: {
-        include: { class: { select: { id: true, name: true } } },
-      },
-    },
-  });
-
-  // Gom HS đặc biệt (không trùng TKB lớp) theo scheduleName
+  // Gom HS đặc biệt theo scheduleName (áp dụng Conflict Resolution: Lớp không ăn HOẶC khác ca ăn với lớp)
   const specialGroupMap = new Map<string, { 
     name: string; 
     totalRegistered: number;
@@ -305,7 +327,9 @@ export async function GET(request: NextRequest) {
   }>();
   for (const sm of specialMeals) {
     if (!sm.student) continue;
-    if (scheduleClassIdsSet.has(sm.student.classId)) continue; // Trùng TKB lớp → bỏ qua
+    const classShift = classScheduleShiftMap.get(sm.student.classId) || "NONE";
+    const res = resolveStudentMealForDate(classShift, sm.shift);
+    if (res.diningTarget !== "SPECIAL_GROUP") continue;
 
     const key = sm.scheduleName;
     if (!specialGroupMap.has(key)) {

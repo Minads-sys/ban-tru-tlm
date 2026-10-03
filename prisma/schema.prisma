@@ -124,6 +124,7 @@ model Student {
   class             Class              @relation(fields: [classId], references: [id])
   mealOverrides     MealOverride[]
   specialMeals      StudentSpecialMeal[]
+  cohortMembers     SpecialCohortMember[]
   mealCancellations MealCancellation[]
   monthlyBills      MonthlyBill[]
   settlementRecords SettlementRecord[]
@@ -223,21 +224,88 @@ model MealOverride {
 // ==================== LỊCH ĂN ĐẶC BIỆT THEO HỌC SINH ====================
 
 model StudentSpecialMeal {
-  id            String       @id @default(cuid())
-  studentId     String       @map("student_id")
-  date          DateTime     @map("date") @db.Date
-  shift         ScheduleType @default(TIET_4)
-  scheduleName  String       @map("schedule_name")
-  source        String       @default("IMPORT") @map("source")
-  createdAt     DateTime     @default(now()) @map("created_at")
+  id            String         @id @default(cuid())
+  studentId     String         @map("student_id")
+  cohortId      String?        @map("cohort_id")
+  date          DateTime       @map("date") @db.Date
+  shift         ScheduleType   @default(TIET_4)
+  scheduleName  String         @map("schedule_name")
+  source        String         @default("IMPORT") @map("source")
+  createdAt     DateTime       @default(now()) @map("created_at")
 
-  student       Student      @relation(fields: [studentId], references: [id])
+  student       Student        @relation(fields: [studentId], references: [id])
+  cohort        SpecialCohort? @relation(fields: [cohortId], references: [id], onDelete: SetNull)
 
   @@unique([studentId, date])
   @@index([date])
   @@index([studentId])
   @@index([scheduleName])
+  @@index([cohortId])
   @@map("student_special_meals")
+}
+
+// ==================== LỚP HỌC PHẦN ĐẶC BIỆT DÀI HẠN ====================
+
+model SpecialCohort {
+  id             String                  @id @default(cuid())
+  code           String                  @unique // VD: "NN2_HAN_K10", "GDQP_K11"
+  name           String                  // "Ngoại ngữ 2 - Tiếng Hàn Khối 10"
+  description    String?
+  academicYear   Int                     @default(2026) @map("academic_year")
+  semester       Int                     @default(1)
+  dayOfWeek      Int                     @map("day_of_week") // 1: T2, 2: T3, ..., 6: T7
+  defaultShift   ScheduleType            @default(TIET_5) @map("default_shift")
+  startWeek      Int                     @default(1) @map("start_week")
+  endWeek        Int                     @default(18) @map("end_week")
+  excludedWeeks  Int[]                   @default([]) @map("excluded_weeks")
+  excludedDates  DateTime[]              @default([]) @map("excluded_dates") @db.Date
+  isActive       Boolean                 @default(true) @map("is_active")
+  createdAt      DateTime                @default(now()) @map("created_at")
+  updatedAt      DateTime                @updatedAt @map("updated_at")
+
+  members        SpecialCohortMember[]
+  overrides      SpecialCohortOverride[]
+  meals          StudentSpecialMeal[]
+
+  @@index([academicYear, semester])
+  @@index([isActive])
+  @@map("special_cohorts")
+}
+
+model SpecialCohortMember {
+  id         String        @id @default(cuid())
+  cohortId   String        @map("cohort_id")
+  studentId  String        @map("student_id")
+  status     String        @default("ACTIVE") @map("status") // ACTIVE, LEFT
+  joinedDate DateTime      @default(now()) @map("joined_date") @db.Date
+  leftDate   DateTime?     @map("left_date") @db.Date
+  note       String?
+  createdAt  DateTime      @default(now()) @map("created_at")
+  updatedAt  DateTime      @updatedAt @map("updated_at")
+
+  cohort     SpecialCohort @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  student    Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([cohortId, studentId])
+  @@index([cohortId])
+  @@index([studentId])
+  @@map("special_cohort_members")
+}
+
+model SpecialCohortOverride {
+  id           String        @id @default(cuid())
+  cohortId     String        @map("cohort_id")
+  date         DateTime      @db.Date
+  overrideType String        @default("CANCEL") @map("override_type") // CANCEL | SHIFT_CHANGE
+  newShift     ScheduleType? @map("new_shift")
+  reason       String?
+  createdAt    DateTime      @default(now()) @map("created_at")
+
+  cohort       SpecialCohort @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+
+  @@unique([cohortId, date])
+  @@index([cohortId])
+  @@map("special_cohort_overrides")
 }
 
 model MealCancellation {

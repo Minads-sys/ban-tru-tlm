@@ -23,9 +23,10 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { CalendarDays, Save, Loader2, Copy, CheckCircle, X, ChevronLeft, ChevronRight, Trash2, Info, Sparkles, Search, Filter, ExternalLink, Plus, UserPlus, Calendar, Clock, Users, Check, ArrowUpDown, Download, Upload, FileSpreadsheet, AlertTriangle, GraduationCap, FileUp } from "lucide-react";
+import { CalendarDays, Save, Loader2, Copy, CheckCircle, X, ChevronLeft, ChevronRight, Trash2, Info, Sparkles, Search, Filter, ExternalLink, Plus, UserPlus, Calendar, Clock, Users, Check, ArrowUpDown, Download, Upload, FileSpreadsheet, AlertTriangle, GraduationCap, FileUp, BookOpen } from "lucide-react";
 import { format, parse, startOfWeek, endOfWeek, addDays, addWeeks } from "date-fns";
 import { compareClassNames, removeVietnameseTones, getSchoolWeekFromNumber } from "@/lib/utils";
+import SpecialCohortsManager from "@/components/schedule/SpecialCohortsManager";
 
 interface SpecialMealItem {
   id: string;
@@ -108,8 +109,8 @@ export default function SchedulePage() {
   const [selectedMealIds, setSelectedMealIds] = useState<Set<string>>(new Set());
   const [isBulkUpdatingShift, setIsBulkUpdatingShift] = useState(false);
 
-  // View Mode: TKB Thường niên vs TKB Tổng hợp
-  const [scheduleViewMode, setScheduleViewMode] = useState<"REGULAR" | "COMBINED">("REGULAR");
+  // View Mode: TKB Thường niên vs TKB Tổng hợp vs Lớp Học Phần
+  const [scheduleViewMode, setScheduleViewMode] = useState<"REGULAR" | "COMBINED" | "COHORTS">("REGULAR");
 
   // Copy Block Modal States
   // Copy Block Modal States
@@ -1632,56 +1633,72 @@ export default function SchedulePage() {
                   </span>
                 )}
               </button>
+              <button
+                type="button"
+                onClick={() => setScheduleViewMode("COHORTS")}
+                className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 cursor-pointer ${
+                  scheduleViewMode === "COHORTS"
+                    ? "bg-purple-600 text-white shadow-xs font-semibold"
+                    : "text-slate-600 dark:text-slate-400 hover:text-purple-600"
+                }`}
+              >
+                <BookOpen className="h-3.5 w-3.5" />
+                Lớp Học Phần (Dài Hạn)
+              </button>
             </div>
           </div>
 
-          {/* Toggle Cột */}
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-slate-600">Cột:</span>
-            <div className="flex gap-1">
-              {[
-                { id: "monday", label: "T2" },
-                { id: "tuesday", label: "T3" },
-                { id: "wednesday", label: "T4" },
-                { id: "thursday", label: "T5" },
-                { id: "friday", label: "T6" },
-                { id: "saturday", label: "T7" }
-              ].map((day) => {
-                const isActive = visibleDays.includes(day.id);
-                return (
-                  <Button
-                    key={day.id}
-                    variant={isActive ? "default" : "outline"}
-                    size="sm"
-                    className={`h-7 px-2 text-xs ${isActive ? "bg-indigo-600 hover:bg-indigo-700" : ""}`}
-                    onClick={() => {
-                      let newDays = [...visibleDays];
-                      if (isActive) {
-                        newDays = newDays.filter(d => d !== day.id);
-                      } else {
-                        newDays.push(day.id);
-                      }
-                      setVisibleDays(newDays);
-                    }}
-                  >
-                    {day.label}
-                  </Button>
-                );
-              })}
+          {/* Toggle Cột (Chỉ hiện khi ở chế độ xem TKB Thường niên hoặc Tổng hợp) */}
+          {scheduleViewMode !== "COHORTS" && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-slate-600">Cột:</span>
+              <div className="flex gap-1">
+                {[
+                  { id: "monday", label: "T2" },
+                  { id: "tuesday", label: "T3" },
+                  { id: "wednesday", label: "T4" },
+                  { id: "thursday", label: "T5" },
+                  { id: "friday", label: "T6" },
+                  { id: "saturday", label: "T7" }
+                ].map((day) => {
+                  const isActive = visibleDays.includes(day.id);
+                  return (
+                    <Button
+                      key={day.id}
+                      variant={isActive ? "default" : "outline"}
+                      size="sm"
+                      className={`h-7 px-2 text-xs ${isActive ? "bg-indigo-600 hover:bg-indigo-700" : ""}`}
+                      onClick={() => {
+                        let newDays = [...visibleDays];
+                        if (isActive) {
+                          newDays = newDays.filter(d => d !== day.id);
+                        } else {
+                          newDays.push(day.id);
+                        }
+                        setVisibleDays(newDays);
+                      }}
+                    >
+                      {day.label}
+                    </Button>
+                  );
+                })}
+              </div>
+              <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer select-none ml-3">
+                <input
+                  type="checkbox"
+                  checked={hideEmptyClasses}
+                  onChange={(e) => setHideEmptyClasses(e.target.checked)}
+                  className="rounded border-slate-300 h-3.5 w-3.5 accent-indigo-600"
+                />
+                Ẩn lớp trống
+              </label>
             </div>
-            <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer select-none ml-3">
-              <input
-                type="checkbox"
-                checked={hideEmptyClasses}
-                onChange={(e) => setHideEmptyClasses(e.target.checked)}
-                className="rounded border-slate-300 h-3.5 w-3.5 accent-indigo-600"
-              />
-              Ẩn lớp trống
-            </label>
-          </div>
+          )}
         </CardHeader>
         <CardContent>
-          {loading ? (
+          {scheduleViewMode === "COHORTS" ? (
+            <SpecialCohortsManager />
+          ) : loading ? (
             <div className="text-center py-8">
               <Loader2 className="h-6 w-6 animate-spin mx-auto" />
               <p className="text-gray-500 mt-2">Đang tải...</p>
@@ -2000,11 +2017,13 @@ export default function SchedulePage() {
               </TableBody>
             </Table>
           )}
-          <p className="text-xs text-gray-500 mt-3">
-            {!isAccountant
-              ? "💡 Bấm vào ô Trống/Tiết 4/Tiết 5 để chuyển đổi lịch ra về. Sau khi chỉnh sửa xong, bấm Lưu TKB."
-              : "💡 Bạn đang ở chế độ xem thời khóa biểu (Kế toán)."}
-          </p>
+          {scheduleViewMode !== "COHORTS" && (
+            <p className="text-xs text-gray-500 mt-3">
+              {!isAccountant
+                ? "💡 Bấm vào ô Trống/Tiết 4/Tiết 5 để chuyển đổi lịch ra về. Sau khi chỉnh sửa xong, bấm Lưu TKB."
+                : "💡 Bạn đang ở chế độ xem thời khóa biểu (Kế toán)."}
+            </p>
+          )}
         </CardContent>
       </Card>
 
